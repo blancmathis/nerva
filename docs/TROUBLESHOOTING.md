@@ -8,13 +8,13 @@ Start with:
 npm run doctor
 ```
 
-Then open the in-app **Capability Center**. Record the exact layer state, last proof, bridge/Codex/protocol versions and schema status. `Copy summary` is designed to be shareable: it omits prompts, outputs, titles, local paths, credentials and complete thread identifiers. A green browser notification row does not make a red native-control or Site row usable.
+Then open **Settings → System Diagnostics**. Record the exact layer state, last proof, bridge/Codex/protocol versions and schema status. `Copy summary` is designed to be shareable: it omits prompts, outputs, titles, local paths, credentials and complete thread identifiers. A green browser notification row does not make a red native-control or Site row usable.
 
 Doctor should report versions, listener ownership, structural compatibility, and redacted error categories. It should not print thread titles, prompts, source code, drawings, credentials, pairing codes, full thread IDs, or private local paths beyond known installation/configuration locations.
 
 Do not bypass a degraded state until the uncertain layer is understood. A degraded health badge does not by itself mean every command is unavailable: exact-target commands remain enabled only when the live snapshot advertises that specific command and the selected slot/thread identities match. Offline/cached snapshots remain display-only.
 
-## Capability Center reports missing or invalid schemas
+## System Diagnostics reports missing or invalid schemas
 
 Run the normal idempotent setup again:
 
@@ -80,7 +80,7 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
-On the 25 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` exposes five independent stdio writers, the managed socket is absent and ownership cannot be attested. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; repeated restarts, hand-written attestations or killing unknown writers are not accepted workarounds.
+On the 25 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` exposes seven independent stdio writers, the managed socket is absent and ownership cannot be attested. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; repeated restarts, hand-written attestations or killing unknown writers are not accepted workarounds.
 
 Expected path:
 
@@ -179,7 +179,9 @@ If Model + Reasoning or Skills alternates between available and unavailable ever
 
 Settings never accepts a manually typed model identifier. Its model menu comes directly from the current live `model/list` response, and its Reasoning menu is limited to the efforts advertised for the selected model. If the menu is empty, diagnose the managed app-server connection rather than guessing an identifier.
 
-Configured presets are a strict allowlist. If only Sol presets were selected, Luna or another catalog model must never appear merely because one Sol preset is temporarily unavailable. Seeing the full catalog is expected only when Settings contains zero presets. If saved presets disappear after a reconnect, inspect Product State writes: current clients keep separate persistent dirty scopes for Home layout and preferences. After a stale-revision refresh, a layout-only save must retain the refreshed Mac presets, while a preferences-only save must retain the refreshed Mac layout. On the first run of the corrected client, a locally retained non-empty preset list is offered once when the Mac list is empty; if the old client already replaced that local list too, there is no truthful source from which to reconstruct the chosen presets and they must be selected again once.
+Configured presets are a strict allowlist. If only Sol presets were selected, Luna or another catalog model must never appear merely because one Sol preset is temporarily unavailable. Seeing the full catalog is expected only when Settings contains zero presets. If saved presets disappear after a reconnect, inspect Product State writes: current clients keep separate persistent dirty scopes for Home layout and preferences. After a stale-revision refresh, a layout-only save must retain the refreshed Mac presets, while a preferences-only save must retain the refreshed Mac layout.
+
+On the first run of the corrected client, a locally retained non-empty preset list is offered once when the Mac list is empty. If the old client already replaced that local list too, there is no truthful source from which to reconstruct the chosen presets; select them again after the live catalog becomes available.
 
 ## Sketch upload is rejected
 

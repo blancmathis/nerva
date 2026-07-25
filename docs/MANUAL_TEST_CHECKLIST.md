@@ -21,22 +21,24 @@ Evidence location:
 
 ```text
 Date/time: 25 July 2026, Europe/Paris
-Nerva commit: b94e30a
+Nerva commit: pending publication commit
 Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
 Codex Desktop / bundled Codex: 26.721.41059 build 5848 / codex-cli 0.146.0-alpha.3.1
 Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
 iPad / iPadOS / Pencil: not recorded in this run
-Evidence: checkout and clean local Git clone
+Evidence: current working checkout; clean-clone reproduction pending
 ```
 
-Automated result: check, 889 unit tests, build, 381.70 KiB bundle ceiling, release audit, Context Room doctor, screenshots and both sequential/parallel E2E matrices passed. Each E2E matrix recorded 250 passes, eight explicit profile skips, zero failures and no retry. The critical Drawing scenarios passed 72/72 over three repetitions.
+Historical release-baseline result at `b94e30a`: check, 889 unit tests, build, 381.70 KiB bundle ceiling, release audit, Context Room doctor, screenshots and both sequential/parallel E2E matrices passed. Each baseline matrix recorded 250 passes, eight explicit profile skips, zero failures and no retry. The critical Drawing scenarios passed 72/72 over three repetitions.
 
-Runtime result: **blocked/degraded**. Nerva doctor reports five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
+Current pre-alpha checkout result: `npm run validate` passed with 902 unit tests plus 11/11 probe-safety tests, build, a 379.69 KiB largest JavaScript chunk, 275 parallel E2E passes with 13 explicit profile skips, Axe coverage and the release audit. Collaborative diagrams, the compact Home header and `Settings → System Diagnostics` are included. Clean-clone reproduction and physical iPad/Pencil checks remain deliberately unchecked until the publication commits exist.
+
+Runtime result: **blocked/degraded**. Nerva doctor reports seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
 
 ## A. Mac setup and pairing
 
 - [ ] From a clean supported clone, with Tailscale already signed in, install the official standalone Codex CLI once if absent, then run `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
-- [ ] `setup:mac` generates a schema cache for the currently installed Desktop-bundled Codex before installing the bridge; Capability Center reports it as `Current` rather than silently relying on an older version.
+- [ ] `setup:mac` generates a schema cache for the currently installed Desktop-bundled Codex before installing the bridge; Settings → System Diagnostics reports it as `Current` rather than silently relying on an older version.
 - [ ] The command uses the Desktop-bundled Codex daemon manager, changes only its managed daemon state plus Codex Pad Application Support, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Tailscale Serve route; it never enables Funnel, uses `sudo`, resets unrelated Serve routes or restarts Codex Desktop.
 - [ ] The bridge remains on `127.0.0.1:8787`; CDP and app-server sockets are not exposed to LAN/tailnet interfaces.
 - [ ] A fresh physical-iPad setup completes in under 120 seconds after the Tailscale preflight.
@@ -172,6 +174,15 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Re-Keep creates a new record; only explicit confirmed Delete removes a saved original.
 - [ ] Limits fail clearly at 48 drawings, 8 MiB per PNG or 128 MiB total; no old record is silently evicted.
 - [ ] A newly paired replacement iPad can fetch Saved Drawings, while non-Keep local drafts remain only on the source iPad.
+- [ ] From one Codex task, publish [`examples/collaborative-diagram.json`](../examples/collaborative-diagram.json); Draw in that exact Session opens the latest unseen diagram automatically, while another Session cannot list or open it.
+- [ ] In `Diagram` mode, move and resize a block with a deliberately imperfect touch drag, rename and recolor it, add and delete a connection, add a block, and verify Undo/Redo and `Auto layout`.
+- [ ] Tap `Draw on top`, annotate across multiple diagram blocks with Apple Pencil, rest the palm on the display and use exactly two fingers to pan/zoom. Structural blocks and freehand ink remain aligned.
+- [ ] Tap `Sync revision`, then run `diagram get` on the Mac. The returned structure has one incremented revision, `lastEditedBy: "ipad"` and the exact touch edits, without a PNG or composer mutation.
+- [ ] Publish a newer Codex revision while the iPad has unsynchronized structural changes. Nerva announces the update but does not overwrite local work. Resolve by syncing/reloading explicitly.
+- [ ] With a dirty collaborative diagram and Pencil annotation, tap `Keep`; the structure syncs first and Saved Drawings receives one flattened independent snapshot.
+- [ ] With a dirty collaborative diagram and Pencil annotation, tap `Send`; the structure syncs first, then the Mac composer receives exactly one flattened PNG and is not submitted.
+- [ ] After confirmed Send, reopen Draw. The sent diagram does not reappear. Publish a newer Codex revision, reopen Draw and confirm that the newer revision now appears.
+- [ ] Disconnect the Mac after editing a diagram. The local draft survives, `Sync revision` fails visibly, and Keep/Send never claim that the structure was synchronized.
 
 ## F. Review and media delivery
 
@@ -215,7 +226,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] All essential actions are reachable by finger and Pencil, never hover-only; focus, dialog containment and accessible names work with a keyboard/screen reader.
 - [ ] System/Light/Dark and Rich/Compact remain legible at iPad landscape, iPad portrait and phone sizes.
 - [ ] Reduce Motion removes nonessential travel while preserving state transitions.
-- [ ] Capability Center reports each layer independently, includes current versions/schema state and copies a diagnostic summary containing no prompt, output, title, cwd, token, local path or complete thread ID.
+- [ ] Settings → System Diagnostics reports each layer independently, includes current versions/schema state and copies a diagnostic summary containing no prompt, output, title, cwd, token, local path or complete thread ID.
 - [ ] From the installed Home Screen app, tap Settings → Notifications → `Enable`. Confirm the direct iPadOS permission prompt appears only after that touch, the row becomes `Active—even when Nerva is fully suspended.`, and no new pairing QR is required.
 - [ ] Trigger one exact `Needs approval`, `Error` and `Waiting for your answer` transition from the Mac. Confirm each generic notification contains no task title, prompt, output, command, cwd or approval summary; tapping opens the exact Session, while the Lock Screen offers no Approve/Reject action.
 - [ ] Complete one unpinned task and confirm it produces no completion alert. Complete one pinned task and confirm its alert opens that exact Session. Complete two pinned tasks within the grouping window and confirm one `Results ready to review` alert opens Home Priority rather than two noisy notifications.
@@ -253,7 +264,8 @@ Choose one and explain the limiting evidence:
 
 ```text
 Verdict notes (25 July 2026):
-Blocked/degraded. Automated and clean-clone gates are green, but doctor is red
+Blocked/degraded. Automated checkout gates are green; clean-clone proof remains pending,
+and doctor is red
 for the native app-server topology and the physical Mac/iPad/Pencil matrix is
 incomplete. Do not create v0.1.0.
 ```

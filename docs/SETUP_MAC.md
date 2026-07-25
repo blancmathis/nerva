@@ -2,7 +2,7 @@
 
 > **Current implementation:** after the one-time official standalone Codex CLI install, Nerva provides one explicit `npm run setup:mac` command. It builds the checkout, generates and validates the installed Desktop Codex schema cache, invokes the Desktop-bundled app-server daemon manager with remote control enabled, installs the bridge LaunchAgent, enables the Desktop local-daemon opt-in for later GUI launches, configures only an available exact private Serve route and prints the QR. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
 
-> **Current compatibility warning (25 July 2026):** on Codex Desktop `26.721.41059` build `5848`, doctor observes five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. The schema cache is current, Tailscale/bridge checks are green and pairing may still work, but app-server-backed mutations remain degraded. Do not repeat Desktop restarts or kill writers blindly; wait for a version-compatible supported topology and rerun doctor.
+> **Current compatibility warning (25 July 2026):** on Codex Desktop `26.721.41059` build `5848`, doctor observes seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. The schema cache is current, Tailscale/bridge checks are green and pairing may still work, but app-server-backed mutations remain degraded. Do not repeat Desktop restarts or kill writers blindly; wait for a version-compatible supported topology and rerun doctor.
 
 The legacy `npm run setup` command remains inspection/local-state only. The separate `npm run setup:mac` command is explicit authorization to run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary, create or update Codex Pad's bridge LaunchAgent, set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain, and configure its private Serve route. It does not quit or relaunch Codex Desktop, use Funnel, reset unrelated Serve routes, or bind the bridge outside loopback. The environment value affects subsequently launched GUI processes; save work before any manual Desktop relaunch.
 
@@ -50,7 +50,7 @@ Both commands fail closed if Tailscale is offline, Funnel is not authoritatively
 - OpenAI-managed standalone Codex CLI at `~/.codex/packages/standalone/current/codex`
 - Tailscale for production iPad access, with either the Standalone app's CLI integration enabled or the App Store app's bundled CLI used explicitly
 
-The last local doctor run on 25 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.721.41059` build `5848`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.3.1`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. This is an observation, not a hardcoded support promise. The Capability Center and doctor must report the currently installed versions and schema state after every update.
+The last local doctor run on 25 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.721.41059` build `5848`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.3.1`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. This is an observation, not a hardcoded support promise. Settings → System Diagnostics and doctor must report the currently installed versions and schema state after every update.
 
 Verify the local tools:
 

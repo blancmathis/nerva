@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible Nerva problem using synthetic or redacted data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, pairing QR codes, prompts, task titles, screenshots with private content, complete thread IDs, local paths, source code, or exploit details. Use [Private Vulnerability Reporting](https://github.com/blancmathis/nerva/security/advisories/new) for security issues.
+  - type: checkboxes
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and read the current compatibility limits.
+          required: true
+        - label: This report contains only synthetic or safely redacted data.
+          required: true
+  - type: input
+    attributes:
+      label: Nerva commit
+      description: Commit SHA or branch name.
+      placeholder: abc1234
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Environment
+      description: macOS, Codex Desktop, bundled Codex CLI, Node, iPadOS/Safari, and Tailscale versions that matter.
+      placeholder: macOS …; Codex Desktop …; Node …; iPadOS …
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction
+      description: Minimal numbered steps using synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Observed behavior
+      description: Include only redacted diagnostics. Never paste credentials or private task content.
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Proof level
+      options:
+        - Browser fixture or automated test
+        - Live Mac runtime
+        - Physical iPad or Apple Pencil
+        - Not yet isolated
+    validations:
+      required: true

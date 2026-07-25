@@ -22,6 +22,7 @@ flowchart LR
     STATE["Sequenced snapshot service"]
     PRODUCT["Mac Product State\nlayout + preferences"]
     SAVED["Mac Saved Drawings\nvalidated scene + PNG"]
+    DIAGRAMS["Collaborative diagrams\nexact task + optimistic revision"]
     RUNTIME["Runtime diagnostics\nprivacy-safe proofs"]
     ROOM["Optional Context Room\nloopback read-only health"]
     MICRO["CodexMicroAdapter\nloopback CDP"]
@@ -35,6 +36,7 @@ flowchart LR
     API <--> STATE
     API <--> PRODUCT
     API <--> SAVED
+    API <--> DIAGRAMS
     API --> RUNTIME
     API --> ROOM
     STATE <--> MICRO
@@ -153,7 +155,9 @@ The Session `Sites` key opens one unified touch picker containing only the curre
 
 The bridge resolves the opaque tab ID against a fresh attested inventory before every frame or input operation. The PWA receives bounded JPEG frames and may send only the typed controls `tap`, `scroll`, bounded text insertion, four allowlisted keys, back, forward and reload. Debugger addresses, CDP methods, arbitrary URLs, JavaScript and raw protocol payloads never cross the bridge API. The full-screen Site workspace behaves as a live page until Pencil contact—or touch after enabling `Touch + Pencil`—freezes the current frame for simple ink annotation. It contains no filmstrip, blank-frame command, Photo/Files or Camera import. `Send` exports one annotated PNG through the existing exact native composer-attachment path and does not submit the Mac composer.
 
-The service worker caches only the static application shell, including every emitted JavaScript and CSS chunk needed by lazy surfaces such as Capture Inbox, Drawing and Review. Local IndexedDB stores editable Draw and Review drafts per exact target, the separate neutral Capture Inbox, plus a last-good snapshot for stale/offline orientation. Capture Inbox records never store a Session destination or usage mark; `Use in session` copies compatible content into the chosen exact Review while leaving the original reusable. Inbox bytes never enter the service-worker cache or Mac Product State. The snapshot can contain task titles, thread IDs, slot state and bounded approval summaries, so clearing this origin's site data is the local privacy-removal path for iPad-only records. Raw HTTP response bodies, WebSocket tickets and Codex transcripts are not service-worker cached.
+The service worker caches only the static application shell, including every emitted JavaScript and CSS chunk needed by lazy surfaces such as Capture Inbox, Drawing and Review. Local IndexedDB stores editable Draw and Review drafts per exact target, the structured collaborative-diagram working layer alongside its freehand Draw layer, the separate neutral Capture Inbox, plus a last-good snapshot for stale/offline orientation.
+
+Capture Inbox records never store a Session destination or usage mark; `Use in session` copies compatible content into the chosen exact Review while leaving the original reusable. Inbox bytes never enter the service-worker cache or Mac Product State. The snapshot can contain task titles, thread IDs, slot state and bounded approval summaries, so clearing this origin's site data is the local privacy-removal path for iPad-only records. Raw HTTP response bodies, WebSocket tickets and Codex transcripts are not service-worker cached.
 
 A separate exact-origin `codex-pad-origin-auth` database stores only the permanent bearer record, with a current-page memory fallback when storage is unavailable; no cookie or `localStorage` fallback exists. This avoids sending a host-wide cookie to approved review sites on sibling MagicDNS ports. Legacy cookie names are expiration-cleared during migration and their stored credential records are revoked.
 
@@ -170,6 +174,10 @@ The drawing engine owns a small serializable scene model. Pointer Events preserv
 In Pencil-only mode, non-pen pointers cannot create marks: the first touch remains passive, the second promotes exactly two touches into pan/pinch navigation, and returning to one touch ends that navigation. Touches arriving while a pen is active are not tracked, so a palm cannot later become a gesture accidentally. If WebKit emits `pointercancel` for the pen, the already-rendered samples are committed as a partial element before tracker cleanup. The full-screen studio disables browser selection, touch callouts and overscroll, and its canvas prevents default pointer/select behavior so Pencil contact and a resting palm do not select the surrounding page.
 
 Export is bounded: the scene is flattened into a Retina-friendly PNG, meaningful bounds are padded and clamped, the background is included, and the vector draft remains separate. See [ADR 003](adr/003-drawing-engine.md).
+
+Collaborative diagrams add a validated structured layer above that engine without changing its outbound contract. The Mac store accepts only a versioned 1440 × 900 data document with bounded rectangles/ellipses and referenced edges for one exact task. Draw scales that layer to the current canvas, exposes touch hitboxes for structural editing, and retains ordinary Pencil elements separately. Export merges the current diagram render and Pencil scene into one drawing scene before PNG generation. A dirty structure is written with an optimistic expected revision before Keep or Send; a stale write conflicts instead of replacing a newer revision.
+
+The CLI is the agent-facing publication path. A Codex task publishes a regular bounded JSON file using its exact `CODEX_THREAD_ID`, then can list/get the same task's documents. Continuing an existing document requires both its stable `diagramId` and latest `expectedRevision`. The PWA lists only documents whose `threadId` equals the displayed Session. See [Collaborative diagrams](COLLABORATIVE_DIAGRAMS.md).
 
 Before any imported non-animated PNG, JPEG, static WebP, or structurally supported HEIC/HEIF reaches `createImageBitmap`, `Image`, canvas, or DataURL conversion, the PWA performs a bounded header/magic parse. It retains at most 256 KiB of header/table inspection data, visits at most 4,096 structures, and uses at most a 64 KiB working chunk while a JPEG stream-scans as much as the 15 MiB compressed-file ceiling for late markers. It scans PNG chunks through `IEND`, rejects APNG, animated WebP, and malformed/truncated data, caps every relevant declared or coded dimension at 16,384 pixels, and applies 16-megapixel drawing or 32-megapixel review limits before bitmap decode.
 
@@ -215,11 +223,15 @@ Codex Desktop then owns recording and transcription with the microphone selected
 
 ### Home organization and session catalog
 
-Mac Product State owns the ordered pinned IDs, manual sections/cases, loose cards, automatic-group order and global preferences. It is schema-bounded and written atomically. Clients send `expectedRevision`. Every local mutation first records a persistent field-scoped unsynchronized intent for Home layout or preferences. On conflict, the client refreshes the Mac revision, merges only those locally dirty fields over the new Mac state, and retries; an old Home client cannot erase newer presets, and an old Settings client cannot erase a newer layout. Only confirmation of the resulting desired state clears the outbox. A one-time migration may offer a locally retained non-empty preset list when the Mac list is empty, repairing the previous whole-payload overwrite bug; after that single decision, confirmed Mac state is authoritative again. Local Home and preference storage remain the offline/bootstrap outbox, while the confirmed Mac state is the cross-iPad authority.
+Mac Product State owns the ordered pinned IDs, manual sections/cases, loose cards, automatic-group order and global preferences. It is schema-bounded and written atomically. Clients send `expectedRevision`. Every local mutation first records a persistent field-scoped unsynchronized intent for Home layout or preferences.
+
+On conflict, the client refreshes the Mac revision, merges only those locally dirty fields over the new Mac state, and retries; an old Home client cannot erase newer presets, and an old Settings client cannot erase a newer layout. Only confirmation of the resulting desired state clears the outbox. A one-time migration may offer a locally retained non-empty preset list when the Mac list is empty, repairing the previous whole-payload overwrite bug. After that single decision, confirmed Mac state is authoritative again. Local Home and preference storage remain the offline/bootstrap outbox, while the confirmed Mac state is the cross-iPad authority.
 
 Every non-pinned catalog session belongs in `Unpinned Sessions`; there is no `Include all Codex sessions` preference. A session may appear in Home only once, either loose or inside one case. Removing a case returns its sessions directly to Home. Unpinning returns the session to the drawer and never mutates the Codex thread. See [ADR 005](adr/005-spatial-layout.md).
 
-Home has no separate Arrange state. In its unfiltered manual layout, a 420 ms long press starts direct movement on that same contact; ordinary movement before the hold cancels the intent so page scrolling remains available. After activation, card Pointer Events use a six-pixel move threshold, pointer capture and explicit `data-home-drop-target` zones. Dropping before another card preserves ordering; dropping on a case or the direct-Home board updates only the existing `move-session` presentation action. The card suppresses its synthetic click, and Home temporarily rejects every card-open callback after a committed drop so a DOM reorder cannot redirect that click to another session. Native selects inside each card's compact actions menu remain the non-drag alternative. `New section` stays visible as a compact Home-bar action; section and case management use local controls rather than a global editing mode.
+Home has no separate Arrange state. In its unfiltered manual layout, a 420 ms long press starts direct movement on that same contact; ordinary movement before the hold cancels the intent so page scrolling remains available. After activation, card Pointer Events use a six-pixel move threshold, pointer capture and explicit `data-home-drop-target` zones.
+
+Dropping before another card preserves ordering; dropping on a case or the direct-Home board updates only the existing `move-session` presentation action. The card suppresses its synthetic click, and Home temporarily rejects every card-open callback after a committed drop so a DOM reorder cannot redirect that click to another session. Native selects inside each card's compact actions menu remain the non-drag alternative. `New section` stays visible as a compact Home-bar action; section and case management use local controls rather than a global editing mode.
 
 `GET /api/native-sessions` remains a separate compatibility projection for exact UUIDs occupying the native Micro six. It can attach sanitized registry and site association to those exact sessions, but it does not define the full Home catalog and no non-native session inherits Micro controls.
 
@@ -335,7 +347,7 @@ Home, the last-good session snapshot, Draw drafts and Review drafts remain consu
 
 ## Reliability and bounded integrations
 
-`GET /api/runtime` projects independent capability checks, bridge/Codex/protocol versions and installed-schema compatibility. The Capability Center renders this document without exposing task contents, local paths or credentials. It is evidence only: it never grants authority.
+`GET /api/runtime` projects independent capability checks, bridge/Codex/protocol versions and installed-schema compatibility. Settings → System Diagnostics renders this document without exposing task contents, local paths or credentials. It is evidence only: it never grants authority.
 
 The PWA update monitor separates worker activation from document reload. A new atomic shell can activate while the old document remains open; Nerva asks the user to reload and disables that action while a Drawing, Review or Site workspace may contain unsaved state, or while a Capture Inbox note, sketch or destructive confirmation is active.
 
@@ -357,11 +369,13 @@ The current Nerva Codex adapter does not implement a source editor, terminal, sh
 
 ## Current proof boundary
 
-On 25 July 2026, static inspection, unit tests and browser fixtures confirm the current six-slot compatibility projection, exact native bindings, Drawing lifecycle, Product State conflict handling, Capture Inbox, Home focus, Sites, Site QA, Push contracts and the privacy-safe Capability Center. The installed-version schema cache matches the bundled `codex-cli 0.146.0-alpha.3.1`.
+On 25 July 2026, static inspection, unit tests and browser fixtures confirm the current six-slot compatibility projection, exact native bindings, Drawing lifecycle, Product State conflict handling, Capture Inbox, Home focus, Sites, Site QA, Push contracts and privacy-safe System Diagnostics. The installed-version schema cache matches the bundled `codex-cli 0.146.0-alpha.3.1`.
 
-The complete local browser matrix passed sequentially and in normal parallel mode: 250 tests passed and eight profile-specific tests were explicitly skipped in each run, with no retries or failures. A separate clean Git clone passed `npm ci`, typechecking, 889 unit tests, build, the 500 KiB JavaScript chunk budget, the same E2E matrix, release audit, Context Room doctor and the high-severity dependency audit. Axe reported no serious or critical violations on the rendered Pairing, Home, Session, Inbox, Drawing, Saved Drawings, Sites and Settings surfaces covered by the suite.
+The release-baseline local browser matrix passed sequentially and in normal parallel mode: 250 tests passed and eight profile-specific tests were explicitly skipped in each run, with no retries or failures. A separate clean Git clone of that baseline passed `npm ci`, typechecking, 889 unit tests, build, the 500 KiB JavaScript chunk budget, the same E2E matrix, release audit, Context Room doctor and the high-severity dependency audit.
 
-The native app-server topology is not green on that same date. Doctor observes Codex Desktop `26.721.41059` build `5848`, five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. The bridge health endpoint consequently reports `degraded`, with Desktop ownership and multi-image input unverified. Older live daemon, model, skill, session, composer-attachment and dictation observations remain historical compatibility evidence only; they are not current-version proof.
+The current collaborative-diagram working tree passed typechecking, 902 unit tests, build, the same bundle budget, 256 parallel E2E tests with eight explicit profile skips, and the exact diagram round trip sequentially on all six Chromium/WebKit device profiles. Axe reported no serious or critical violations with the diagram inspector rendered, and the privacy-safe Drawing captures were regenerated for landscape, portrait and phone. The complete sequential matrix and clean-clone reproduction have not yet been repeated for this uncommitted extension; no baseline proof is silently promoted to the new working tree.
+
+The native app-server topology is not green on that same date. Doctor observes Codex Desktop `26.721.41059` build `5848`, seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. The bridge health endpoint consequently reports `degraded`, with Desktop ownership and multi-image input unverified. Older live daemon, model, skill, session, composer-attachment and dictation observations remain historical compatibility evidence only; they are not current-version proof.
 
 Full Desktop reciprocal-peer authority, a bounded multi-image app-server turn, sustained native Dictation and the complete physical iPad matrix remain unproven. Live Site has an implemented bounded tab driver, but the real Codex Browser frame/control path and physical Pencil-to-attachment flow still need owner verification. Tailscale pairing and installed-PWA credential reuse have worked on the owner's Mac/iPad, but timed clean pairing, replacement-device restoration, Pencil/camera behavior, long suspension, Push wake-up and Focus behavior remain open.
 

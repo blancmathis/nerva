@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement that preserves Nerva's security boundaries.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Nerva is pre-alpha. Please describe the user problem before proposing implementation. Do not include private task data, credentials, screenshots, or local paths.
+  - type: textarea
+    attributes:
+      label: User problem
+      description: What is difficult today, for whom, and in which iPad/Mac workflow?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed outcome
+      description: Describe observable behavior rather than internal implementation.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Safety and compatibility
+      description: Explain any impact on exact-session routing, authentication, local data, Codex compatibility, or physical-device behavior.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

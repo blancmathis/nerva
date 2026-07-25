@@ -100,8 +100,10 @@ The palette is neutral until state or intent earns color. Working blue, complete
 
 ## Typography
 
-**Display Font:** SF Pro Display through the Apple system stack  
-**Body Font:** SF Pro Text through the Apple system stack  
+**Display Font:** SF Pro Display through the Apple system stack
+
+**Body Font:** SF Pro Text through the Apple system stack
+
 **Label/Mono Font:** SFMono only for technical values, identifiers, durations, and measured data
 
 The hierarchy is compact and native. Product screens use one sans family, strong titles, quiet explanatory text, and labels that remain readable without tracked uppercase styling.

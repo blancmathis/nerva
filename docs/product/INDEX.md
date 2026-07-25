@@ -4,8 +4,8 @@ context_room:
   scope: product
   status: current
   canonical_for: navigation de la documentation produit
-  last_verified: 2026-07-22
-  sources: [docs/product/FEATURES_target.md, docs/product/SITE_QA_RECORDER_target.md, docs/product/CAPTURE_INBOX.md, docs/product/PAIRING_target.md, docs/product/CURRENT_STATE.md]
+  last_verified: 2026-07-25
+  sources: [docs/product/FEATURES_target.md, docs/product/SITE_QA_RECORDER_target.md, docs/product/CAPTURE_INBOX.md, docs/product/PAIRING_target.md, docs/product/CURRENT_STATE.md, docs/COLLABORATIVE_DIAGRAMS.md]
 ---
 
 # Nerva — documentation produit
@@ -19,7 +19,8 @@ Ce dossier sert de source de vérité éditoriale pour clarifier le produit avan
 3. [`CAPTURE_INBOX.md`](./CAPTURE_INBOX.md) — la bibliothèque locale réellement implémentée pour capturer sans Session, réutiliser depuis une Session exacte sans affectation et ne jamais envoyer à la reconnexion.
 4. [`PAIRING_target.md`](./PAIRING_target.md) — le parcours de pairing sans saisie, son objectif de moins de deux minutes et ses invariants de sécurité.
 5. [`CURRENT_STATE.md`](./CURRENT_STATE.md) — ce qui existe réellement dans le dépôt, avec les preuves et les limites connues.
-6. [`../RELIABILITY.md`](../RELIABILITY.md) — la preuve de capacités, les mises à jour PWA, les notifications et les intégrations bornées réellement implémentées.
+6. [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md) — le flux réellement implémenté Codex → Draw → structure/Pencil → Mac, son format JSON et ses limites.
+7. [`../RELIABILITY.md`](../RELIABILITY.md) — la preuve de capacités, les mises à jour PWA, les notifications et les intégrations bornées réellement implémentées.
 
 ## Règle de lecture
 

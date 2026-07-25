@@ -33,7 +33,7 @@ It is a compatibility record for the current implementation, not the future prod
 | Home/Session PWA | Current visible navigation with 0–12 pins, manual sections/cases, temporary priority/status filters across pinned and unpinned sessions, Unpinned Sessions, exact Session controls, explicit `Following Mac` / `Staying here`, immediate follow realignment, Mac navigation outside the native six and Mac-backed Product State/Saved Drawings | Local automated browser proof at iPad landscape, iPad portrait and phone sizes; physical touch/Pencil gesture matrix incomplete |
 | Tailscale and pairing | Tailscale installed and authenticated on the owner's Mac and iPad; private origin, QR pairing, Home Screen installation and credential reuse worked manually | One owner-confirmed live path; no timed clean-device or cross-version matrix |
 | Apple Pencil | The physical iPad path is connected, but Pencil pressure/tilt, palm rejection and 60/120 Hz behavior have not been recorded | Not hardware-validated |
-| Automated checkout | 889 unit tests; 250 E2E passed and 8 profile-specific skips in both sequential and parallel runs; clean-clone reproduction passed | Local automated proof only |
+| Automated checkout | Release baseline: 889 unit tests and 250 E2E passes with 8 profile-specific skips in sequential/parallel runs plus clean-clone reproduction. Current collaborative-diagram working tree: 902 unit tests, 256 parallel E2E passes, 8 skips, six-profile sequential diagram round trip and regenerated screenshots. | Local automated proof only; the current uncommitted extension has not yet been reproduced from a clean clone or through the complete sequential matrix |
 
 The isolated spike created a normal non-ephemeral test thread so it could be resumed, sent a 1×1 PNG using `localImage`, observed a completed reply, and deleted the test thread. It explicitly reported `liveDesktopCopresenceProven: false`.
 
@@ -99,7 +99,7 @@ Exactly six slots are required. Missing, extra, duplicate, malformed, or thread-
 
 Use `/Applications/ChatGPT.app/Contents/Resources/codex` as the protocol authority for that Desktop installation. A global CLI may differ.
 
-`setup:mac` runs the bundled binary's experimental JSON Schema generator into an application-owned, versioned cache and records a hash manifest before installing the bridge. Doctor and the Capability Center report whether that cache is current, missing, invalid or unknown. Generated OpenAI source is not committed. Nerva's checked-in protocol package exposes only its narrow application contract and runtime translators.
+`setup:mac` runs the bundled binary's experimental JSON Schema generator into an application-owned, versioned cache and records a hash manifest before installing the bridge. Doctor and Settings → System Diagnostics report whether that cache is current, missing, invalid or unknown. Generated OpenAI source is not committed. Nerva's checked-in protocol package exposes only its narrow application contract and runtime translators.
 
 At minimum, a new bundled version must pass:
 

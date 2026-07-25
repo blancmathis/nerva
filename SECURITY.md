@@ -4,6 +4,10 @@ Nerva is a remote control for a coding agent that can read files, edit code, and
 
 This document records the security boundary of the current `Home → Session` implementation. The remaining completion targets are defined in [`docs/product/FEATURES_target.md`](docs/product/FEATURES_target.md) and [`docs/product/PAIRING_target.md`](docs/product/PAIRING_target.md); they may not weaken the exact-session, authenticated-composer, loopback, media or fail-closed boundaries below.
 
+## Supported versions
+
+Nerva is currently pre-alpha and has no stable tagged release. Security reports against the latest `main` commit are accepted on a best-effort basis. Older commits and private forks are not maintained as separate supported versions.
+
 ## Supported deployment
 
 The supported production shape is:
@@ -191,11 +195,11 @@ Do not weaken these fail-closed states to make a demo appear connected.
 
 ## Reporting a vulnerability
 
-Do not open a public issue containing a credential, private thread title, prompt, screenshot, local path, or exploit details. Contact the maintainers privately through the repository's security-reporting channel. Include:
+Do not open a public issue containing a credential, private thread title, prompt, screenshot, local path, or exploit details. Use [GitHub Private Vulnerability Reporting](https://github.com/blancmathis/nerva/security/advisories/new). Include:
 
 - the affected Codex Pad commit;
 - macOS, Codex Desktop, bundled Codex, Safari, and iPadOS versions;
 - a minimal reproduction using synthetic data;
 - the security impact and whether a credential should be revoked.
 
-Until a private channel is configured, report only that a private security report is needed; do not publish the details.
+If GitHub does not show the private report form, open a content-free public issue asking the maintainers to enable a private channel; do not publish the details.

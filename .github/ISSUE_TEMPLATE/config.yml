@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/blancmathis/nerva/security/advisories/new
+    about: Report vulnerabilities or sensitive security details privately.
+  - name: Current implementation status
+    url: https://github.com/blancmathis/nerva/blob/main/docs/product/CURRENT_STATE.md
+    about: Check implemented, degraded, and hardware-unproven behavior before filing an issue.

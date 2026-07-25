@@ -1,5 +1,9 @@
 # Nerva
 
+[![CI](https://github.com/blancmathis/nerva/actions/workflows/ci.yml/badge.svg)](https://github.com/blancmathis/nerva/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
+
 Nerva is an independent, touch-first control surface for agentic development on a Mac. Its current production adapter is focused on Codex Desktop: the iPad provides spatial overview, verified controls and visual input, while the Mac remains the source of task execution, native composition and code work.
 
 > **Compatibility naming:** the visible app, installed-PWA metadata and product documentation use `Nerva`. Existing package names, storage databases, launchd identifiers, CLI commands and filesystem paths keep the `codex-pad` / `CodexPad` technical identifiers so upgrades do not strand paired devices or global state.
@@ -10,7 +14,7 @@ The current PWA uses one unified Home plus `Home â†” Capture Inbox` and `Home â†
 >
 > Nerva is not made, supported or endorsed by OpenAI, Apple or Work Louder. Its current Codex native six-slot state/control adapter depends on undocumented Codex Desktop renderer internals and can require compatibility work after a Codex update. Thread messaging uses the installed Codex app-server protocol where its exact capability is proven. No proprietary artwork or extracted application assets are distributed.
 >
-> **Current local status (25 July 2026):** the code, browser, security and clean-clone gates are green, but the installed Codex Desktop currently exposes multiple independent stdio writers and no managed control socket. Nerva therefore reports `degraded` and keeps app-server mutations fail-closed. This checkout is not hardware-validated or release-tagged; see [Current implementation state](docs/product/CURRENT_STATE.md).
+> **Current local status (25 July 2026):** the code, browser and security gates are green, but the installed Codex Desktop currently exposes seven independent stdio writers and no managed control socket. Nerva therefore reports `degraded` and keeps app-server mutations fail-closed. This public source release is pre-alpha: it is not hardware-validated, tagged or presented as a stable `v0.1.0`; see [Current implementation state](docs/product/CURRENT_STATE.md).
 
 ## Source of truth
 
@@ -21,6 +25,7 @@ The current PWA uses one unified Home plus `Home â†” Capture Inbox` and `Home â†
 - [Site QA Recorder target specification](docs/product/SITE_QA_RECORDER_target.md)
 - [Capture Inbox current contract](docs/product/CAPTURE_INBOX.md)
 - [Pairing contract](docs/product/PAIRING_target.md)
+- [Collaborative diagrams](docs/COLLABORATIVE_DIAGRAMS.md)
 
 `CURRENT_STATE.md` says what is implemented and proven today. Files ending in `_target.md` define the accepted completion bar. Technical documents must not silently present target behavior as live behavior.
 
@@ -33,18 +38,19 @@ The current PWA uses one unified Home plus `Home â†” Capture Inbox` and `Home â†
 | Capture Inbox | Neutral local-first library reached from Home for capture/management and from an exact Session for reuse. Photo, document photo, Pencil sketch, file and quick note work without an available Mac. Captures store no destination and remain reusable across Sessions. `Use in session` copies compatible images/notes into that exact Session's local Review; reconnect never sends, replays or queues anything. Non-image files remain local until a real Codex transport exists. |
 | Session | Pin/Unpin; explicit `Following Mac` / `Staying here` state with immediate realignment and navigation-only support outside the native six; no whole-page session swipe or hidden traversal gesture; one-tap Home through the floating product mark; return to the previous iPad view; exact Mac open; native dictation and compact native `Send prompt`; cwd-scoped skills automatically grouped by provider; live Model + Reasoning presets with reliable iPadOS touch commit; Fast; approval, error and completed contexts; Draw, Photo, Saved Drawings and an always-visible Site entry point. Sites is a full responsive page with the current Session's proven Codex Browser pages, an explicit HTTP(S) address field and globally synchronized favorites. The selected page opens in a touch-first live browser with annotation and Site QA Recorder. |
 | Site QA Recorder | `Record flow` observes only bridge-confirmed actions, stores an unsent local timeline, protects known sensitive inputs with placeholders, supports Pause/Resume, issue annotations, flattened redaction, expected/actual, a local voice clip and mandatory Review, then sends one idempotent English report plus 1â€“12 approved frames to the exact task. It requests a Playwright proposal after repository inspection; it never captures DOM/network/auth state or auto-runs/replays a test. |
-| Reliability | Authenticated Capability Center with per-layer state, last proof, exact bridge/Codex/protocol versions, installed-schema compatibility and copyable diagnostics; atomic PWA shell updates; privacy-safe activity; compact Home attention; per-device standards Web Push with a private Mac VAPID sender, safe exact-session/Home-priority deep links and no Lock Screen approval action. |
+| Reliability | Authenticated `Settings â†’ System Diagnostics` with per-layer state, last proof, exact bridge/Codex/protocol versions, installed-schema compatibility and copyable diagnostics; atomic PWA shell updates; privacy-safe activity; compact Home attention; per-device standards Web Push with a private Mac VAPID sender, safe exact-session/Home-priority deep links and no Lock Screen approval action. |
 | Global state | Pinned identities, layouts, preferences, model/reasoning presets and Site favorites are stored atomically on the Mac with optimistic revisions. A persistent field-scoped local outbox protects an iPad layout or preference change until the Mac confirms it; after a revision conflict, only locally changed fields replace the refreshed Mac state. A stale layout client therefore cannot erase newer presets, and a stale Settings client cannot erase a newer Home layout. One bounded migration offers a locally retained non-empty preset list once when an older Mac copy is empty, then returns to normal Mac authority. The bridge also keeps a private display-only copy of the last successful session catalog so pinned cards survive app-server reconnects and bridge restarts. A replacement paired iPad can load the same state. |
-| Drawing | Touch/Pencil-oriented editor with strict Pencil-only input, passive one-touch palm rejection, two-finger pan/zoom, interrupted-stroke preservation, shared Camera/Photo Library/Files import, vector draft persistence, bounded image-only PNG attachment to the exact Mac composer, and `Keep in Saved Drawings`. |
+| Drawing | Touch/Pencil-oriented editor with strict Pencil-only input, passive one-touch palm rejection, two-finger pan/zoom, interrupted-stroke preservation, shared Camera/Photo Library/Files import, vector draft persistence, bounded image-only PNG attachment to the exact Mac composer, and `Keep in Saved Drawings`. Codex can also publish an exact-task structured diagram: Draw opens it as editable blocks and arrows, keeps Pencil ink in a separate layer, synchronizes optimistic structural revisions back to the Mac, and flattens both layers only for Keep/Send. |
 | Saved Drawings | Private Mac-backed store with validated PNGs, thumbnails, source-session filter, independent working copies and manual deletion. Limits: 48 drawings, 8 MiB each and 128 MiB total PNG data. |
 | Review | Ordered imported images, annotations, comparison and bounded exact-target app-server delivery. Site Review is a separate live-tab surface with typed browser controls and simple image-only annotation attachment; it does not reuse the Review filmstrip or import tools. |
-| Settings | System/Light/Dark, card density, motion, explicit background-alert enable/disable plus category preferences, unavailable haptics explanation, default Home mode, model/reasoning presets, Saved Drawings, device revocation and read-only Context Room health. Nerva Cards render strict data documents, never arbitrary HTML or JavaScript. |
+| Settings | System/Light/Dark, card density, motion, explicit background-alert enable/disable plus category preferences, unavailable haptics explanation, System Diagnostics, model/reasoning presets, Saved Drawings, device revocation and read-only Context Room health. Nerva Cards render strict data documents, never arbitrary HTML or JavaScript. |
 
 The former Cockpit, Spatial, Command Deck and Library implementations have been removed from the current build and test suite. Historical product decisions remain documented only where they explain migrations or explicit non-goals.
 
 ## Important fail-closed limits
 
 - Drawing `Send` attaches one PNG to the exact visible native Mac composer and does not submit the composer, create an app-server turn or inject text. It never silently appends a selected skill. The draft remains available for retry/recovery; only a visibly confirmed attachment animates the studio away. A later instruction can be added on the Mac or with native Mac dictation.
+- Collaborative diagrams are exact-task, revisioned data documents rather than arbitrary SVG/HTML. `Sync revision` updates the private structured document without touching the composer; `Send` first confirms a dirty revision, then attaches one flattened structure-plus-Pencil PNG without submitting it. A newer Codex revision never overwrites unsynchronized iPad work.
 - Session `Send prompt` is a separate compact control that invokes only the exact live native `ACT12` / `CODEX` / `composer.submit` binding for the selected task. Codex Desktop then applies its own configured follow-up behavior (Queue or Steer); Codex Pad does not invent or display delivery state.
 - Available skills are organized automatically from their validated provider provenance (`GitHub`, `Computer Use`, `OpenAI Templates`, project, personal or system) without exposing local paths to the PWA. A provider gets a collapsible folder only when it contains at least two skills; a singleton skill stays directly visible. Selection still preserves each exact skill ID. Selected skills are appended in English at the very end of text-bearing payloads composed by Codex Pad. Drawing keeps them armed for the next text-bearing action. Codex Pad cannot intercept text typed or dictated and sent directly from the native Mac composer.
 - The installed app-server contract exposes a live `model/list` catalog and exact-target `thread/settings/update`; Model + Reasoning applies only a combination advertised for the installed version. Configured presets are a strict allowlist. A bounded live-catalog default is used only when the user has configured zero presets, never when configured presets are disabled or temporarily unavailable.
@@ -55,7 +61,7 @@ The former Cockpit, Spatial, Command Deck and Library implementations have been 
 
 ## Repository map
 
-- `apps/bridge`: loopback-only Fastify bridge, pairing, authenticated API, global state, Saved Drawings, private VAPID/Push subscriptions and sender, device management, native adapter integration and exact-thread transport.
+- `apps/bridge`: loopback-only Fastify bridge, pairing, authenticated API, global state, collaborative diagrams, Saved Drawings, private VAPID/Push subscriptions and sender, device management, native adapter integration and exact-thread transport.
 - `apps/web`: installable React/Vite PWA with the unified Home, Capture Inbox, Session, drawing, review, pairing and Settings surfaces.
 - `packages/protocol`: shared runtime-validated Zod contracts.
 - `packages/codex-desktop`: versioned, degradable Codex Desktop renderer adapter.
@@ -78,6 +84,8 @@ Requirements:
 From a clean clone:
 
 ```bash
+git clone https://github.com/blancmathis/nerva.git
+cd nerva
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
 npm run setup:mac
 ```
@@ -96,6 +104,7 @@ Detailed instructions:
 
 - [Mac setup](docs/SETUP_MAC.md)
 - [iPad setup](docs/SETUP_IPAD.md)
+- [Collaborative diagrams](docs/COLLABORATIVE_DIAGRAMS.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Manual device checklist](docs/MANUAL_TEST_CHECKLIST.md)
 
@@ -145,7 +154,7 @@ npm run spike
 - Prompts, drawings, credentials and full thread identifiers are not logged by default.
 - The PWA is served with `Permissions-Policy: microphone=(self)` for the explicit voice note attached to a Site QA checkpoint. Capture Inbox never requests the microphone. Session Dictation also never records on the iPad: the first tap sends the verified native Mac press, changes the control to **Stop Dictation**, and the second tap sends the matching native release.
 
-Read [SECURITY.md](SECURITY.md) before changing the transport or control boundaries.
+Read [SECURITY.md](SECURITY.md) before changing the transport or control boundaries. Report vulnerabilities through [GitHub Private Vulnerability Reporting](https://github.com/blancmathis/nerva/security/advisories/new), never through a public issue.
 
 ## Screenshots
 
@@ -177,4 +186,4 @@ Regenerate them with `npm run screenshots`. They are rendered UI evidence, not l
 
 Nerva is released under the [MIT License](LICENSE). Research provenance, direct notices and the lockfile-derived production inventory are recorded in [docs/research.md](docs/research.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [THIRD_PARTY_LICENSES.json](THIRD_PARTY_LICENSES.json). Regenerate the inventory with `npm run licenses:generate`; the release audit rejects drift.
 
-Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Use the repository issue forms for non-sensitive bugs and feature requests.

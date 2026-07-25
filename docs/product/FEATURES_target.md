@@ -45,7 +45,7 @@ Principes immuables :
 | `Drawing Editor` | Dessiner sur une toile ou une image | Depuis Draw, Photo, Site Review ou Saved Drawings |
 | `Saved Drawings` | Retrouver les dessins conservés volontairement | Tiroir en un clic depuis chaque Session |
 | `Settings` | Personnaliser cartes, modèles, notifications, apparence et appareils | Page secondaire |
-| `Capability Center` | Comprendre quelle couche est réellement disponible, sa dernière preuve et sa compatibilité | Feuille depuis la barre globale |
+| `System Diagnostics` | Comprendre quelle couche est réellement disponible, sa dernière preuve et sa compatibilité | Bouton explicite dans Settings, jamais dans le Home ou la barre globale |
 | `Nerva Card` | Afficher un résultat agentique temporaire et strictement borné | Intégration validée, sans HTML arbitraire |
 
 Il n'existe plus de page `Library`. Il n'existe pas non plus de page Spatial séparée : l'organisation spatiale fait partie de Home.
@@ -293,6 +293,14 @@ Le tiroir est disponible en un clic depuis toutes les pages Session, se filtre p
 
 Le nombre d'images envoyables est une capacité runtime, pas une constante revendiquée par la documentation publique de Codex. La cible sûre actuelle est 12 images lorsque l'installation Codex utilisée a réussi l'attestation correspondante ; sinon l'interface applique la limite réellement vérifiée et l'explique.
 
+### 9.4 Schémas collaboratifs
+
+Depuis une Session exacte, Codex peut publier un schéma structuré vers Draw. Le document conserve des blocs, formes, couleurs, positions, dimensions, flèches et libellés modifiables ; il ne s'agit ni d'une image figée, ni de HTML/SVG arbitraire. À l'ouverture de Draw, la dernière révision non vue de cette Session s'affiche automatiquement.
+
+L'utilisateur peut déplacer, redimensionner, renommer, recolorer, relier, ajouter ou supprimer les blocs au doigt, puis utiliser `Draw on top` pour annoter librement au Pencil. La structure et l'encre restent deux couches distinctes pendant l'édition. `Sync revision` renvoie uniquement la structure au stockage privé Mac ; `Keep` et `Send` synchronisent d'abord toute structure sale. `Send` conserve sa règle existante : un unique PNG aplati est attaché au composer exact, sans texte implicite et sans soumettre le message.
+
+Chaque écriture utilise une révision optimiste. Une nouvelle révision Codex ne remplace jamais silencieusement des changements iPad non synchronisés. Après un Send confirmé, la page de travail locale est supprimée et la révision envoyée ne se rouvre pas ; une publication Codex ultérieure avec une révision plus récente la rend de nouveau disponible. Le contrat opérable et les commandes appartiennent à [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md).
+
 ## 10. Site Review
 
 Site Review doit également accueillir l'action cible `Record flow`. Le Recorder conserve une chronologie locale des contrôles confirmés, permet de marquer et annoter le problème, puis prépare un rapport expurgé pour la Session exacte. Il ne génère pas un trace Playwright brut et n'envoie, ne rejoue ou n'exécute rien automatiquement. Le contrat complet appartient à [`SITE_QA_RECORDER_target.md`](./SITE_QA_RECORDER_target.md) afin de ne pas dupliquer ici son modèle de données et ses règles de confidentialité.
@@ -355,7 +363,7 @@ Settings contient :
 - combinaisons et ordre du curseur Model + Reasoning ;
 - disposition Home par défaut ;
 - gestion de Saved Drawings.
-- accès au Capability Center et à l'état Context Room local en lecture seule.
+- accès à System Diagnostics et à l'état Context Room local en lecture seule.
 
 Les notifications configurables couvrent `Needs approval`, `Completed`, `Error` et `Waiting for your answer`. La permission est toujours déclenchée par un geste explicite de l'utilisateur dans la PWA installée. L'abonnement appartient à l'appareil appairé et l'expéditeur Web Push reste dans le bridge privé du Mac.
 

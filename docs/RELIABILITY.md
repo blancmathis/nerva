@@ -14,13 +14,13 @@ This page describes the reliability features that are implemented now. It does n
 
 ## Current runtime verdict
 
-As observed on 25 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
+As observed on 25 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
 
 This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
 
-## Capability Center
+## System Diagnostics
 
-The authenticated `GET /api/runtime` endpoint returns a privacy-safe diagnostic document. The Nerva top bar exposes it through the Capability Center.
+The authenticated `GET /api/runtime` endpoint returns a privacy-safe diagnostic document. Nerva exposes it only through **Settings → System Diagnostics**; Home keeps a single unambiguous Settings control.
 
 Each layer is independent:
 
@@ -45,7 +45,7 @@ The center is diagnostic, not an override. It cannot enable a missing server cap
 - `invalid`: cache exists but its manifest, hash, files or identity fail validation;
 - `unknown`: the check could not establish a trustworthy result.
 
-The Capability Center exposes only that state and a safe remediation. It never serves the generated OpenAI schemas to the browser and does not commit them to the repository.
+System Diagnostics exposes only that state and a safe remediation. It never serves the generated OpenAI schemas to the browser and does not commit them to the repository.
 
 Schema compatibility proves protocol shape only. Native renderer actions, same-Desktop ownership, live Site mapping and physical iPad input retain separate gates.
 
@@ -105,7 +105,7 @@ Nerva Cards are strict versioned data documents with bounded text, metrics, prog
 |---|---|---|
 | Type/unit tests | Validation, redaction and deterministic state behavior | Live Desktop ownership or iPadOS lifecycle |
 | Chromium/WebKit Playwright | Browser layout and pointer/event flows at representative viewports | Physical Pencil, palm rejection, real notification delivery or Add to Home Screen persistence |
-| Doctor/Capability Center | Current local structural checks and last runtime proof | An action not independently advertised for the exact task |
+| Doctor/System Diagnostics | Current local structural checks and last runtime proof | An action not independently advertised for the exact task |
 | Physical Mac/iPad checklist | The recorded hardware/version path | Other OS, Codex or device versions |
 
 Use [`MANUAL_TEST_CHECKLIST.md`](./MANUAL_TEST_CHECKLIST.md) for the release verdict and [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) when a layer is degraded.
