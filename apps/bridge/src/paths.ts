@@ -16,6 +16,7 @@ export interface BridgeDataPaths {
   pushVapidKeys: string;
   pushSubscriptions: string;
   savedDrawings: string;
+  diagrams: string;
 }
 
 export function defaultDataPaths(root = join(homedir(), "Library", "Application Support", "CodexPad")): BridgeDataPaths {
@@ -35,5 +36,6 @@ export function defaultDataPaths(root = join(homedir(), "Library", "Application 
     pushVapidKeys: join(absoluteRoot, "security", "push-vapid.json"),
     pushSubscriptions: join(absoluteRoot, "security", "push-subscriptions.json"),
     savedDrawings: join(absoluteRoot, "security", "saved-drawings"),
+    diagrams: join(absoluteRoot, "security", "diagrams"),
   };
 }

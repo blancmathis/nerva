@@ -29,7 +29,16 @@
 }
 
 .drawing-canvas-editor__tools button {
+  display: grid;
   min-width: 44px;
+  padding: 0;
+  place-items: center;
+}
+
+.drawing-canvas-editor__tools .drawing-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 .drawing-canvas-editor__tools button.is-active {
@@ -584,7 +593,12 @@
   color: var(--cp-ink-secondary);
   background: var(--cp-content);
   box-shadow: var(--cp-shadow-key);
-  font-size: 26px;
+}
+
+.drawing-studio__close .drawing-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
 .drawing-studio__warning {
@@ -612,6 +626,14 @@
   gap: 12px;
   grid-template-columns: 112px minmax(0, 1fr);
   overflow: hidden;
+}
+
+.drawing-studio__workspace.has-diagram-inspector {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.drawing-studio__workspace.has-diagram-inspector > .drawing-tools {
+  display: none;
 }
 
 .drawing-tools {
@@ -657,7 +679,14 @@
   color: var(--cp-ink-secondary);
   background: var(--cp-content);
   box-shadow: 0 1px 0 var(--cp-glass-highlight) inset;
-  font-size: 8px;
+}
+
+.drawing-studio .drawing-tool {
+  grid-template-rows: 20px 10px;
+  justify-items: center;
+  font: 650 8px/1 var(--cp-font-text);
+  letter-spacing: -.015em;
+  text-align: center;
 }
 
 .drawing-tool__glyph {
@@ -666,7 +695,34 @@
   height: 20px;
   place-items: center;
   color: currentColor;
-  font-size: 15px;
+}
+
+.drawing-tool__glyph .drawing-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.drawing-tool__label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  line-height: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-tool:first-child {
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr;
+  grid-template-rows: 20px 10px;
+  grid-auto-flow: row;
+  justify-content: center;
+  gap: 3px;
+}
+
+.drawing-tool:first-child .drawing-tool__label {
+  width: 100%;
 }
 
 .drawing-tool.is-active {
@@ -748,11 +804,98 @@
   display: none;
 }
 
+.drawing-tools__history .drawing-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.drawing-diagram-library {
+  position: relative;
+  display: grid;
+  min-height: 58px;
+  padding: 7px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 13px;
+  color: var(--cp-ink-secondary);
+  text-align: left;
+  background: var(--cp-content);
+  box-shadow: 0 1px 0 var(--cp-glass-highlight) inset;
+}
+
+.drawing-diagram-library > span:first-child {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .1);
+}
+
+.drawing-diagram-library > span:first-child .drawing-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.drawing-diagram-library > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.drawing-diagram-library strong,
+.drawing-diagram-library small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawing-diagram-library strong {
+  color: var(--cp-ink);
+  font-size: 8px;
+}
+
+.drawing-diagram-library small {
+  color: var(--cp-ink-tertiary);
+  font-size: 7px;
+  line-height: 1.25;
+}
+
+.drawing-diagram-library.has-update::after {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--cp-content);
+  border-radius: 50%;
+  background: var(--cp-blue);
+  box-shadow: 0 0 12px rgba(var(--cp-blue-rgb), .65);
+  content: "";
+}
+
 .drawing-import,
 .drawing-clear {
   width: 100%;
+  grid-template-columns: 18px minmax(0, auto);
   grid-auto-flow: column;
-  font-size: 8px;
+  justify-content: center;
+}
+
+.drawing-import .drawing-icon,
+.drawing-clear .drawing-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.drawing-import > span,
+.drawing-clear > span {
+  font: 650 8px/1.15 var(--cp-font-text);
 }
 
 .drawing-clear {
@@ -791,16 +934,29 @@
   align-items: center;
 }
 
+.drawing-zoom .drawing-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
 .drawing-background button,
 .drawing-zoom button {
+  display: grid;
   min-width: 46px;
   min-height: 42px;
   padding: 0 10px;
+  place-items: center;
   border: 0;
   border-radius: 11px;
   color: var(--cp-ink-tertiary);
   background: transparent;
   font-size: 10px;
+}
+
+.drawing-zoom button:first-child,
+.drawing-zoom button:last-child {
+  padding: 0;
 }
 
 .drawing-background button.is-active,
@@ -837,6 +993,24 @@
   border-radius: 20px;
   background: #fbfaf6;
   box-shadow: 0 24px 58px rgba(0, 0, 0, .26), 0 1px 0 rgba(255, 255, 255, .88) inset;
+}
+
+.drawing-canvas-frame.has-diagram-controls {
+  padding-bottom: 82px;
+}
+
+.drawing-canvas-frame.has-diagram-inspector {
+  padding-right: 334px;
+}
+
+.drawing-canvas-frame.has-diagram-controls .diagram-overlay,
+.drawing-canvas-frame.has-diagram-controls .drawing-canvas__empty {
+  bottom: 82px;
+}
+
+.drawing-canvas-frame.has-diagram-inspector .diagram-overlay,
+.drawing-canvas-frame.has-diagram-inspector .drawing-canvas__empty {
+  right: 334px;
 }
 
 .drawing-canvas-frame.background-dark { background: #11151c; }
@@ -882,6 +1056,697 @@
   color: #89919a;
   font-size: 9px;
 }
+
+.diagram-overlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.diagram-node-hitbox {
+  position: absolute;
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid transparent;
+  outline: 0;
+  pointer-events: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.diagram-overlay.is-active .diagram-node-hitbox {
+  pointer-events: auto;
+}
+
+.diagram-node-hitbox:focus-visible,
+.diagram-node-hitbox.is-selected {
+  border-color: rgba(var(--cp-blue-rgb), .9);
+  box-shadow:
+    0 0 0 3px rgba(var(--cp-blue-rgb), .16),
+    0 0 26px rgba(var(--cp-blue-rgb), .22);
+}
+
+.diagram-node-hitbox__grip {
+  position: absolute;
+  top: -17px;
+  left: 50%;
+  display: grid;
+  width: 44px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(var(--cp-blue-rgb), .38);
+  border-radius: 999px;
+  color: var(--cp-blue);
+  background: var(--cp-content-raised);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .14);
+  font-size: 14px;
+  letter-spacing: 2px;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.diagram-node-hitbox.is-selected .diagram-node-hitbox__grip {
+  opacity: 1;
+}
+
+.diagram-node-hitbox__resize {
+  position: absolute;
+  right: -15px;
+  bottom: -15px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--cp-blue) 0 5px, var(--cp-content-raised) 6px 11px, transparent 12px);
+  opacity: 0;
+  touch-action: none;
+}
+
+.diagram-node-hitbox.is-selected .diagram-node-hitbox__resize {
+  opacity: 1;
+}
+
+.drawing-diagram-update {
+  position: absolute;
+  z-index: 14;
+  top: 14px;
+  left: 14px;
+  display: grid;
+  min-height: 52px;
+  padding: 6px 12px 6px 7px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(var(--cp-blue-rgb), .42);
+  border-radius: 16px;
+  color: var(--cp-ink);
+  text-align: left;
+  background: var(--cp-content-raised);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .16), 0 0 24px rgba(var(--cp-blue-rgb), .11);
+}
+
+.drawing-diagram-update > span:first-child {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .12);
+}
+
+.drawing-diagram-update > span:first-child .drawing-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.drawing-diagram-update > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.drawing-diagram-update strong { font-size: 10px; }
+.drawing-diagram-update small { color: var(--cp-ink-tertiary); font-size: 8px; }
+
+.drawing-diagram-dock {
+  position: absolute;
+  z-index: 13;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  width: min(650px, calc(100% - 28px));
+  min-height: 68px;
+  padding: 8px;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--cp-stroke-strong);
+  border-radius: 20px;
+  color: var(--cp-ink);
+  background: var(--cp-content-raised);
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, .22),
+    0 1px 0 var(--cp-glass-highlight) inset;
+}
+
+.drawing-diagram-dock__identity {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.drawing-diagram-dock__identity > span:first-child {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid rgba(var(--cp-blue-rgb), .24);
+  border-radius: 14px;
+  color: var(--cp-blue);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .13), transparent),
+    rgba(var(--cp-blue-rgb), .11);
+  box-shadow: 0 9px 22px rgba(var(--cp-blue-rgb), .12);
+}
+
+.drawing-diagram-dock__identity > span:first-child .drawing-icon {
+  display: block;
+  width: 21px;
+  height: 21px;
+}
+
+.drawing-diagram-dock__identity > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.drawing-diagram-dock__identity strong {
+  overflow: hidden;
+  font: 650 13px/1.2 var(--cp-font-display);
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-diagram-dock__identity small {
+  overflow: hidden;
+  color: var(--cp-ink-tertiary);
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-diagram-dock__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawing-diagram-dock button {
+  display: grid;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 5px 10px;
+  place-items: center;
+  gap: 1px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 14px;
+  color: var(--cp-ink-secondary);
+  background: var(--cp-content);
+  box-shadow: 0 1px 0 var(--cp-glass-highlight) inset;
+}
+
+.drawing-diagram-dock button > .drawing-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  color: var(--cp-ink);
+}
+
+.drawing-diagram-dock button > span:last-child {
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.drawing-diagram-dock button.is-active {
+  border-color: rgba(var(--cp-blue-rgb), .34);
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .09);
+}
+
+.drawing-diagram-dock button.is-primary {
+  min-width: 94px;
+  border-color: rgba(var(--cp-blue-rgb), .46);
+  color: #fff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .2), transparent 46%),
+    var(--cp-blue);
+  box-shadow:
+    0 10px 24px rgba(var(--cp-blue-rgb), .26),
+    0 1px 0 rgba(255, 255, 255, .38) inset;
+}
+
+.drawing-diagram-dock button.is-primary > .drawing-icon,
+.drawing-diagram-dock button.is-primary > span:last-child {
+  color: inherit;
+}
+
+.drawing-diagram-dock__synced {
+  display: flex;
+  min-width: 68px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--cp-ink-tertiary);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.drawing-diagram-dock__synced i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cp-green);
+  box-shadow: 0 0 10px rgba(var(--cp-green-rgb), .48);
+}
+
+.drawing-diagram-panel {
+  position: absolute;
+  z-index: 14;
+  right: 14px;
+  bottom: 94px;
+  display: grid;
+  width: min(320px, calc(100% - 28px));
+  max-height: min(520px, calc(100% - 110px));
+  padding: 12px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid var(--cp-stroke-strong);
+  border-radius: 22px;
+  color: var(--cp-ink);
+  background: var(--cp-content-raised);
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, .28),
+    0 1px 0 var(--cp-glass-highlight) inset;
+  overscroll-behavior: contain;
+}
+
+.drawing-diagram-panel > header {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawing-diagram-panel > header > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.drawing-diagram-panel > header small {
+  color: var(--cp-blue);
+  font: 700 9px/1 var(--cp-font-mono);
+  letter-spacing: .09em;
+}
+
+.drawing-diagram-panel > header strong {
+  overflow: hidden;
+  font: 650 15px/1.2 var(--cp-font-display);
+  letter-spacing: -.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-diagram-panel > header > div {
+  display: flex;
+  gap: 4px;
+}
+
+.drawing-diagram-panel button {
+  min-height: 44px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 12px;
+  color: var(--cp-ink-secondary);
+  background: var(--cp-content);
+}
+
+.drawing-diagram-panel > header button {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  place-items: center;
+  border-color: transparent;
+  border-radius: 50%;
+  color: var(--cp-ink-secondary);
+  background: transparent;
+  font-size: 18px;
+}
+
+.drawing-diagram-panel > header button:first-child {
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .09);
+}
+
+.drawing-diagram-panel > header button .drawing-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.drawing-diagram-node-name,
+.drawing-diagram-more > label {
+  display: grid;
+  gap: 5px;
+}
+
+.drawing-diagram-node-name > span,
+.drawing-diagram-more > label > span {
+  color: var(--cp-ink-tertiary);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.drawing-diagram-node-name input,
+.drawing-diagram-more input,
+.drawing-diagram-connect select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 12px;
+  color: var(--cp-ink);
+  background: var(--cp-content);
+}
+
+.drawing-diagram-tabs {
+  display: grid;
+  padding: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  border-radius: 14px;
+  background: var(--cp-content);
+}
+
+.drawing-diagram-tabs button {
+  min-height: 40px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.drawing-diagram-tabs button.is-active {
+  border-color: var(--cp-stroke);
+  color: var(--cp-blue);
+  background: var(--cp-content-raised);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .1);
+}
+
+.drawing-diagram-panel__content {
+  min-height: 0;
+  padding: 2px 1px 1px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.drawing-diagram-style,
+.drawing-diagram-links-panel,
+.drawing-diagram-more {
+  display: grid;
+  gap: 10px;
+}
+
+.drawing-diagram-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 14px;
+  background: var(--cp-content);
+}
+
+.drawing-diagram-segment button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.drawing-diagram-segment button.is-active {
+  border-color: var(--cp-stroke);
+  color: var(--cp-blue);
+  background: var(--cp-content-raised);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .1);
+}
+
+.drawing-diagram-tones {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(44px, 1fr));
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.drawing-diagram-tones button {
+  min-width: 0;
+  padding: 8px;
+  border-color: transparent;
+  border-radius: 50%;
+  background: var(--diagram-tone, #8b918f);
+  background-clip: content-box;
+}
+
+.drawing-diagram-tones button.is-active {
+  border-color: var(--diagram-tone, #8b918f);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--diagram-tone, #8b918f) 44%, transparent);
+}
+
+.tone-neutral { --diagram-tone: #8b918f; }
+.tone-blue { --diagram-tone: #2764f4; }
+.tone-green { --diagram-tone: #299565; }
+.tone-amber { --diagram-tone: #d78922; }
+.tone-red { --diagram-tone: #dc574b; }
+.tone-violet { --diagram-tone: #7c61d8; }
+
+.drawing-diagram-connect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.drawing-diagram-connect button {
+  padding: 0 12px;
+}
+
+.drawing-diagram-links {
+  display: grid;
+  gap: 5px;
+}
+
+.drawing-diagram-links > span {
+  display: grid;
+  min-height: 44px;
+  padding-left: 11px;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 12px;
+  background: var(--cp-content);
+}
+
+.drawing-diagram-links small {
+  overflow: hidden;
+  color: var(--cp-ink-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-diagram-links button {
+  display: grid;
+  border: 0;
+  padding: 0;
+  place-items: center;
+  color: var(--cp-red);
+  background: transparent;
+}
+
+.drawing-diagram-links button .drawing-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.drawing-diagram-delete {
+  justify-self: start;
+  padding: 0 12px;
+  color: var(--cp-red) !important;
+}
+
+.drawing-diagram-more > button:not(.drawing-diagram-delete) {
+  display: grid;
+  padding: 8px 11px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  text-align: left;
+}
+
+.drawing-diagram-more > button:not(.drawing-diagram-delete) small {
+  color: var(--cp-ink-tertiary);
+  font-size: 9px;
+}
+
+.drawing-diagram-panel__hint {
+  margin: 0;
+  color: var(--cp-ink-tertiary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.drawing-diagram-picker {
+  display: grid;
+  width: min(700px, calc(100vw - 28px));
+  max-height: min(720px, calc(100dvh - 28px));
+  padding: 18px;
+  gap: 13px;
+  overflow: hidden;
+  border: 1px solid var(--cp-stroke-strong);
+  border-radius: 26px;
+  color: var(--cp-ink);
+  background: var(--cp-content-raised);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .34);
+}
+
+.drawing-diagram-picker > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.drawing-diagram-picker > header > span {
+  display: grid;
+  gap: 4px;
+}
+
+.drawing-diagram-picker > header small {
+  color: var(--cp-blue);
+  font: 700 8px/1 var(--cp-font-mono);
+  letter-spacing: .08em;
+}
+
+.drawing-diagram-picker h3 {
+  margin: 0;
+  font: 650 24px/1 var(--cp-font-display);
+  letter-spacing: -.03em;
+}
+
+.drawing-diagram-picker > header button,
+.drawing-diagram-picker > footer button {
+  display: grid;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 14px;
+  color: var(--cp-ink-secondary);
+  background: var(--cp-content);
+  place-items: center;
+}
+
+.drawing-diagram-picker > header button .drawing-icon {
+  display: block;
+  width: 17px;
+  height: 17px;
+}
+
+.drawing-diagram-picker > p,
+.drawing-diagram-picker__warning {
+  margin: 0;
+  color: var(--cp-ink-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.drawing-diagram-picker__warning {
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--cp-amber-rgb), .28);
+  border-radius: 13px;
+  color: var(--cp-amber);
+  background: rgba(var(--cp-amber-rgb), .08);
+}
+
+.drawing-diagram-picker__list {
+  display: grid;
+  min-height: 120px;
+  gap: 7px;
+  overflow: auto;
+}
+
+.drawing-diagram-picker__list > button {
+  display: grid;
+  min-height: 68px;
+  padding: 8px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 16px;
+  color: var(--cp-ink);
+  text-align: left;
+  background: var(--cp-content);
+}
+
+.drawing-diagram-picker__list > button.is-current {
+  border-color: rgba(var(--cp-blue-rgb), .4);
+  background: rgba(var(--cp-blue-rgb), .08);
+}
+
+.drawing-diagram-picker__list > button > span:first-child {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--diagram-tone);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--diagram-tone) 30%, transparent);
+}
+
+.drawing-diagram-picker__list > button > span:first-child .drawing-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.drawing-diagram-picker__list > button > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.drawing-diagram-picker__list strong,
+.drawing-diagram-picker__list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-diagram-picker__list small {
+  color: var(--cp-ink-tertiary);
+  font-size: 9px;
+}
+
+.drawing-diagram-picker__list em {
+  color: var(--cp-blue);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.drawing-diagram-picker__empty {
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  color: var(--cp-ink-secondary);
+  text-align: center;
+}
+
+.drawing-diagram-picker__empty small { color: var(--cp-ink-tertiary); }
+.drawing-diagram-picker > footer { display: flex; justify-content: flex-end; }
+.drawing-diagram-picker > footer button { padding: 0 16px; }
 
 .background-dark .drawing-canvas__empty strong { color: rgba(255, 255, 255, .88); }
 .background-dark .drawing-canvas__empty span,
@@ -1013,7 +1878,18 @@
   border-radius: 15px;
   color: var(--cp-red);
   background: rgba(var(--cp-red-rgb), .08);
-  font-size: 22px;
+}
+
+.drawing-confirm__mark .drawing-icon {
+  display: block;
+  width: 21px;
+  height: 21px;
+}
+
+.drawing-confirm__mark.is-import {
+  border-color: rgba(var(--cp-blue-rgb), .2);
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .08);
 }
 
 .drawing-confirm h3,
@@ -1323,8 +2199,8 @@
 
 .cp-app-content .review-drawing-layer .drawing-canvas-editor__tools button,
 .cp-app-content .review-drawing-layer .drawing-canvas-editor__tools select {
-  min-width: 42px;
-  min-height: 42px;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--cp-stroke);
   border-radius: 11px;
   color: var(--cp-ink-secondary);
@@ -1397,6 +2273,7 @@
   .drawing-tool:hover,
   .drawing-import:hover,
   .drawing-clear:hover,
+  .drawing-diagram-library:hover,
   .drawing-tools__history button:hover,
   .drawing-keep-button:hover,
   .drawing-review-button:hover,
@@ -1409,6 +2286,7 @@
 .drawing-tool:active,
 .drawing-import:active,
 .drawing-clear:active,
+.drawing-diagram-library:active,
 .drawing-tools__history button:active,
 .drawing-keep-button:active,
 .drawing-review-button:active,
@@ -1432,7 +2310,7 @@
 
 @media (max-width: 860px), (orientation: portrait) {
   .drawing-studio__workspace {
-    grid-template-columns: 98px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
     padding: 10px;
     gap: 10px;
   }
@@ -1471,36 +2349,54 @@
 
 @media (max-width: 700px) {
   .drawing-studio {
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
   }
 
   .drawing-studio__header {
     width: 100%;
     min-width: 0;
     flex: 0 0 auto;
-    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 68px;
+    grid-template-columns: minmax(124px, .8fr) minmax(120px, 1fr) 52px;
+    gap: 6px;
     padding: max(8px, env(safe-area-inset-top)) 10px 8px;
   }
 
   .drawing-target {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    min-height: 52px;
+    padding: 5px 8px 5px 16px;
+    grid-column: 2;
+    grid-row: 1;
+    border-radius: 14px;
+  }
+
+  .drawing-target small {
+    display: none;
+  }
+
+  .drawing-target strong {
+    margin: 0 0 2px;
+    font-size: 10px;
+  }
+
+  .drawing-target code {
+    font-size: 7px;
   }
 
   .drawing-studio__close {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
   }
 
   .drawing-studio__workspace {
     display: flex;
     width: 100%;
+    height: 100%;
     min-height: 0;
     min-width: 0;
     padding: 8px;
-    flex: 0 0 auto;
     flex-direction: column-reverse;
     overflow: hidden;
   }
@@ -1511,8 +2407,8 @@
     bottom: 8px;
     display: flex;
     width: 100%;
-    min-height: 116px;
-    max-height: 116px;
+    min-height: 96px;
+    max-height: 96px;
     padding: 8px;
     overflow-x: auto;
     overflow-y: hidden;
@@ -1525,9 +2421,17 @@
 
   .drawing-tools__rack {
     flex: 0 0 auto;
-    grid-template-columns: repeat(8, 48px);
+    grid-template-columns: repeat(9, 48px);
     align-content: center;
     scroll-snap-align: start;
+  }
+
+  .drawing-tool:first-child {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: 20px 10px;
+    grid-auto-flow: row;
+    gap: 3px;
   }
 
   .drawing-colors {
@@ -1569,11 +2473,17 @@
     align-self: center;
   }
 
+  .drawing-diagram-library {
+    flex: 0 0 156px;
+    width: 156px;
+    align-self: center;
+  }
+
   .drawing-board {
     width: 100%;
-    min-height: 420px;
+    min-height: 0;
     min-width: 0;
-    flex: 0 0 420px;
+    flex: 1 1 auto;
   }
 
   .drawing-board__chrome {
@@ -1588,22 +2498,102 @@
   }
 
   .drawing-canvas-frame {
-    min-height: 350px;
+    min-height: 0;
+  }
+
+  .drawing-diagram-dock {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100% - 16px);
+    min-height: 0;
+    padding: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    border-radius: 16px;
+  }
+
+  .drawing-diagram-dock__identity {
+    display: none;
+  }
+
+  .drawing-diagram-dock__actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+  }
+
+  .drawing-diagram-dock button {
+    min-width: 0;
+    min-height: 46px;
+    padding: 4px 6px;
+  }
+
+  .drawing-diagram-dock button.is-primary,
+  .drawing-diagram-dock__synced {
+    min-width: 0;
+  }
+
+  .drawing-diagram-panel {
+    z-index: 31;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    bottom: 72px;
+    width: auto;
+    max-height: none;
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: none;
+  }
+
+  .drawing-studio__workspace.is-diagram-mode > .drawing-tools {
+    display: none;
+  }
+
+  .drawing-canvas-frame.has-diagram-controls {
+    padding-bottom: 66px;
+  }
+
+  .drawing-canvas-frame.has-diagram-inspector {
+    padding-right: 0;
+  }
+
+  .drawing-canvas-frame.has-diagram-controls .diagram-overlay,
+  .drawing-canvas-frame.has-diagram-controls .drawing-canvas__empty {
+    bottom: 66px;
+  }
+
+  .drawing-canvas-frame.has-diagram-inspector .drawing-canvas,
+  .drawing-canvas-frame.has-diagram-inspector .diagram-overlay,
+  .drawing-canvas-frame.has-diagram-inspector .drawing-canvas__empty {
+    visibility: hidden;
+  }
+
+  .drawing-diagram-picker {
+    width: 100%;
+    max-height: 84dvh;
+    align-self: end;
+    padding: 16px;
+    border-radius: 24px;
+  }
+
+  .drawing-diagram-picker__list > button {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .drawing-diagram-picker__list em {
+    display: none;
   }
 
   .drawing-studio__footer {
-    position: relative;
     width: 100%;
     min-width: 0;
-    flex: 0 0 auto;
-    bottom: auto;
     padding: 10px 10px max(10px, env(safe-area-inset-bottom));
   }
 
   .drawing-send-panel__actions {
     display: grid;
     min-width: 0;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .drawing-keep-button,

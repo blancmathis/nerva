@@ -10,6 +10,10 @@ import {
   SavedDrawingDetailSchema,
   SavedDrawingsListSchema,
 } from "./saved-drawings.js";
+import {
+  DiagramDocumentSchema,
+  DiagramListSchema,
+} from "./diagrams.js";
 
 export const ApiErrorCodeSchema = z.enum([
   "INVALID_REQUEST",
@@ -67,6 +71,8 @@ export const NativeSessionsApiResponseSchema = createApiEnvelopeSchema(NativeSes
 export const SavedDrawingsApiResponseSchema = createApiEnvelopeSchema(SavedDrawingsListSchema);
 export const SavedDrawingApiResponseSchema = createApiEnvelopeSchema(SavedDrawingDetailSchema);
 export const SavedDrawingDeleteApiResponseSchema = createApiEnvelopeSchema(SavedDrawingDeleteResultSchema);
+export const DiagramsApiResponseSchema = createApiEnvelopeSchema(DiagramListSchema);
+export const DiagramApiResponseSchema = createApiEnvelopeSchema(DiagramDocumentSchema);
 
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
@@ -83,3 +89,5 @@ export type NativeSessionsApiResponse = z.infer<typeof NativeSessionsApiResponse
 export type SavedDrawingsApiResponse = z.infer<typeof SavedDrawingsApiResponseSchema>;
 export type SavedDrawingApiResponse = z.infer<typeof SavedDrawingApiResponseSchema>;
 export type SavedDrawingDeleteApiResponse = z.infer<typeof SavedDrawingDeleteApiResponseSchema>;
+export type DiagramsApiResponse = z.infer<typeof DiagramsApiResponseSchema>;
+export type DiagramApiResponse = z.infer<typeof DiagramApiResponseSchema>;

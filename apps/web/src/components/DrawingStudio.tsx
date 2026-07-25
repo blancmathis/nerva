@@ -19,6 +19,13 @@ import {
   type ShapeKind,
 } from "@codex-pad/drawing";
 import {
+  DiagramDocumentSchema,
+  type DiagramDocument,
+  type DiagramNodeShape,
+  type DiagramNodeTone,
+  type DiagramUpdateRequest,
+} from "@codex-pad/protocol";
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -71,6 +78,24 @@ import {
   sameDrawingTarget,
   type DrawingTarget,
 } from "./drawing-target";
+import { DiagramOverlay } from "./DiagramOverlay";
+import {
+  addDiagramEdge,
+  addDiagramNode,
+  autoLayoutDiagram,
+  createDiagramHistory,
+  diagramHistoryReducer,
+  markDiagramRevisionSeen,
+  mergeDiagramIntoScene,
+  readSeenDiagramRevision,
+  removeDiagramEdge,
+  removeDiagramNode,
+  updateDiagramNode,
+} from "../lib/diagram-model";
+import {
+  DrawingIcon,
+  type DrawingIconName,
+} from "./DrawingIcon";
 
 export type { DrawingTarget } from "./drawing-target";
 
@@ -137,6 +162,12 @@ export interface DrawingStudioProps {
   onReconcileDelivery?: (
     commandId: string,
   ) => Promise<DrawingDeliveryStatus | null>;
+  onListDiagrams?: (threadId: string) => Promise<readonly DiagramDocument[]>;
+  onUpdateDiagram?: (
+    diagramId: string,
+    threadId: string,
+    input: DiagramUpdateRequest,
+  ) => Promise<DiagramDocument>;
 }
 
 export interface DrawingCanvasEditorProps {
@@ -147,11 +178,12 @@ export interface DrawingCanvasEditorProps {
   readOnly?: boolean;
 }
 
-type Tool = "pen" | "marker" | "eraser" | "arrow" | "rectangle" | "ellipse" | "text" | "pan";
+type Tool = "diagram" | "pen" | "marker" | "eraser" | "arrow" | "rectangle" | "ellipse" | "text" | "pan";
+type DiagramInspectorSection = "style" | "links" | "more";
 
 interface DrawInteraction {
   pointerId: number;
-  tool: Exclude<Tool, "text" | "pan">;
+  tool: Exclude<Tool, "diagram" | "text" | "pan">;
   start: ScenePoint;
   points: ScenePoint[];
 }
@@ -278,6 +310,7 @@ function useContainedDialog({
 }
 
 const TOOLS: readonly { id: Tool; label: string; short: string }[] = [
+  { id: "diagram", label: "Edit diagram structure", short: "Diagram" },
   { id: "pen", label: "Pen", short: "Pen" },
   { id: "marker", label: "Highlighter", short: "Mark" },
   { id: "eraser", label: "Eraser", short: "Erase" },
@@ -302,6 +335,15 @@ const SIZES = [
   { label: "Regular", value: 7 },
   { label: "Bold", value: 14 },
   { label: "Wide", value: 28 },
+] as const;
+
+const DIAGRAM_TONES: readonly { id: DiagramNodeTone; label: string }[] = [
+  { id: "neutral", label: "Neutral" },
+  { id: "blue", label: "Blue" },
+  { id: "green", label: "Green" },
+  { id: "amber", label: "Amber" },
+  { id: "red", label: "Red" },
+  { id: "violet", label: "Violet" },
 ] as const;
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -439,24 +481,26 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
 
-function toolGlyph(tool: Tool): string {
+function toolIcon(tool: Tool): DrawingIconName {
   switch (tool) {
+    case "diagram":
+      return "diagram";
     case "pen":
-      return "╱";
+      return "pen";
     case "marker":
-      return "▰";
+      return "marker";
     case "eraser":
-      return "◇";
+      return "eraser";
     case "arrow":
-      return "↗";
+      return "arrow";
     case "rectangle":
-      return "□";
+      return "rectangle";
     case "ellipse":
-      return "○";
+      return "ellipse";
     case "text":
-      return "T";
+      return "text";
     case "pan":
-      return "✥";
+      return "pan";
   }
 }
 
@@ -474,9 +518,16 @@ export function DrawingStudio({
   onSend,
   onKeep,
   onReconcileDelivery,
+  onListDiagrams,
+  onUpdateDiagram,
 }: DrawingStudioProps) {
   const [displayedTarget, setDisplayedTarget] = useState<DrawingTarget | null>(null);
   const [history, dispatchHistory] = useReducer(historyReducer, undefined, () => freshHistory());
+  const [diagramHistory, dispatchDiagramHistory] = useReducer(
+    diagramHistoryReducer,
+    undefined,
+    () => createDiagramHistory(),
+  );
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState<string>(COLORS[0].value);
   const [size, setSize] = useState<number>(SIZES[1].value);
@@ -501,6 +552,17 @@ export function DrawingStudio({
     useState<PendingDrawingDeliveryBinding | null>(null);
   const [pendingDeliveryMatchesDraft, setPendingDeliveryMatchesDraft] = useState(false);
   const [reconcilingDelivery, setReconcilingDelivery] = useState(false);
+  const [availableDiagrams, setAvailableDiagrams] = useState<readonly DiagramDocument[]>([]);
+  const [incomingDiagram, setIncomingDiagram] = useState<DiagramDocument | null>(null);
+  const [diagramDirty, setDiagramDirty] = useState(false);
+  const [diagramSyncing, setDiagramSyncing] = useState(false);
+  const [diagramMessage, setDiagramMessage] = useState<string | null>(null);
+  const [diagramPickerOpen, setDiagramPickerOpen] = useState(false);
+  const [selectedDiagramNodeId, setSelectedDiagramNodeId] = useState<string | null>(null);
+  const [connectTargetNodeId, setConnectTargetNodeId] = useState("");
+  const [diagramInspectorOpen, setDiagramInspectorOpen] = useState(false);
+  const [diagramInspectorSection, setDiagramInspectorSection] =
+    useState<DiagramInspectorSection>("style");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -524,8 +586,12 @@ export function DrawingStudio({
   const studioGenerationRef = useRef(0);
   const onCloseRef = useRef(onClose);
   const onReconcileDeliveryRef = useRef(onReconcileDelivery);
+  const onListDiagramsRef = useRef(onListDiagrams);
+  const onUpdateDiagramRef = useRef(onUpdateDiagram);
   onCloseRef.current = onClose;
   onReconcileDeliveryRef.current = onReconcileDelivery;
+  onListDiagramsRef.current = onListDiagrams;
+  onUpdateDiagramRef.current = onUpdateDiagram;
 
   const enqueueDraftMutation = useCallback((mutation: () => Promise<void>): Promise<void> => {
     const next = draftMutationQueueRef.current
@@ -585,7 +651,13 @@ export function DrawingStudio({
   });
 
   const scene = history.present;
+  const diagram = diagramHistory.present;
+  const renderedScene = useMemo(
+    () => mergeDiagramIntoScene(scene, diagram),
+    [diagram, scene],
+  );
   const sceneRef = useRef(scene);
+  const diagramRef = useRef(diagram);
   const unmountDraftRef = useRef({
     displayedTarget,
     draftReady,
@@ -594,6 +666,7 @@ export function DrawingStudio({
     scene,
     color,
     size,
+    diagram,
   });
   unmountDraftRef.current = {
     displayedTarget,
@@ -603,6 +676,7 @@ export function DrawingStudio({
     scene,
     color,
     size,
+    diagram,
   };
 
   useEffect(() => () => {
@@ -627,6 +701,7 @@ export function DrawingStudio({
         instruction: latest.instruction,
         background: sceneToSave.background.mode,
         pencilOnly: latest.pencilOnly,
+        diagramJson: latest.diagram ? JSON.stringify(latest.diagram) : null,
       });
     });
   }, [enqueueDraftMutation]);
@@ -635,6 +710,7 @@ export function DrawingStudio({
     setKeepMessage(null);
   }, [scene]);
   sceneRef.current = scene;
+  diagramRef.current = diagram;
   const currentSending = sending || localSending;
   const editorLocked = readOnly || pendingDelivery !== null;
   const pendingDeliveryMatchesTarget = pendingDelivery === null || Boolean(
@@ -647,7 +723,7 @@ export function DrawingStudio({
   const pendingDeliveryRetryable = pendingDelivery !== null
     && pendingDeliveryMatchesDraft
     && pendingDeliveryMatchesTarget;
-  const hasContent = scene.elements.length > 0;
+  const hasContent = scene.elements.length > 0 || diagram !== null;
   const sendGuard = useMemo(
     () =>
       evaluateSendGuard({
@@ -741,14 +817,26 @@ export function DrawingStudio({
       draftPersistenceBlockedRef.current = false;
       resetPointerState();
       dispatchHistory({ type: "reset", scene: freshHistory().present });
+      dispatchDiagramHistory({ type: "reset", diagram: null });
       setInstruction("");
       setDraftReady(false);
       setView(INITIAL_VIEW);
       setDisplayedTarget(target ? { ...target } : null);
+      setAvailableDiagrams([]);
+      setIncomingDiagram(null);
+      setDiagramDirty(false);
+      setDiagramSyncing(false);
+      setDiagramMessage(null);
+      setDiagramPickerOpen(false);
+      setSelectedDiagramNodeId(null);
+      setConnectTargetNodeId("");
+      setDiagramInspectorOpen(false);
+      setDiagramInspectorSection("style");
     } else if (!open && wasOpenRef.current) {
       studioGenerationRef.current += 1;
       resetPointerState();
       dispatchHistory({ type: "reset", scene: freshHistory().present });
+      dispatchDiagramHistory({ type: "reset", diagram: null });
       setInstruction("");
       setDraftReady(false);
       setDisplayedTarget(null);
@@ -760,6 +848,16 @@ export function DrawingStudio({
       setPendingDelivery(null);
       setPendingDeliveryMatchesDraft(false);
       setReconcilingDelivery(false);
+      setAvailableDiagrams([]);
+      setIncomingDiagram(null);
+      setDiagramDirty(false);
+      setDiagramSyncing(false);
+      setDiagramMessage(null);
+      setDiagramPickerOpen(false);
+      setSelectedDiagramNodeId(null);
+      setConnectTargetNodeId("");
+      setDiagramInspectorOpen(false);
+      setDiagramInspectorSection("style");
     }
     wasOpenRef.current = open;
   }, [open, resetPointerState, target]);
@@ -788,17 +886,31 @@ export function DrawingStudio({
           instruction: initialSavedDrawing.instruction,
           background: "white" as BackgroundMode,
           pencilOnly: true,
+          diagramJson: null,
           savedWorkingCopy: true,
         })
       : loadDrawingDraft(displayedTarget.threadId).then((draft) => draft ? { ...draft, savedWorkingCopy: false } : null);
-    void drawingSource
-      .then(async (draft) => {
+    const publishedDiagramsSource = onListDiagramsRef.current
+      ? onListDiagramsRef.current(displayedTarget.threadId).catch(() => [])
+      : Promise.resolve([]);
+    void Promise.all([drawingSource, publishedDiagramsSource])
+      .then(async ([draft, publishedDiagrams]) => {
         if (!isCurrentGeneration()) return;
         let restoredScene: Scene;
         let restoredInstruction: string;
+        let restoredDiagram: DiagramDocument | null = null;
+        setAvailableDiagrams(publishedDiagrams);
         if (draft) {
           restoredScene = deserializeScene(draft.scene);
           restoredInstruction = draft.instruction;
+          if (draft.diagramJson) {
+            try {
+              const parsed = DiagramDocumentSchema.safeParse(JSON.parse(draft.diagramJson) as unknown);
+              restoredDiagram = parsed.success ? parsed.data : null;
+            } catch {
+              restoredDiagram = null;
+            }
+          }
           dispatchHistory({ type: "reset", scene: restoredScene });
           setInstruction(restoredInstruction);
           setPencilOnly(draft.pencilOnly);
@@ -814,10 +926,43 @@ export function DrawingStudio({
           setDraftMessage("New page");
         }
 
+        const latestPublished = publishedDiagrams[0] ?? null;
+        const seen = readSeenDiagramRevision(displayedTarget.threadId);
+        const latestIsUnseen = latestPublished !== null && (
+          seen === null
+          || seen.diagramId !== latestPublished.diagramId
+          || seen.revision < latestPublished.revision
+        );
+        const canAutoLoadPublished = !initialSavedDrawing
+          && restoredDiagram === null
+          && restoredScene.elements.length === 0;
+        if (restoredDiagram) {
+          dispatchDiagramHistory({ type: "reset", diagram: restoredDiagram });
+          markDiagramRevisionSeen(restoredDiagram);
+          setTool("diagram");
+          setSelectedDiagramNodeId(restoredDiagram.nodes[0]?.id ?? null);
+          setDiagramInspectorOpen(false);
+          setDraftMessage(draft?.savedWorkingCopy
+            ? "Saved Drawing opened as an independent local working copy"
+            : "Collaborative diagram draft restored on this iPad");
+        } else if (latestPublished && latestIsUnseen && canAutoLoadPublished) {
+          restoredDiagram = latestPublished;
+          dispatchDiagramHistory({ type: "reset", diagram: latestPublished });
+          markDiagramRevisionSeen(latestPublished);
+          setTool("diagram");
+          setSelectedDiagramNodeId(latestPublished.nodes[0]?.id ?? null);
+          setDiagramInspectorOpen(false);
+          setDraftMessage(`Diagram from Codex ready · revision ${latestPublished.revision}`);
+        } else {
+          dispatchDiagramHistory({ type: "reset", diagram: null });
+          if (latestPublished && latestIsUnseen) setIncomingDiagram(latestPublished);
+        }
+        setDiagramDirty(false);
+
         const binding = storedDelivery;
         if (!binding || !isCurrentGeneration()) return;
         const identity = await createDrawingDeliveryIdentity(
-          serializeScene(restoredScene),
+          serializeScene(mergeDiagramIntoScene(restoredScene, restoredDiagram)),
           restoredInstruction,
         );
         if (!isCurrentGeneration()) return;
@@ -847,6 +992,152 @@ export function DrawingStudio({
       active = false;
     };
   }, [displayedTarget?.threadId, initialSavedDrawing?.id, open, reconcileDelivery]);
+
+  const openPublishedDiagram = useCallback((next: DiagramDocument) => {
+    dispatchDiagramHistory({ type: "reset", diagram: next });
+    diagramRef.current = next;
+    markDiagramRevisionSeen(next);
+    setDiagramDirty(false);
+    setDiagramMessage(`Revision ${next.revision} from ${next.lastEditedBy === "codex" ? "Codex" : "this iPad"} loaded`);
+    setIncomingDiagram(null);
+    setDiagramPickerOpen(false);
+    setSelectedDiagramNodeId(next.nodes[0]?.id ?? null);
+    setConnectTargetNodeId("");
+    setDiagramInspectorOpen(false);
+    setDiagramInspectorSection("style");
+    setTool("diagram");
+    setExportPreview(null);
+    setLocalError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!open || !draftReady || !displayedTarget || !onListDiagramsRef.current) return;
+    let active = true;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const records = await onListDiagramsRef.current?.(displayedTarget.threadId) ?? [];
+        if (!active) return;
+        setAvailableDiagrams(records);
+        const latest = records[0];
+        if (!latest) return;
+        const current = diagramRef.current;
+        if (current?.diagramId === latest.diagramId && latest.revision > current.revision) {
+          if (!diagramDirty) openPublishedDiagram(latest);
+          else setIncomingDiagram(latest);
+          return;
+        }
+        if (current === null) {
+          const seen = readSeenDiagramRevision(displayedTarget.threadId);
+          const unseen = seen === null
+            || seen.diagramId !== latest.diagramId
+            || seen.revision < latest.revision;
+          if (!unseen) return;
+          if (!diagramDirty && sceneRef.current.elements.length === 0) openPublishedDiagram(latest);
+          else setIncomingDiagram(latest);
+        }
+      } catch {
+        // Polling is opportunistic. The local draft remains authoritative.
+      }
+    };
+    const interval = window.setInterval(() => void refresh(), 2_500);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [diagramDirty, displayedTarget, draftReady, open, openPublishedDiagram]);
+
+  const previewDiagram = useCallback((next: DiagramDocument) => {
+    diagramRef.current = next;
+    dispatchDiagramHistory({ type: "replace", diagram: next });
+    setExportPreview(null);
+  }, []);
+
+  const recordDiagramChange = useCallback((previous: DiagramDocument) => {
+    dispatchDiagramHistory({ type: "record", previous });
+    setDiagramDirty(true);
+    setDiagramMessage("Changes saved on this iPad · sync when ready");
+    setExportPreview(null);
+  }, []);
+
+  const commitDiagramChange = useCallback((next: DiagramDocument) => {
+    diagramRef.current = next;
+    dispatchDiagramHistory({ type: "commit", diagram: next });
+    setDiagramDirty(true);
+    setDiagramMessage("Changes saved on this iPad · sync when ready");
+    setExportPreview(null);
+    setLocalError(null);
+  }, []);
+
+  const selectDiagramNode = useCallback((nodeId: string) => {
+    setSelectedDiagramNodeId(nodeId);
+    setConnectTargetNodeId("");
+    setDiagramInspectorSection("style");
+    setDiagramInspectorOpen(true);
+  }, []);
+
+  const syncDiagram = useCallback(async (): Promise<DiagramDocument | null> => {
+    const current = diagramRef.current;
+    if (!current) return null;
+    if (!diagramDirty) return current;
+    if (
+      !displayedTarget
+      || current.threadId !== displayedTarget.threadId
+      || !onUpdateDiagramRef.current
+    ) {
+      setLocalError("Reconnect to the Mac before syncing this diagram revision.");
+      return null;
+    }
+    const generation = studioGenerationRef.current;
+    setDiagramSyncing(true);
+    setLocalError(null);
+    try {
+      const saved = await onUpdateDiagramRef.current(
+        current.diagramId,
+        current.threadId,
+        {
+          expectedRevision: current.revision,
+          title: current.title,
+          nodes: current.nodes,
+          edges: current.edges,
+        },
+      );
+      if (generation !== studioGenerationRef.current) return null;
+      diagramRef.current = saved;
+      dispatchDiagramHistory({ type: "reset", diagram: saved });
+      setAvailableDiagrams((records) => [
+        saved,
+        ...records.filter((record) => record.diagramId !== saved.diagramId),
+      ]);
+      setDiagramDirty(false);
+      setIncomingDiagram(null);
+      markDiagramRevisionSeen(saved);
+      setDiagramMessage(`Revision ${saved.revision} synced to the Mac`);
+      return saved;
+    } catch (error) {
+      if (generation === studioGenerationRef.current) {
+        setLocalError(error instanceof Error
+          ? error.message
+          : "Diagram changes could not be synced to the Mac.");
+        try {
+          const latest = (await onListDiagramsRef.current?.(current.threadId))?.find(
+            (record) => record.diagramId === current.diagramId,
+          );
+          if (latest && latest.revision > current.revision) setIncomingDiagram(latest);
+        } catch {
+          // The original sync error remains the useful status.
+        }
+      }
+      return null;
+    } finally {
+      if (generation === studioGenerationRef.current) setDiagramSyncing(false);
+    }
+  }, [diagramDirty, displayedTarget]);
 
   const commitActiveInteractionForSuspension = useCallback((): Scene => {
     const interaction = drawInteractionRef.current;
@@ -880,6 +1171,7 @@ export function DrawingStudio({
             instruction,
             background: sceneToSave.background.mode,
             pencilOnly,
+            diagramJson: diagram ? JSON.stringify(diagram) : null,
           });
         });
         if (announce) setDraftMessage("Saved on this iPad");
@@ -887,14 +1179,14 @@ export function DrawingStudio({
         if (announce) setDraftMessage("Draft could not be saved");
       }
     },
-    [displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
+    [diagram, displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
   );
 
   useEffect(() => {
     if (!draftReady) return;
     const timer = window.setTimeout(() => void persistDraft(true), 550);
     return () => window.clearTimeout(timer);
-  }, [draftReady, persistDraft, scene]);
+  }, [diagram, draftReady, persistDraft, scene]);
 
   useEffect(() => {
     if (!open) return;
@@ -919,8 +1211,8 @@ export function DrawingStudio({
     if (!open) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderDrawingCanvas(canvas, scene, view, drawingPreview, requestCanvasRedraw);
-  }, [canvasRevision, drawingPreview, open, requestCanvasRedraw, scene, view]);
+    renderDrawingCanvas(canvas, renderedScene, view, drawingPreview, requestCanvasRedraw);
+  }, [canvasRevision, drawingPreview, open, renderedScene, requestCanvasRedraw, view]);
 
   useEffect(() => {
     if (!open || !canvasRef.current) return;
@@ -942,17 +1234,27 @@ export function DrawingStudio({
       if (editorLocked) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        dispatchHistory({ type: event.shiftKey ? "redo" : "undo" });
+        if (tool === "diagram" && diagram) {
+          dispatchDiagramHistory({ type: event.shiftKey ? "redo" : "undo" });
+          setDiagramDirty(true);
+        } else {
+          dispatchHistory({ type: event.shiftKey ? "redo" : "undo" });
+        }
         setExportPreview(null);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
         event.preventDefault();
-        dispatchHistory({ type: "redo" });
+        if (tool === "diagram" && diagram) {
+          dispatchDiagramHistory({ type: "redo" });
+          setDiagramDirty(true);
+        } else {
+          dispatchHistory({ type: "redo" });
+        }
         setExportPreview(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearPending, editorLocked, exportPreview, open]);
+  }, [clearPending, diagram, editorLocked, exportPreview, open, tool]);
 
   useEffect(() => () => trackerRef.current?.releaseAll(), []);
 
@@ -1045,6 +1347,7 @@ export function DrawingStudio({
         return;
       }
       if (event.pointerType === "touch" && penActiveRef.current) return;
+      if (tool === "diagram") return;
       if (pencilOnly && event.pointerType !== "pen") {
         if (tool === "pan" && event.pointerType === "mouse") beginGesture(event);
         return;
@@ -1247,6 +1550,16 @@ export function DrawingStudio({
   );
 
   const confirmClear = useCallback(() => {
+    if (diagramRef.current) markDiagramRevisionSeen(diagramRef.current);
+    diagramRef.current = null;
+    dispatchDiagramHistory({ type: "reset", diagram: null });
+    setDiagramDirty(false);
+    setDiagramMessage(null);
+    setSelectedDiagramNodeId(null);
+    setConnectTargetNodeId("");
+    setDiagramInspectorOpen(false);
+    setDiagramInspectorSection("style");
+    setTool("pen");
     sceneRef.current = applySceneOperation(sceneRef.current, { type: "clear" });
     dispatchHistory({ type: "commit", operation: { type: "clear" } });
     setInstruction("");
@@ -1277,7 +1590,7 @@ export function DrawingStudio({
         maxHeight: 2_560,
         pixelRatio: 2,
       };
-      const { blob } = await exportSceneToBoundedPng(scene, options);
+      const { blob } = await exportSceneToBoundedPng(renderedScene, options);
       const pngBase64 = await blobToBase64(blob);
       const next: ExportPreview = {
         commandId: pendingDelivery?.commandId ?? commandId(),
@@ -1304,7 +1617,7 @@ export function DrawingStudio({
     pendingDelivery,
     pendingDeliveryRetryable,
     previewBusy,
-    scene,
+    renderedScene,
     target,
   ]);
 
@@ -1318,6 +1631,10 @@ export function DrawingStudio({
     setLocalSending(true);
     setLocalError(null);
     try {
+      if (diagramRef.current && diagramDirty) {
+        const synced = await syncDiagram();
+        if (!synced) return;
+      }
       let binding = pendingDelivery;
       if (binding) {
         const reconciliation = await reconcileDelivery(binding);
@@ -1339,7 +1656,9 @@ export function DrawingStudio({
         }
       }
 
-      const serializedScene = serializeScene(scene);
+      const serializedScene = serializeScene(
+        mergeDiagramIntoScene(scene, diagramRef.current),
+      );
       const identity = await createDrawingDeliveryIdentity(serializedScene, deliveryInstruction);
       if (binding && !bindingMatchesDrawingDraft(binding, identity)) {
         setLocalError("The exact pending draft changed. A fresh transfer ID is blocked until its outcome is known.");
@@ -1348,10 +1667,11 @@ export function DrawingStudio({
 
       if (!binding) {
         await saveDrawingDraft(displayedTarget.threadId, {
-          scene: serializedScene,
+          scene: serializeScene(scene),
           instruction: deliveryInstruction,
           background: scene.background.mode,
           pencilOnly,
+          diagramJson: diagramRef.current ? JSON.stringify(diagramRef.current) : null,
         });
         setInstruction(deliveryInstruction);
         binding = {
@@ -1428,6 +1748,7 @@ export function DrawingStudio({
     clearDeliveryBinding,
     discardDeliveredDraft,
     displayedTarget,
+    diagramDirty,
     exportPreview,
     instruction,
     onSend,
@@ -1437,6 +1758,7 @@ export function DrawingStudio({
     reconcileDelivery,
     scene,
     sendGuard.allowed,
+    syncDiagram,
   ]);
 
   useEffect(() => {
@@ -1461,7 +1783,12 @@ export function DrawingStudio({
     setLocalError(null);
     setKeepMessage(null);
     try {
-      const { blob, geometry } = await exportSceneToBoundedPng(scene, {
+      if (diagramRef.current && diagramDirty) {
+        const synced = await syncDiagram();
+        if (!synced) return;
+      }
+      const sceneToKeep = mergeDiagramIntoScene(scene, diagramRef.current);
+      const { blob, geometry } = await exportSceneToBoundedPng(sceneToKeep, {
         background: "scene",
         padding: 36,
         maxWidth: 2_560,
@@ -1473,7 +1800,7 @@ export function DrawingStudio({
         sourceThreadTitle: displayedTarget.title,
         instruction: instruction.trim(),
         pngBase64: await blobToBase64(blob),
-        sceneJson: serializeScene(scene),
+        sceneJson: serializeScene(sceneToKeep),
         background: scene.background.mode,
         width: geometry.width,
         height: geometry.height,
@@ -1494,7 +1821,7 @@ export function DrawingStudio({
     } finally {
       if (generation === studioGenerationRef.current) setLocalKeeping(false);
     }
-  }, [displayedTarget, hasContent, instruction, localKeeping, onKeep, scene]);
+  }, [diagramDirty, displayedTarget, hasContent, instruction, localKeeping, onKeep, scene, syncDiagram]);
 
   const zoomBy = useCallback((factor: number) => {
     setView((current) => ({ ...current, zoom: clamp(current.zoom * factor, MIN_ZOOM, MAX_ZOOM) }));
@@ -1503,10 +1830,20 @@ export function DrawingStudio({
   if (!open) return null;
 
   const targetChanged = Boolean(displayedTarget && !sameDrawingTarget(displayedTarget, target));
+  const selectedDiagramNode = diagram?.nodes.find(
+    (node) => node.id === selectedDiagramNodeId,
+  ) ?? null;
+  const selectedDiagramNodeIndex = selectedDiagramNode && diagram
+    ? diagram.nodes.findIndex((node) => node.id === selectedDiagramNode.id)
+    : -1;
+  const connectedDiagramEdges = diagram?.edges.filter(
+    (edge) => edge.from === selectedDiagramNodeId || edge.to === selectedDiagramNodeId,
+  ) ?? [];
   const statusText = localError
     ?? (reconcilingDelivery ? "Checking the previous attachment with the Mac bridge…" : null)
     ?? keepMessage
     ?? statusMessage
+    ?? diagramMessage
     ?? (!sendGuard.allowed ? sendGuard.message : draftMessage);
 
   return (
@@ -1537,7 +1874,7 @@ export function DrawingStudio({
           )}
         </div>
         <button className="drawing-studio__close" type="button" onClick={onClose} aria-label="Close drawing studio">
-          <span aria-hidden="true">×</span>
+          <DrawingIcon name="close" />
         </button>
       </header>
 
@@ -1548,7 +1885,13 @@ export function DrawingStudio({
         </div>
       )}
 
-      <div className="drawing-studio__workspace">
+      <div
+        className={[
+          "drawing-studio__workspace",
+          diagram && tool === "diagram" ? "is-diagram-mode" : "",
+          diagramInspectorOpen ? "has-diagram-inspector" : "",
+        ].filter(Boolean).join(" ")}
+      >
         <aside className="drawing-tools" aria-label="Drawing tools">
           <div className="drawing-tools__rack" role="toolbar" aria-label="Ink and shape tools">
             {TOOLS.map((item) => (
@@ -1558,11 +1901,19 @@ export function DrawingStudio({
                 className={`drawing-tool${tool === item.id ? " is-active" : ""}`}
                 aria-pressed={tool === item.id}
                 aria-label={item.label}
-                onClick={() => setTool(item.id)}
+                onClick={() => {
+                  if (item.id === "diagram" && !diagram) {
+                    setDiagramPickerOpen(true);
+                    return;
+                  }
+                  setTool(item.id);
+                }}
                 disabled={editorLocked}
               >
-                <span className="drawing-tool__glyph" aria-hidden="true">{toolGlyph(item.id)}</span>
-                <span>{item.short}</span>
+                <span className="drawing-tool__glyph" aria-hidden="true">
+                  <DrawingIcon name={toolIcon(item.id)} />
+                </span>
+                <span className="drawing-tool__label">{item.short}</span>
               </button>
             ))}
           </div>
@@ -1606,17 +1957,58 @@ export function DrawingStudio({
           <div className="drawing-tools__history" aria-label="Edit history">
             <button
               type="button"
-              onClick={() => { dispatchHistory({ type: "undo" }); setExportPreview(null); }}
-              disabled={history.past.length === 0 || editorLocked}
+              onClick={() => {
+                if (tool === "diagram" && diagram) {
+                  dispatchDiagramHistory({ type: "undo" });
+                  setDiagramDirty(true);
+                } else {
+                  dispatchHistory({ type: "undo" });
+                }
+                setExportPreview(null);
+              }}
+              disabled={(
+                tool === "diagram" && diagram
+                  ? diagramHistory.past.length === 0
+                  : history.past.length === 0
+              ) || editorLocked}
               aria-label="Undo"
-            >↶ <span>Undo</span></button>
+            ><DrawingIcon name="undo" /><span>Undo</span></button>
             <button
               type="button"
-              onClick={() => { dispatchHistory({ type: "redo" }); setExportPreview(null); }}
-              disabled={history.future.length === 0 || editorLocked}
+              onClick={() => {
+                if (tool === "diagram" && diagram) {
+                  dispatchDiagramHistory({ type: "redo" });
+                  setDiagramDirty(true);
+                } else {
+                  dispatchHistory({ type: "redo" });
+                }
+                setExportPreview(null);
+              }}
+              disabled={(
+                tool === "diagram" && diagram
+                  ? diagramHistory.future.length === 0
+                  : history.future.length === 0
+              ) || editorLocked}
               aria-label="Redo"
-            >↷ <span>Redo</span></button>
+            ><DrawingIcon name="redo" /><span>Redo</span></button>
           </div>
+
+          <button
+            className={`drawing-diagram-library${incomingDiagram ? " has-update" : ""}`}
+            type="button"
+            onClick={() => setDiagramPickerOpen(true)}
+            disabled={editorLocked || availableDiagrams.length === 0}
+          >
+            <span aria-hidden="true"><DrawingIcon name="diagram" /></span>
+            <span>
+              <strong>Agent diagrams</strong>
+              <small>
+                {availableDiagrams.length === 0
+                  ? "None for this task"
+                  : `${availableDiagrams.length} available${incomingDiagram ? " · new revision" : ""}`}
+              </small>
+            </span>
+          </button>
 
           <input
             ref={cameraInputRef}
@@ -1652,14 +2044,15 @@ export function DrawingStudio({
             onClick={() => setImportSourceOpen(true)}
             disabled={editorLocked}
           >
-            <span aria-hidden="true">⊕</span> Photo / File
+            <DrawingIcon name="image-add" />
+            <span>Photo / File</span>
           </button>
           <button
             className="drawing-clear"
             type="button"
             onClick={() => setClearPending(true)}
             disabled={!hasContent || editorLocked}
-          >Clear page…</button>
+          ><DrawingIcon name="trash" /><span>Clear page…</span></button>
         </aside>
 
         <main className="drawing-board">
@@ -1686,15 +2079,26 @@ export function DrawingStudio({
               <span>Pencil only</span>
             </label>
             <div className="drawing-zoom" aria-label="Canvas zoom">
-              <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">−</button>
+              <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">
+                <DrawingIcon name="zoom-out" />
+              </button>
               <button type="button" onClick={() => setView(INITIAL_VIEW)} aria-label="Fit drawing">
                 {Math.round(view.zoom * 100)}%
               </button>
-              <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">+</button>
+              <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">
+                <DrawingIcon name="zoom-in" />
+              </button>
             </div>
           </div>
 
-          <div className={`drawing-canvas-frame background-${scene.background.mode}`}>
+          <div
+            className={[
+              "drawing-canvas-frame",
+              `background-${scene.background.mode}`,
+              diagram && tool === "diagram" ? "has-diagram-controls" : "",
+              diagramInspectorOpen ? "has-diagram-inspector" : "",
+            ].filter(Boolean).join(" ")}
+          >
             <canvas
               ref={canvasRef}
               className={`drawing-canvas tool-${tool}`}
@@ -1709,6 +2113,305 @@ export function DrawingStudio({
               onLostPointerCapture={(event) => endPointer(event, false)}
               onContextMenu={(event) => event.preventDefault()}
             />
+            {diagram && (
+              <DiagramOverlay
+                diagram={diagram}
+                scene={scene}
+                view={view}
+                canvasRef={canvasRef}
+                active={tool === "diagram"}
+                readOnly={editorLocked}
+                selectedNodeId={selectedDiagramNodeId}
+                onSelectNode={selectDiagramNode}
+                onPreview={previewDiagram}
+                onCommit={recordDiagramChange}
+              />
+            )}
+            {incomingDiagram && (
+              <button
+                className="drawing-diagram-update"
+                type="button"
+                onClick={() => openPublishedDiagram(incomingDiagram)}
+              >
+                <span aria-hidden="true"><DrawingIcon name="refresh" /></span>
+                <span>
+                  <strong>New Codex revision</strong>
+                  <small>Open revision {incomingDiagram.revision}</small>
+                </span>
+              </button>
+            )}
+            {diagram && tool === "diagram" && (
+              <>
+                <section
+                  className={`drawing-diagram-dock${diagramInspectorOpen ? " has-inspector" : ""}`}
+                  aria-label="Diagram quick controls"
+                >
+                  <div className="drawing-diagram-dock__identity">
+                    <span aria-hidden="true"><DrawingIcon name="diagram" /></span>
+                    <span>
+                      <strong>{diagram.title}</strong>
+                      <small>
+                        {diagram.nodes.length} {diagram.nodes.length === 1 ? "block" : "blocks"}
+                        {" · "}r{diagram.revision}
+                        {" · "}{diagramDirty ? "Saved on iPad" : "Synced"}
+                      </small>
+                    </span>
+                  </div>
+                  <div className="drawing-diagram-dock__actions">
+                    <button
+                      type="button"
+                      aria-label="Add diagram block"
+                      disabled={diagram.nodes.length >= 64 || editorLocked}
+                      onClick={() => {
+                        const nodeId = `node_${createUuidV4().replaceAll("-", "").slice(0, 12)}`;
+                        const next = addDiagramNode(diagram, nodeId);
+                        commitDiagramChange(next);
+                        setSelectedDiagramNodeId(nodeId);
+                        setDiagramInspectorSection("style");
+                        setDiagramInspectorOpen(true);
+                      }}
+                    ><DrawingIcon name="add-block" /><span>Block</span></button>
+                    <button
+                      type="button"
+                      aria-label="Edit selected diagram block"
+                      aria-pressed={diagramInspectorOpen}
+                      className={diagramInspectorOpen ? "is-active" : ""}
+                      disabled={!selectedDiagramNode || editorLocked}
+                      onClick={() => setDiagramInspectorOpen((current) => !current)}
+                    ><DrawingIcon name="edit" /><span>Edit</span></button>
+                    {diagramDirty ? (
+                      <button
+                        type="button"
+                        className="is-primary"
+                        disabled={diagramSyncing || editorLocked}
+                        onClick={() => void syncDiagram()}
+                      ><DrawingIcon name="sync" /><span>{diagramSyncing ? "Syncing…" : "Sync revision"}</span></button>
+                    ) : (
+                      <span
+                        className="drawing-diagram-dock__synced"
+                        role="status"
+                        aria-label="Diagram synced"
+                      >
+                        <i aria-hidden="true" /> Synced
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="drawing-diagram-dock__draw"
+                      aria-label="Draw on top"
+                      onClick={() => {
+                        setDiagramInspectorOpen(false);
+                        setTool("pen");
+                      }}
+                    ><DrawingIcon name="pen" /><span>Draw</span></button>
+                  </div>
+                </section>
+
+                {diagramInspectorOpen && (
+                  <section className="drawing-diagram-panel" aria-label="Diagram controls">
+                    <header>
+                      <span>
+                        <small>
+                          {selectedDiagramNodeIndex >= 0
+                            ? `BLOCK ${selectedDiagramNodeIndex + 1} OF ${diagram.nodes.length}`
+                            : "DIAGRAM"}
+                        </small>
+                        <strong>{selectedDiagramNode?.label ?? "Choose a block"}</strong>
+                      </span>
+                      <div>
+                        <button
+                          type="button"
+                          aria-label="Close inspector and draw"
+                          onClick={() => {
+                            setDiagramInspectorOpen(false);
+                            setTool("pen");
+                          }}
+                        >
+                          <DrawingIcon name="pen" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Close diagram inspector"
+                          onClick={() => setDiagramInspectorOpen(false)}
+                        >
+                          <DrawingIcon name="close" />
+                        </button>
+                      </div>
+                    </header>
+
+                    {selectedDiagramNode ? (
+                      <>
+                        <label className="drawing-diagram-node-name">
+                          <span>Block label</span>
+                          <input
+                            key={`${diagram.diagramId}:${selectedDiagramNode.id}:${selectedDiagramNode.label}`}
+                            defaultValue={selectedDiagramNode.label}
+                            aria-label="Selected block"
+                            maxLength={240}
+                            onBlur={(event) => {
+                              const label = event.currentTarget.value.trim();
+                              if (!label) {
+                                event.currentTarget.value = selectedDiagramNode.label;
+                              } else if (label !== selectedDiagramNode.label) {
+                                commitDiagramChange(updateDiagramNode(diagram, selectedDiagramNode.id, { label }));
+                              }
+                            }}
+                          />
+                        </label>
+
+                        <div className="drawing-diagram-tabs" role="tablist" aria-label="Diagram block options">
+                          {([
+                            ["style", "Style"],
+                            ["links", "Links"],
+                            ["more", "More"],
+                          ] as const).map(([section, label]) => (
+                            <button
+                              key={section}
+                              type="button"
+                              role="tab"
+                              aria-selected={diagramInspectorSection === section}
+                              className={diagramInspectorSection === section ? "is-active" : ""}
+                              onClick={() => setDiagramInspectorSection(section)}
+                            >{label}</button>
+                          ))}
+                        </div>
+
+                        <div className="drawing-diagram-panel__content">
+                          {diagramInspectorSection === "style" && (
+                            <div className="drawing-diagram-style" role="tabpanel" aria-label="Block style">
+                              <div className="drawing-diagram-segment" role="group" aria-label="Block shape">
+                                {(["rectangle", "ellipse"] as readonly DiagramNodeShape[]).map((shape) => (
+                                  <button
+                                    key={shape}
+                                    type="button"
+                                    aria-pressed={selectedDiagramNode.shape === shape}
+                                    className={selectedDiagramNode.shape === shape ? "is-active" : ""}
+                                    onClick={() => commitDiagramChange(
+                                      updateDiagramNode(diagram, selectedDiagramNode.id, { shape }),
+                                    )}
+                                    disabled={editorLocked}
+                                  >{shape === "rectangle" ? "Card" : "Capsule"}</button>
+                                ))}
+                              </div>
+                              <div className="drawing-diagram-tones" role="group" aria-label="Block color">
+                                {DIAGRAM_TONES.map((tone) => (
+                                  <button
+                                    key={tone.id}
+                                    type="button"
+                                    className={`tone-${tone.id}${selectedDiagramNode.tone === tone.id ? " is-active" : ""}`}
+                                    aria-label={tone.label}
+                                    aria-pressed={selectedDiagramNode.tone === tone.id}
+                                    onClick={() => commitDiagramChange(
+                                      updateDiagramNode(diagram, selectedDiagramNode.id, { tone: tone.id }),
+                                    )}
+                                    disabled={editorLocked}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {diagramInspectorSection === "links" && (
+                            <div className="drawing-diagram-links-panel" role="tabpanel" aria-label="Block links">
+                              {diagram.nodes.length > 1 && (
+                                <div className="drawing-diagram-connect">
+                                  <select
+                                    value={connectTargetNodeId}
+                                    onChange={(event) => setConnectTargetNodeId(event.target.value)}
+                                    aria-label="Connect selected block to"
+                                  >
+                                    <option value="">Connect to…</option>
+                                    {diagram.nodes
+                                      .filter((node) => node.id !== selectedDiagramNode.id)
+                                      .map((node) => (
+                                        <option key={node.id} value={node.id}>{node.label}</option>
+                                      ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    disabled={!connectTargetNodeId || editorLocked}
+                                    onClick={() => {
+                                      if (!connectTargetNodeId) return;
+                                      commitDiagramChange(addDiagramEdge(
+                                        diagram,
+                                        `edge_${createUuidV4().replaceAll("-", "").slice(0, 12)}`,
+                                        selectedDiagramNode.id,
+                                        connectTargetNodeId,
+                                      ));
+                                      setConnectTargetNodeId("");
+                                    }}
+                                  >Connect</button>
+                                </div>
+                              )}
+                              {connectedDiagramEdges.length > 0 ? (
+                                <div className="drawing-diagram-links" aria-label="Connected arrows">
+                                  {connectedDiagramEdges.map((edge) => {
+                                    const otherId = edge.from === selectedDiagramNode.id ? edge.to : edge.from;
+                                    const other = diagram.nodes.find((node) => node.id === otherId);
+                                    return (
+                                      <span key={edge.id}>
+                                        <small>{edge.from === selectedDiagramNode.id ? "To" : "From"} {other?.label ?? otherId}</small>
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove connection with ${other?.label ?? otherId}`}
+                                          onClick={() => commitDiagramChange(removeDiagramEdge(diagram, edge.id))}
+                                          disabled={editorLocked}
+                                        ><DrawingIcon name="close" /></button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="drawing-diagram-panel__hint">No links for this block yet.</p>
+                              )}
+                            </div>
+                          )}
+
+                          {diagramInspectorSection === "more" && (
+                            <div className="drawing-diagram-more" role="tabpanel" aria-label="More diagram options">
+                              <label>
+                                <span>Diagram title</span>
+                                <input
+                                  key={`${diagram.diagramId}:${diagram.revision}:${diagram.title}`}
+                                  defaultValue={diagram.title}
+                                  aria-label="Diagram title"
+                                  maxLength={120}
+                                  onBlur={(event) => {
+                                    const title = event.currentTarget.value.trim();
+                                    if (!title) {
+                                      event.currentTarget.value = diagram.title;
+                                    } else if (title !== diagram.title) {
+                                      commitDiagramChange(DiagramDocumentSchema.parse({ ...diagram, title }));
+                                    }
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={diagram.nodes.length === 0 || editorLocked}
+                                onClick={() => commitDiagramChange(autoLayoutDiagram(diagram))}
+                              ><span>Arrange diagram</span><small>Balance blocks and arrows</small></button>
+                              <button
+                                className="drawing-diagram-delete"
+                                type="button"
+                                onClick={() => {
+                                  commitDiagramChange(removeDiagramNode(diagram, selectedDiagramNode.id));
+                                  setSelectedDiagramNodeId(null);
+                                  setDiagramInspectorOpen(false);
+                                }}
+                                disabled={editorLocked}
+                              >Delete block</button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="drawing-diagram-panel__hint">Tap a block to edit it.</p>
+                    )}
+                  </section>
+                )}
+              </>
+            )}
             {!hasContent && draftReady && (
               <div className="drawing-canvas__empty" aria-hidden="true" style={{ pointerEvents: "none" }}>
                 <span>Apple Pencil ready</span>
@@ -1768,7 +2471,7 @@ export function DrawingStudio({
       {clearPending && (
         <div className="drawing-overlay" role="presentation">
           <section ref={clearDialogRef} className="drawing-confirm" role="alertdialog" aria-modal="true" aria-labelledby="clear-title" tabIndex={-1}>
-            <span className="drawing-confirm__mark" aria-hidden="true">×</span>
+            <span className="drawing-confirm__mark" aria-hidden="true"><DrawingIcon name="trash" /></span>
             <h3 id="clear-title">Clear this page?</h3>
             <p>This removes every mark and imported image from the draft. You can’t undo after closing the studio.</p>
             <div>
@@ -1782,7 +2485,7 @@ export function DrawingStudio({
       {importSourceOpen && (
         <div className="drawing-overlay" role="presentation">
           <section ref={importDialogRef} className="drawing-import-sheet" role="dialog" aria-modal="true" aria-labelledby="drawing-import-title" tabIndex={-1}>
-            <span className="drawing-confirm__mark" aria-hidden="true">⊕</span>
+            <span className="drawing-confirm__mark is-import" aria-hidden="true"><DrawingIcon name="image-add" /></span>
             <h3 id="drawing-import-title">Add an image</h3>
             <p>Choose a source. The image stays on this iPad until you Keep or send the finished drawing.</p>
             <div>
@@ -1791,6 +2494,67 @@ export function DrawingStudio({
               <button type="button" onClick={() => filesInputRef.current?.click()}>Files</button>
               <button ref={importCancelRef} type="button" className="is-quiet" onClick={() => setImportSourceOpen(false)}>Cancel</button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {diagramPickerOpen && (
+        <div className="drawing-overlay" role="presentation">
+          <section className="drawing-diagram-picker" role="dialog" aria-modal="true" aria-labelledby="diagram-picker-title">
+            <header>
+              <span>
+                <small>EXACT TASK · {displayedTarget?.threadId.slice(-8) ?? "UNBOUND"}</small>
+                <h3 id="diagram-picker-title">Agent diagrams</h3>
+              </span>
+              <button type="button" onClick={() => setDiagramPickerOpen(false)} aria-label="Close agent diagrams">
+                <DrawingIcon name="close" />
+              </button>
+            </header>
+            <p>
+              Codex publishes structured diagrams here. Open one to move its blocks, edit its relationships,
+              and draw over it with Apple Pencil.
+            </p>
+            {diagramDirty && (
+              <div className="drawing-diagram-picker__warning" role="status">
+                Sync the current revision before opening a different diagram.
+              </div>
+            )}
+            <div className="drawing-diagram-picker__list">
+              {availableDiagrams.length === 0 ? (
+                <div className="drawing-diagram-picker__empty">
+                  <strong>No diagram has been published for this task.</strong>
+                  <small>Ask Codex to create a diagram and send it to Nerva.</small>
+                </div>
+              ) : availableDiagrams.map((candidate) => {
+                const current = diagram?.diagramId === candidate.diagramId
+                  && diagram.revision === candidate.revision;
+                return (
+                  <button
+                    key={`${candidate.diagramId}:${candidate.revision}`}
+                    type="button"
+                    className={current ? "is-current" : ""}
+                    disabled={diagramDirty && !current}
+                    onClick={() => current
+                      ? setDiagramPickerOpen(false)
+                      : openPublishedDiagram(candidate)}
+                  >
+                    <span className={`tone-${candidate.nodes[0]?.tone ?? "neutral"}`} aria-hidden="true">
+                      <DrawingIcon name="diagram" />
+                    </span>
+                    <span>
+                      <strong>{candidate.title}</strong>
+                      <small>
+                        Revision {candidate.revision} · {candidate.nodes.length} blocks · edited by {candidate.lastEditedBy === "codex" ? "Codex" : "this iPad"}
+                      </small>
+                    </span>
+                    <em>{current ? "Open" : "Load"}</em>
+                  </button>
+                );
+              })}
+            </div>
+            <footer>
+              <button type="button" onClick={() => setDiagramPickerOpen(false)}>Done</button>
+            </footer>
           </section>
         </div>
       )}
@@ -2035,7 +2799,7 @@ export function DrawingCanvasEditor({
             onClick={() => setTool(item)}
             disabled={readOnly}
           >
-            <span aria-hidden="true">{toolGlyph(item)}</span>
+            <DrawingIcon name={toolIcon(item)} />
           </button>
         ))}
         <input

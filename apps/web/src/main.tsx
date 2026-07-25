@@ -9,6 +9,7 @@ import "./styles/studios.css";
 import "./styles/site-experience.css";
 import "./styles/status-lighting.css";
 import "./styles/capture-inbox.css";
+import "./styles/polish.css";
 
 // Storage maintenance is independent of pairing, connectivity, and native
 // slot discovery. Opening version 6 here purges legacy PWA audio stores even

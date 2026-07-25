@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import type { ConnectionPhase } from "../lib/model";
 import type { PwaUpdateSnapshot } from "../lib/pwa-updates";
 import type { PushServerStatus } from "../lib/bridge-client";
-import { CheckIcon, CloseIcon, RefreshIcon, SlidersIcon } from "./Icons";
+import { CheckIcon, ChevronIcon, CloseIcon, RefreshIcon } from "./Icons";
 
 interface CapabilityCenterProps {
   readonly phase: ConnectionPhase;
@@ -175,27 +175,30 @@ export function CapabilityCenter({
     <>
       <button
         type="button"
-        className="cp-capability-trigger"
+        className="cp-settings-action"
         data-state={summary}
-        aria-label={`Open Capability Center — ${STATE_LABELS[summary]}`}
+        aria-label={`Open System Diagnostics — ${STATE_LABELS[summary]}`}
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
-        <SlidersIcon />
-        <span aria-hidden="true" />
+        <span>
+          <strong>System Diagnostics</strong>
+          <small>{STATE_LABELS[summary]} · Mac connection, native controls, notifications, and app versions.</small>
+        </span>
+        <ChevronIcon />
       </button>
       {open && (
         <div className="cp-capability-layer" role="presentation" onPointerDown={(event) => {
           if (event.target === event.currentTarget) setOpen(false);
         }}>
-          <section className="cp-capability-center" role="dialog" aria-modal="true" aria-labelledby="capability-center-title">
+          <section className="cp-capability-center" role="dialog" aria-modal="true" aria-labelledby="system-diagnostics-title">
             <header>
               <div>
-                <p className="cp-overline">Live integration proof</p>
-                <h2 id="capability-center-title">Capability Center</h2>
-                <p>Each control is shown against the layer it actually needs.</p>
+                <p className="cp-overline">Nerva health</p>
+                <h2 id="system-diagnostics-title">System Diagnostics</h2>
+                <p>Live proof for the Mac connection, native controls, notifications, versions, and updates.</p>
               </div>
-              <button type="button" className="cp-icon-button" aria-label="Close Capability Center" onClick={() => setOpen(false)}><CloseIcon /></button>
+              <button type="button" className="cp-icon-button" aria-label="Close System Diagnostics" onClick={() => setOpen(false)}><CloseIcon /></button>
             </header>
 
             {!diagnosticsLoaded ? (

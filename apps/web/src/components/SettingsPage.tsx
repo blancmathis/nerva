@@ -1,10 +1,12 @@
 import { useState } from "react";
-import type { ContextRoomStatus, PairedDevice } from "@codex-pad/protocol";
-import type { ModelCapability } from "../lib/model";
+import type { ContextRoomStatus, PairedDevice, RuntimeDiagnostics } from "@codex-pad/protocol";
+import type { ConnectionPhase, ModelCapability } from "../lib/model";
 import type { ModelReasoningPreset, UiPreferences } from "../lib/storage";
 import { ArrowDownIcon, ArrowUpIcon, ChevronIcon, CloseIcon, PlusIcon, SlidersIcon } from "./Icons";
 import type { NervaNotificationPermission } from "../lib/agent-notifications";
 import type { PushServerStatus } from "../lib/bridge-client";
+import type { PwaUpdateSnapshot } from "../lib/pwa-updates";
+import { CapabilityCenter } from "./CapabilityCenter";
 import { NervaCard } from "./NervaCard";
 
 interface SettingsPageProps {
@@ -26,6 +28,12 @@ interface SettingsPageProps {
   readonly contextRoomStatus: ContextRoomStatus | null;
   readonly contextRoomStatusLoaded: boolean;
   readonly onRefreshContextRoom: () => Promise<void>;
+  readonly connectionPhase: ConnectionPhase;
+  readonly runtimeDiagnostics: RuntimeDiagnostics | null;
+  readonly runtimeDiagnosticsLoaded: boolean;
+  readonly pwa: PwaUpdateSnapshot;
+  readonly onRefreshRuntimeDiagnostics: () => Promise<void>;
+  readonly onCheckForUpdate: () => Promise<void>;
 }
 
 const REASONING = ["minimal", "low", "medium", "high", "xhigh", "ultra", "max"] as const;
@@ -59,6 +67,12 @@ export function SettingsPage({
   contextRoomStatus,
   contextRoomStatusLoaded,
   onRefreshContextRoom,
+  connectionPhase,
+  runtimeDiagnostics,
+  runtimeDiagnosticsLoaded,
+  pwa,
+  onRefreshRuntimeDiagnostics,
+  onCheckForUpdate,
 }: SettingsPageProps) {
   const [addingPreset, setAddingPreset] = useState(false);
   const [model, setModel] = useState("");
@@ -131,6 +145,24 @@ export function SettingsPage({
             <div><strong>Haptics</strong><small>{hapticsAvailable ? "Mode, capture, approval, and transfer feedback." : "Not exposed by installed iPad web apps."}</small></div>
             <Toggle label="Haptics" checked={hapticsAvailable && preferences.haptics} disabled={!hapticsAvailable} onChange={(haptics) => update({ haptics })} />
           </div>
+        </section>
+
+        <section className="cp-settings-card">
+          <header>
+            <p className="cp-overline">System</p>
+            <h2>Connection and diagnostics.</h2>
+            <p>Check Nerva’s Mac bridge, native controls, notifications, versions, and available updates.</p>
+          </header>
+          <CapabilityCenter
+            phase={connectionPhase}
+            diagnostics={runtimeDiagnostics}
+            diagnosticsLoaded={runtimeDiagnosticsLoaded}
+            pwa={pwa}
+            pushStatus={pushStatus}
+            pushStatusLoaded={pushStatusLoaded}
+            onRefresh={onRefreshRuntimeDiagnostics}
+            onCheckForUpdate={onCheckForUpdate}
+          />
         </section>
 
         <section className="cp-settings-card">

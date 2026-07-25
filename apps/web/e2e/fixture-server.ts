@@ -52,6 +52,30 @@ const fixtureBearer = "f".repeat(43);
 const fixtureDeviceId = "019f7ec2-68eb-7183-bb3a-0e67312a8bc0";
 let fixtureDevices = [{ id: fixtureDeviceId, name: "Design QA iPad", createdAt: "2026-07-20T10:00:00.000Z", revokedAt: null as string | null }];
 let savedDrawings: Array<Readonly<Record<string, unknown>>> = [];
+let diagrams: Array<Readonly<Record<string, unknown>>> = [{
+  version: 1,
+  diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+  threadId: THREADS[0]!.id,
+  revision: 0,
+  title: "Agent collaboration loop",
+  nodes: [
+    { id: "brief", label: "User explains the goal", x: 90, y: 150, width: 270, height: 110, shape: "rectangle", tone: "neutral" },
+    { id: "codex", label: "Codex creates a structured diagram", x: 570, y: 120, width: 320, height: 140, shape: "rectangle", tone: "blue" },
+    { id: "nerva", label: "Edit blocks and annotate with Pencil", x: 1_040, y: 150, width: 300, height: 110, shape: "ellipse", tone: "violet" },
+    { id: "revision", label: "Codex continues the exact revision", x: 570, y: 570, width: 320, height: 130, shape: "rectangle", tone: "green" },
+  ],
+  edges: [
+    { id: "brief_codex", from: "brief", to: "codex", label: "prompt", style: "solid" },
+    { id: "codex_nerva", from: "codex", to: "nerva", label: "publish", style: "solid" },
+    { id: "nerva_revision", from: "nerva", to: "revision", label: "sync revision", style: "solid" },
+    { id: "revision_codex", from: "revision", to: "codex", label: "continue", style: "dashed" },
+  ],
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  createdBy: "codex",
+  lastEditedBy: "codex",
+  sourceLabel: "Fixture agent",
+}];
 let pushSubscribed = false;
 let ticketCounter = 0;
 const webSocketTickets = new Map<string, { readonly origin: string; readonly expiresAt: number }>();
@@ -272,6 +296,43 @@ const server = createServer(async (request, response) => {
       }
       savedDrawings = savedDrawings.filter((candidate) => candidate.id !== drawingId);
       json(response, 200, { ok: true, data: { deleted: true, drawingId } });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/diagrams") {
+      const threadId = url.searchParams.get("threadId");
+      json(response, 200, {
+        ok: true,
+        data: {
+          diagrams: diagrams
+            .filter((diagram) => diagram.threadId === threadId)
+            .sort((left, right) => Number(right.updatedAt) - Number(left.updatedAt)),
+        },
+      });
+      return;
+    }
+    if (request.method === "PUT" && url.pathname.startsWith("/api/diagrams/")) {
+      const diagramId = decodeURIComponent(url.pathname.slice("/api/diagrams/".length));
+      const threadId = url.searchParams.get("threadId");
+      const current = diagrams.find((diagram) => diagram.diagramId === diagramId && diagram.threadId === threadId);
+      if (!current) {
+        json(response, 404, { ok: false, error: { code: "NOT_FOUND", message: "Diagram was not found.", retryable: false, details: null } });
+        return;
+      }
+      const payload = await body(request) as Readonly<Record<string, unknown>>;
+      if (payload.expectedRevision !== current.revision) {
+        json(response, 409, { ok: false, error: { code: "CONFLICT", message: "Diagram changed.", retryable: false, details: { currentRevision: current.revision } } });
+        return;
+      }
+      const { expectedRevision: _expectedRevision, ...editable } = payload;
+      const next = {
+        ...current,
+        ...editable,
+        revision: Number(current.revision) + 1,
+        updatedAt: Date.now(),
+        lastEditedBy: "ipad",
+      };
+      diagrams = [next, ...diagrams.filter((diagram) => diagram.diagramId !== diagramId)];
+      json(response, 200, { ok: true, data: next });
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/capabilities") {

@@ -13,6 +13,8 @@ export interface StoredDrawingDraft {
   instruction: string;
   background: DrawingBackground;
   pencilOnly: boolean;
+  /** Structured collaborative diagram layer, separate from freehand scene marks. */
+  diagramJson: string | null;
   updatedAt: string;
 }
 
@@ -21,6 +23,7 @@ export interface SaveDrawingDraftInput {
   instruction: string;
   background: DrawingBackground;
   pencilOnly: boolean;
+  diagramJson?: string | null;
   updatedAt?: string;
 }
 
@@ -42,6 +45,7 @@ export function makeStoredDrawingDraft(
     instruction: input.instruction,
     background: input.background,
     pencilOnly: input.pencilOnly,
+    diagramJson: input.diagramJson ?? null,
     updatedAt: input.updatedAt ?? new Date().toISOString(),
   };
 }
@@ -102,7 +106,10 @@ export async function loadDrawingDraft(
   if (!value || value.version !== DRAFT_VERSION || value.threadId !== normalizedThreadId) {
     return null;
   }
-  return value;
+  return {
+    ...value,
+    diagramJson: typeof value.diagramJson === "string" ? value.diagramJson : null,
+  };
 }
 
 export async function saveDrawingDraft(

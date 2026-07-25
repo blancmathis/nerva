@@ -6,6 +6,30 @@ import { MockBridge } from "./mock-bridge";
 import { THREADS, fixtureSessions } from "./fixture-data";
 
 const CAPTURE_SCREENSHOTS = process.env.CODEX_PAD_CAPTURE_SCREENSHOTS === "1";
+const SCREENSHOT_DIAGRAM = {
+  version: 1,
+  diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+  threadId: THREADS[0].id,
+  revision: 0,
+  title: "Collaborative agent workflow",
+  nodes: [
+    { id: "brief", label: "Share the goal", x: 90, y: 150, width: 270, height: 110, shape: "rectangle", tone: "neutral" },
+    { id: "codex", label: "Codex drafts the structure", x: 570, y: 120, width: 320, height: 140, shape: "rectangle", tone: "blue" },
+    { id: "nerva", label: "Refine with touch and Pencil", x: 1_040, y: 150, width: 300, height: 110, shape: "ellipse", tone: "violet" },
+    { id: "continue", label: "Continue from the exact revision", x: 570, y: 570, width: 320, height: 130, shape: "rectangle", tone: "green" },
+  ],
+  edges: [
+    { id: "brief_codex", from: "brief", to: "codex", label: "prompt", style: "solid" },
+    { id: "codex_nerva", from: "codex", to: "nerva", label: "publish", style: "solid" },
+    { id: "nerva_continue", from: "nerva", to: "continue", label: "sync revision", style: "solid" },
+    { id: "continue_codex", from: "continue", to: "codex", label: "continue", style: "dashed" },
+  ],
+  createdAt: 1_750_000_000_000,
+  updatedAt: 1_750_000_000_001,
+  createdBy: "codex",
+  lastEditedBy: "codex",
+  sourceLabel: "Codex",
+} as const;
 
 async function resetViewportScroll(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -113,6 +137,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   const output = resolve(process.cwd(), "docs/screenshots");
   await mkdir(output, { recursive: true });
   const bridge = new MockBridge({ authorized: false });
+  bridge.setDiagrams([SCREENSHOT_DIAGRAM]);
   await bridge.install(page);
   await installScreenshotSite(page);
   await page.goto("/pair?nonce=fixture-pairing-code");
@@ -147,6 +172,17 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("button", { name: "Show priority sessions" }).click();
 
   if (testInfo.project.name === "iPad landscape") {
+    await page.getByRole("button", { name: /Open Research queue/ }).click();
+    await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Review result" }).click();
+    await expect(page.getByLabel("Multimodal review for Research queue")).toBeVisible();
+    const dismissReviewCommandStatus = page.getByRole("button", { name: "Dismiss command status" });
+    if (await dismissReviewCommandStatus.isVisible()) await dismissReviewCommandStatus.click();
+    await resetViewportScroll(page);
+    await page.screenshot({ path: resolve(output, "review.png"), scale: "css", animations: "disabled" });
+    await page.getByRole("button", { name: "Close review" }).click();
+    await page.getByRole("button", { name: "Open Nerva Home" }).click();
+    await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
     await page.getByRole("button", { name: /Working 1/ }).click();
     await page.screenshot({ path: resolve(output, "dashboard-working.png"), scale: "css", animations: "disabled" });
     await page.getByRole("button", { name: /Working 1/ }).click();
@@ -211,15 +247,50 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("main", { name: "Sites" }).getByRole("button", { name: "Session" }).click();
 
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await expect(page.getByRole("button", { name: "Edit selected diagram block" })).toBeVisible();
+  await page.getByRole("button", { name: "Draw on top" }).click();
   await markCanvas(page.getByRole("img", { name: /^Sketch canvas/ }));
+  await page.getByRole("button", { name: "Edit diagram structure" }).click();
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("Saved on this iPad");
   await page.getByRole("button", { name: "Keep in Saved Drawings" }).click();
+  await expect(page.getByText("Kept in Saved Drawings on the Mac")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Keep in Saved Drawings" })).toBeEnabled();
   await resetViewportScroll(page);
   await page.screenshot({ path: resolve(output, `drawing${suffix}.png`), scale: "css", animations: "disabled" });
+  if (testInfo.project.name === "iPad landscape") {
+    await page.getByRole("button", { name: "Edit selected diagram block" }).click();
+    await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
+    await page.screenshot({
+      path: resolve(output, "drawing-diagram-inspector.png"),
+      scale: "css",
+      animations: "disabled",
+    });
+    await page.getByRole("button", { name: "Close diagram inspector" }).click();
+  }
   await page.getByRole("button", { name: "Close drawing studio" }).click();
   await page.getByRole("button", { name: "Saved Drawings" }).click();
   await expect(page.getByRole("dialog", { name: "Saved Drawings" })).toContainText("Untitled drawing");
   await page.waitForTimeout(550);
   await page.screenshot({ path: resolve(output, `saved-drawings${suffix}.png`), scale: "css", animations: "disabled" });
+});
+
+test("capture the compact 768-wide iPad Home header", async ({ page }, testInfo) => {
+  test.skip(!CAPTURE_SCREENSHOTS, "Generated only by npm run screenshots");
+  test.skip(testInfo.project.name !== "iPad landscape", "One intermediate-width proof is sufficient");
+  await page.setViewportSize({ width: 768, height: 1_024 });
+  const output = resolve(process.cwd(), "docs/screenshots");
+  await mkdir(output, { recursive: true });
+  const bridge = new MockBridge({ authorized: false });
+  await bridge.install(page);
+  await page.goto("/pair?nonce=fixture-pairing-code");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
+  await resetViewportScroll(page);
+  await page.screenshot({
+    path: resolve(output, "dashboard-compact-ipad.png"),
+    scale: "css",
+    animations: "disabled",
+  });
 });

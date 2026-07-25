@@ -1,0 +1,672 @@
+/*
+ * Nerva final polish layer.
+ *
+ * This file is intentionally loaded last. It tightens shared presentation
+ * without changing product state, routing, persistence, or native commands.
+ */
+
+/* Global chrome --------------------------------------------------------- */
+
+.cp-brand {
+  max-width: 158px;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.cp-brand__mark {
+  flex: 0 0 auto;
+}
+
+.cp-brand > span:last-child {
+  min-width: 0;
+}
+
+.cp-brand small {
+  overflow: hidden;
+  max-width: 108px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-topbar__status {
+  left: max(174px, calc(env(safe-area-inset-left) + 158px));
+}
+
+/* Home ------------------------------------------------------------------ */
+
+.cp-status-filters {
+  scroll-padding-inline: 4px;
+  scroll-snap-type: inline proximity;
+}
+
+.cp-status-filters button {
+  scroll-snap-align: start;
+}
+
+.cp-home__commandbar {
+  isolation: isolate;
+}
+
+.cp-home__commandbar::after {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  bottom: 5px;
+  width: 18px;
+  border-radius: 0 13px 13px 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cp-glass-strong) 94%, transparent));
+  content: "";
+  pointer-events: none;
+}
+
+.cp-commandbar__right {
+  position: relative;
+  z-index: 3;
+}
+
+/* Session --------------------------------------------------------------- */
+
+.cp-session-nav {
+  margin-bottom: 12px;
+}
+
+.cp-session-hero {
+  min-height: 164px;
+  gap: 20px;
+  padding: 22px 24px;
+}
+
+.cp-session-hero__meta {
+  margin-top: 13px;
+}
+
+.cp-session-hero__activity {
+  margin-top: 9px;
+}
+
+.cp-session-hero__authority {
+  padding: 12px 14px;
+}
+
+.cp-activity-timeline {
+  margin-top: 12px;
+}
+
+.cp-primary-actions,
+.cp-session-controls,
+.cp-context-panel {
+  margin-top: 24px;
+}
+
+.cp-primary-actions__grid > button {
+  min-height: 104px;
+}
+
+.cp-action-icon,
+.cp-control-header > span:first-child,
+.cp-fast-control > span:first-child {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+}
+
+.cp-control-header {
+  min-height: 78px;
+}
+
+/* Skills ---------------------------------------------------------------- */
+
+.cp-skill-picker {
+  gap: 8px;
+}
+
+.cp-skill-option {
+  min-height: 60px;
+}
+
+.cp-checkmark {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(var(--cp-violet-rgb), .28);
+  border-radius: 9px;
+  color: white;
+  background: transparent;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset;
+}
+
+.cp-checkmark::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(var(--cp-violet-rgb), .42);
+  content: "";
+}
+
+.cp-skill-option[aria-pressed="true"] .cp-checkmark {
+  border-color: color-mix(in srgb, var(--cp-violet) 74%, white);
+  background: var(--cp-violet);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .26) inset,
+    0 0 16px rgba(var(--cp-violet-rgb), .24);
+}
+
+.cp-skill-option[aria-pressed="true"] .cp-checkmark::before {
+  display: none;
+}
+
+.cp-skill-option:disabled .cp-checkmark {
+  opacity: .42;
+}
+
+/* Capture Inbox --------------------------------------------------------- */
+
+.cp-capture-inbox__hero {
+  margin-bottom: 15px;
+}
+
+.cp-capture-safety {
+  margin-block: 10px 13px;
+}
+
+.cp-capture-card__delete {
+  border-radius: 13px;
+}
+
+/* Saved Drawings -------------------------------------------------------- */
+
+.cp-saved-drawings {
+  width: min(680px, 94vw);
+}
+
+.cp-saved-drawings > header {
+  align-items: center;
+  padding: 19px 20px 14px;
+}
+
+.cp-saved-drawings > header .cp-icon-button {
+  border-color: var(--cp-stroke);
+  background: var(--cp-content-raised);
+}
+
+.cp-saved-drawings__toolbar {
+  padding: 10px 16px;
+}
+
+.cp-saved-drawings__grid {
+  gap: 10px;
+  padding: 14px 16px 24px;
+}
+
+.cp-saved-drawing-card {
+  grid-template-columns: 164px minmax(0, 1fr);
+  gap: 12px 15px;
+  padding: 10px;
+  border-radius: 18px;
+}
+
+.cp-saved-drawing-card__image {
+  height: 126px;
+  min-height: 126px;
+}
+
+.cp-saved-drawing-card__actions {
+  min-height: 44px;
+}
+
+.cp-saved-drawing-card__actions > button,
+.cp-saved-drawing-card__confirm button {
+  height: 44px;
+  max-height: 44px;
+  min-height: 44px;
+}
+
+/* Review ---------------------------------------------------------------- */
+
+.feature-workspace {
+  padding: 16px clamp(12px, 2vw, 26px) max(28px, env(safe-area-inset-bottom));
+}
+
+.cp-app-content .review-studio {
+  height: max(680px, calc(100dvh - 96px));
+  gap: 10px;
+}
+
+.cp-app-content .review-studio-header {
+  align-items: center;
+}
+
+.cp-app-content .review-studio-header h1 {
+  margin-block: 3px 4px;
+  font-size: clamp(24px, 2.8vw, 34px);
+}
+
+.cp-app-content .review-studio-header p {
+  margin: 0;
+  font-size: 10px;
+}
+
+.cp-app-content .review-header-actions {
+  align-items: center;
+}
+
+.cp-app-content .review-draft-state {
+  font-size: 10px;
+}
+
+.cp-app-content .review-main-layout {
+  grid-template-columns: 176px minmax(420px, 1fr) minmax(260px, 310px);
+  gap: 10px;
+}
+
+.cp-app-content .review-filmstrip,
+.cp-app-content .review-notes {
+  border-radius: 18px;
+}
+
+.cp-app-content .review-filmstrip > header {
+  min-height: 48px;
+}
+
+.cp-app-content .review-frame-select {
+  min-height: 64px;
+}
+
+.cp-app-content .review-workbench {
+  border-radius: 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .18);
+}
+
+.cp-app-content .review-surface-controls {
+  min-height: 52px;
+  padding: 6px;
+}
+
+.cp-app-content .review-surface-controls button,
+.cp-app-content .review-compare-modes button {
+  min-height: 40px;
+}
+
+.cp-app-content .review-frame-stage {
+  min-height: 390px;
+}
+
+.cp-app-content .review-general-instruction,
+.cp-app-content .review-send-dock {
+  padding-inline: 12px;
+}
+
+/* Responsive density ---------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .cp-app-content .review-main-layout {
+    grid-template-columns: 164px minmax(400px, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .cp-home__header {
+    display: grid;
+    min-height: 0;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cp-home__title {
+    position: static;
+    inset: auto;
+    width: auto;
+    min-height: 48px;
+    padding-left: 184px;
+  }
+
+  .cp-home__actions {
+    display: grid;
+    width: 100%;
+    padding: 0;
+    justify-content: stretch;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 52px;
+  }
+
+  .cp-home__actions > .cp-usage-card,
+  .cp-home__actions > .cp-current-mac {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cp-home__actions > .cp-icon-button--large {
+    width: 52px;
+    min-width: 52px;
+    height: 52px;
+    min-height: 52px;
+    align-self: stretch;
+    border-color: var(--cp-stroke);
+    border-radius: 16px;
+    background: linear-gradient(145deg, var(--cp-content-raised), var(--cp-content));
+    box-shadow: var(--cp-shadow-key);
+  }
+
+  .cp-usage-card__windows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .cp-usage-window:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .cp-usage-window:nth-child(n + 2) {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .cp-brand {
+    max-width: 82px;
+  }
+
+  .cp-brand small {
+    display: none;
+  }
+
+  .cp-topbar__status {
+    left: max(102px, calc(env(safe-area-inset-left) + 86px));
+  }
+
+  .cp-home,
+  .cp-session-workspace,
+  .cp-settings {
+    padding-top: 16px;
+  }
+
+  .cp-home__header {
+    min-height: 0;
+  }
+
+  .cp-home__title {
+    display: flex;
+    min-height: 44px;
+    padding-left: 126px;
+  }
+
+  .cp-home__title h1 {
+    overflow: hidden;
+    font-size: clamp(21px, 6.2vw, 25px);
+    text-overflow: ellipsis;
+  }
+
+  .cp-home__actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 52px;
+  }
+
+  .cp-home__commandbar {
+    margin-block: 12px 16px;
+  }
+
+  .cp-status-filters {
+    padding-right: 16px;
+  }
+
+  .cp-session-nav {
+    gap: 9px;
+    margin-bottom: 10px;
+    padding-top: 50px;
+  }
+
+  .cp-session-nav__controls {
+    gap: 6px;
+  }
+
+  .cp-session-nav__controls button {
+    min-height: 44px;
+    padding-inline: 9px;
+  }
+
+  .cp-session-hero {
+    gap: 11px;
+    padding: 17px;
+    border-radius: 23px;
+  }
+
+  .cp-session-hero__light {
+    top: 17px;
+    right: 17px;
+  }
+
+  .cp-session-hero h1 {
+    padding-right: 15px;
+    font-size: clamp(29px, 9vw, 34px);
+    line-height: 1;
+  }
+
+  .cp-session-hero__meta {
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .cp-session-hero__meta > span {
+    min-height: 28px;
+    padding-inline: 8px;
+  }
+
+  .cp-session-hero__activity {
+    margin-top: 7px;
+    font-size: 10px;
+  }
+
+  .cp-session-hero__authority {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 3px 8px;
+    padding: 9px 11px;
+    border-radius: 14px;
+  }
+
+  .cp-session-hero__authority small {
+    line-height: 1.3;
+  }
+
+  .cp-activity-timeline {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+    margin-top: 9px;
+    padding: 10px 11px;
+    border-radius: 17px;
+  }
+
+  .cp-activity-timeline > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .cp-activity-timeline > div .cp-overline {
+    margin: 0;
+  }
+
+  .cp-activity-timeline h2 {
+    font-size: 14px;
+  }
+
+  .cp-activity-timeline li {
+    min-height: 40px;
+    padding-block: 3px;
+  }
+
+  .cp-primary-actions,
+  .cp-session-controls,
+  .cp-context-panel {
+    margin-top: 19px;
+  }
+
+  .cp-section-heading {
+    gap: 9px;
+    margin-bottom: 10px;
+  }
+
+  .cp-section-heading h2,
+  .cp-context-panel h2 {
+    font-size: 22px;
+  }
+
+  .cp-primary-actions__utilities {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .cp-send-prompt {
+    grid-column: 1 / -1;
+    min-height: 46px;
+  }
+
+  .cp-saved-drawings-trigger {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+    justify-content: center;
+  }
+
+  .cp-primary-actions__grid,
+  .cp-primary-actions__grid.has-site {
+    gap: 9px;
+  }
+
+  .cp-primary-actions__grid > button {
+    min-height: 88px;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .cp-action-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+
+  .cp-primary-actions__grid strong {
+    font-size: 12px;
+  }
+
+  .cp-control-header {
+    min-height: 74px;
+  }
+
+  .cp-skill-picker {
+    max-height: min(76dvh, 720px);
+  }
+
+  .cp-saved-drawings {
+    width: 100%;
+  }
+
+  .cp-saved-drawings > header {
+    padding: 17px 17px 12px;
+  }
+
+  .cp-saved-drawings h2 {
+    font-size: 28px;
+  }
+
+  .cp-saved-drawing-card {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .cp-saved-drawing-card__image {
+    height: 106px;
+    min-height: 106px;
+  }
+
+  .cp-capture-inbox__hero {
+    gap: 10px;
+    margin-bottom: 13px;
+  }
+
+  .cp-capture-inbox__hero h1 {
+    font-size: 32px;
+  }
+
+  .cp-capture-inbox__privacy {
+    min-width: 0;
+    padding-block: 7px;
+  }
+
+  .cp-capture-safety {
+    margin-block: 9px 12px;
+  }
+
+  .feature-workspace {
+    padding: 10px 8px max(20px, env(safe-area-inset-bottom));
+  }
+
+  .cp-app-content .review-studio {
+    gap: 8px;
+  }
+
+  .cp-app-content .review-studio-header {
+    gap: 8px;
+  }
+
+  .cp-app-content .review-studio-header h1 {
+    font-size: 27px;
+  }
+
+  .cp-app-content .review-header-actions {
+    width: 100%;
+  }
+
+  .cp-app-content .review-header-actions button {
+    margin-left: auto;
+  }
+
+  .cp-app-content .review-main-layout {
+    gap: 8px;
+  }
+
+  .cp-app-content .review-filmstrip ol {
+    scroll-snap-type: inline proximity;
+  }
+
+  .cp-app-content .review-filmstrip li {
+    flex-basis: 148px;
+    scroll-snap-align: start;
+  }
+
+  .cp-app-content .review-workbench {
+    min-height: 520px;
+  }
+
+  .cp-app-content .review-frame-stage {
+    min-height: 340px;
+  }
+}
+
+@media (max-width: 390px) {
+  .cp-home__title {
+    padding-left: 154px;
+  }
+
+  .cp-home__title h1 {
+    font-size: 20px;
+  }
+
+  .cp-session-nav__controls button {
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-status-filters {
+    scroll-behavior: auto;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .cp-home__commandbar::after {
+    background: linear-gradient(90deg, transparent, var(--cp-content-strong));
+  }
+}

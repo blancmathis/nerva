@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
+import { lstat, readFile } from "node:fs/promises";
 import { isIP } from "node:net";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  DiagramPublishRequestSchema,
+  type DiagramDocument,
+  type DiagramPublishRequest,
+} from "@codex-pad/protocol";
 import {
   canonicalizeBridgeMagicDnsOrigin,
   canonicalizeSitePublicOrigin,
@@ -125,6 +132,12 @@ interface CommandLedgerModule {
   forgetUnresolvedCommand(deviceId: string, commandId: string, options?: unknown): Promise<boolean>;
 }
 
+interface DiagramStoreModule {
+  list(threadId: string): Promise<readonly DiagramDocument[]>;
+  get(diagramId: string): Promise<DiagramDocument>;
+  publish(input: DiagramPublishRequest, actor?: "codex" | "ipad"): Promise<DiagramDocument>;
+}
+
 export interface CliDependencies {
   readonly stdout?: (message: string) => void;
   readonly stderr?: (message: string) => void;
@@ -139,6 +152,7 @@ export interface CliDependencies {
   readonly loadPairing?: () => Promise<PairingModule>;
   readonly loadSites?: () => Promise<SiteRegistryModule>;
   readonly loadCommandLedger?: () => Promise<CommandLedgerModule>;
+  readonly loadDiagrams?: () => Promise<DiagramStoreModule>;
   readonly waitForShutdown?: (handle: BridgeHandle) => Promise<void>;
   readonly setupMac?: (dependencies?: MacSetupDependencies) => Promise<MacSetupResult>;
   readonly createMacPairing?: (dependencies?: MacSetupDependencies) => Promise<MacPairingResult>;
@@ -277,6 +291,54 @@ function exactUuidFlag(raw: string, flag: string): string {
   return raw.toLowerCase();
 }
 
+function exactDiagramThread(
+  arguments_: readonly string[],
+  fileThreadId?: unknown,
+): string {
+  const explicit = flagValue(arguments_, "--thread");
+  const ambient = process.env.CODEX_THREAD_ID;
+  const embedded = typeof fileThreadId === "string" ? fileThreadId : undefined;
+  const candidate = explicit ?? embedded ?? ambient;
+  if (!candidate) {
+    throw new CliUsageError(
+      "A diagram needs an exact task. Run from a Codex task or pass --thread <uuid>.",
+    );
+  }
+  const normalized = normalizedThreadId(candidate);
+  if (explicit && embedded && normalizedThreadId(embedded) !== normalized) {
+    throw new CliUsageError("The diagram file threadId does not match --thread.");
+  }
+  return normalized;
+}
+
+async function readDiagramPublishFile(
+  pathValue: string,
+  arguments_: readonly string[],
+): Promise<DiagramPublishRequest> {
+  const path = resolve(pathValue);
+  const details = await lstat(path);
+  if (details.isSymbolicLink() || !details.isFile()) {
+    throw new CliUsageError("--file must point to one regular JSON file, not a symlink.");
+  }
+  if (details.size <= 0 || details.size > 512 * 1024) {
+    throw new CliUsageError("The diagram JSON file must be between 1 byte and 512 KiB.");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(path, "utf8")) as unknown;
+  } catch {
+    throw new CliUsageError("The diagram file must contain valid JSON.");
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new CliUsageError("The diagram file must contain one JSON object.");
+  }
+  const record = value as Record<string, unknown>;
+  return DiagramPublishRequestSchema.parse({
+    ...record,
+    threadId: exactDiagramThread(arguments_, record.threadId),
+  });
+}
+
 function printJson(write: (message: string) => void, value: unknown): void {
   write(JSON.stringify(value, null, 2));
 }
@@ -298,6 +360,9 @@ Usage from a source checkout:
   npm run codex-pad -- site add (--thread <uuid> | --project <absolute-cwd|project:hash>) --url http://127.0.0.1:<port> --public-origin https://<magicdns>.ts.net:<same-port> [--json]
   npm run codex-pad -- site list [--json]
   npm run codex-pad -- site remove <site-id> [--json]
+  npm run codex-pad -- diagram publish --file <diagram.json> [--thread <uuid>] [--json]
+  npm run codex-pad -- diagram list [--thread <uuid>] [--json]
+  npm run codex-pad -- diagram get <diagram-id> [--json]
   npm run codex-pad -- command-ledger list-unresolved [--json]
   npm run codex-pad -- command-ledger forget --device <uuid> --command <uuid> --acknowledge-delivery-unknown [--json]
 
@@ -379,6 +444,12 @@ async function defaultLoadSites(): Promise<SiteRegistryModule> {
   } catch (error) {
     throw new Error(`Site registry is unavailable in this build: ${String(error)}`);
   }
+}
+
+async function defaultLoadDiagrams(): Promise<DiagramStoreModule> {
+  const modulePath = "./diagram-store.js";
+  const { DiagramStore } = await import(modulePath);
+  return new DiagramStore();
 }
 
 async function defaultLoadCommandLedger(): Promise<CommandLedgerModule> {
@@ -814,6 +885,54 @@ export async function runCli(
         return 0;
       }
       throw new CliUsageError("site requires `add`, `list`, or `remove`. ");
+    }
+
+    if (command === "diagram") {
+      const action = rest[0];
+      const diagrams = await (dependencies.loadDiagrams ?? defaultLoadDiagrams)();
+      if (action === "publish") {
+        const file = flagValue(rest, "--file");
+        if (!file) throw new CliUsageError("diagram publish requires --file <diagram.json>.");
+        const document = await diagrams.publish(
+          await readDiagramPublishFile(file, rest),
+          "codex",
+        );
+        if (hasFlag(rest, "--json")) {
+          printJson(stdout, document);
+        } else {
+          stdout(`Published “${document.title}” to the exact Nerva task.`);
+          stdout(`Diagram ID: ${document.diagramId}`);
+          stdout(`Revision: ${document.revision}`);
+          stdout("Open Draw in Nerva to edit its structure or annotate it with Apple Pencil.");
+        }
+        return 0;
+      }
+      if (action === "list") {
+        const threadId = exactDiagramThread(rest);
+        const records = await diagrams.list(threadId);
+        if (hasFlag(rest, "--json")) {
+          printJson(stdout, { diagrams: records });
+        } else if (records.length === 0) {
+          stdout("No collaborative diagrams are published for this exact task.");
+        } else {
+          for (const record of records) {
+            stdout(
+              `${record.diagramId} — r${record.revision} — ${record.title} — ${record.lastEditedBy} — ${new Date(record.updatedAt).toISOString()}`,
+            );
+          }
+        }
+        return 0;
+      }
+      if (action === "get") {
+        const id = rest[1];
+        if (!id || id.startsWith("--")) {
+          throw new CliUsageError("diagram get requires an exact diagram UUID.");
+        }
+        const document = await diagrams.get(exactUuidFlag(id, "diagram ID"));
+        printJson(stdout, document);
+        return 0;
+      }
+      throw new CliUsageError("diagram requires `publish`, `list`, or `get`. ");
     }
 
     if (command === "command-ledger") {

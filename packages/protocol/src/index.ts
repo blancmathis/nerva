@@ -1,6 +1,7 @@
 export * from "./api.js";
 export * from "./commands.js";
 export * from "./devices.js";
+export * from "./diagrams.js";
 export * from "./image.js";
 export * from "./integrations.js";
 export * from "./nerva-card.js";

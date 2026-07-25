@@ -4,6 +4,9 @@ import {
   CommandStatusApiResponseSchema,
   ContextRoomStatusApiResponseSchema,
   CodexUsageApiResponseSchema,
+  DiagramApiResponseSchema,
+  DiagramUpdateRequestSchema,
+  DiagramsApiResponseSchema,
   NativeSessionsApiResponseSchema,
   DeviceRevocationApiResponseSchema,
   PairedDevicesApiResponseSchema,
@@ -22,6 +25,8 @@ import {
   type CommandStatusResponse,
   type CodexUsageSnapshot,
   type ContextRoomStatus,
+  type DiagramDocument,
+  type DiagramUpdateRequest,
   type NativeSessionsResponse,
   type PairedDevicesResponse,
   type ProductState,
@@ -712,6 +717,41 @@ export class BridgeClient {
     if (!response.ok || !parsed.success || !parsed.data.ok || parsed.data.data.drawingId !== drawingId) {
       throw new BridgeHttpError(response.status, messageFrom(body, "Saved drawing could not be deleted"));
     }
+  }
+
+  async fetchDiagrams(threadId: string): Promise<readonly DiagramDocument[]> {
+    const response = await this.authorizedFetch(`/api/diagrams?threadId=${encodeURIComponent(threadId)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const body = await responseJson(response);
+    const parsed = DiagramsApiResponseSchema.safeParse(body);
+    if (!response.ok || !parsed.success || !parsed.data.ok) {
+      throw new BridgeHttpError(response.status, messageFrom(body, "Collaborative diagrams could not be loaded"));
+    }
+    return parsed.data.data.diagrams;
+  }
+
+  async updateDiagram(
+    diagramId: string,
+    threadId: string,
+    inputValue: DiagramUpdateRequest,
+  ): Promise<DiagramDocument> {
+    const input = DiagramUpdateRequestSchema.parse(inputValue);
+    const response = await this.authorizedFetch(
+      `/api/diagrams/${encodeURIComponent(diagramId)}?threadId=${encodeURIComponent(threadId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
+    const body = await responseJson(response);
+    const parsed = DiagramApiResponseSchema.safeParse(body);
+    if (!response.ok || !parsed.success || !parsed.data.ok) {
+      throw new BridgeHttpError(response.status, messageFrom(body, "Diagram changes could not be synced to the Mac"));
+    }
+    return parsed.data.data;
   }
 
   async fetchManagedSites(threadId: string): Promise<readonly ManagedSite[]> {

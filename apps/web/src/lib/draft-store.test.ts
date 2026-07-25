@@ -33,6 +33,7 @@ describe("drawing draft persistence", () => {
         instruction: "Match this spacing",
         background: "dark",
         pencilOnly: true,
+        diagramJson: '{"version":1,"diagramId":"test"}',
         updatedAt: "2026-07-20T10:00:00.000Z",
       }),
     ).toMatchObject({
@@ -42,6 +43,7 @@ describe("drawing draft persistence", () => {
       instruction: "Match this spacing",
       background: "dark",
       pencilOnly: true,
+      diagramJson: '{"version":1,"diagramId":"test"}',
     });
   });
 
@@ -51,11 +53,13 @@ describe("drawing draft persistence", () => {
       instruction: "Build this",
       background: "white",
       pencilOnly: false,
+      diagramJson: '{"version":1,"title":"Agent diagram"}',
     });
 
     await expect(loadDrawingDraft(threadId)).resolves.toMatchObject({
       threadId,
       instruction: "Build this",
+      diagramJson: '{"version":1,"title":"Agent diagram"}',
     });
     await expect(loadDrawingDraft(` ${threadId.toUpperCase()} `)).resolves.toMatchObject({
       threadId,

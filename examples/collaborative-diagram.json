@@ -1,0 +1,76 @@
+{
+  "title": "Collaborative diagram loop",
+  "sourceLabel": "Codex",
+  "nodes": [
+    {
+      "id": "goal",
+      "label": "User explains the goal",
+      "x": 80,
+      "y": 150,
+      "width": 280,
+      "height": 110,
+      "shape": "rectangle",
+      "tone": "neutral"
+    },
+    {
+      "id": "codex",
+      "label": "Codex creates a structured diagram",
+      "x": 560,
+      "y": 120,
+      "width": 330,
+      "height": 140,
+      "shape": "rectangle",
+      "tone": "blue"
+    },
+    {
+      "id": "ipad",
+      "label": "Edit blocks and draw with Pencil",
+      "x": 1050,
+      "y": 150,
+      "width": 300,
+      "height": 110,
+      "shape": "ellipse",
+      "tone": "violet"
+    },
+    {
+      "id": "continue",
+      "label": "Codex continues from the exact revision",
+      "x": 555,
+      "y": 570,
+      "width": 340,
+      "height": 130,
+      "shape": "rectangle",
+      "tone": "green"
+    }
+  ],
+  "edges": [
+    {
+      "id": "goal_codex",
+      "from": "goal",
+      "to": "codex",
+      "label": "prompt",
+      "style": "solid"
+    },
+    {
+      "id": "codex_ipad",
+      "from": "codex",
+      "to": "ipad",
+      "label": "publish",
+      "style": "solid"
+    },
+    {
+      "id": "ipad_continue",
+      "from": "ipad",
+      "to": "continue",
+      "label": "sync revision",
+      "style": "solid"
+    },
+    {
+      "id": "continue_codex",
+      "from": "continue",
+      "to": "codex",
+      "label": "continue",
+      "style": "dashed"
+    }
+  ]
+}

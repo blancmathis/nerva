@@ -93,6 +93,20 @@ function useCaptureObjectUrl(item: CaptureInboxItem): string | null {
   return source;
 }
 
+function notePreviewText(item: CaptureInboxItem): string {
+  const note = item.text?.trim() ?? "";
+  const title = item.title.trim().replace(/…$/u, "");
+  if (!note || !title || !note.startsWith(title)) return note;
+
+  let bodyStart = title.length;
+  if (bodyStart < note.length && /\S/u.test(title.at(-1) ?? "") && /\S/u.test(note[bodyStart] ?? "")) {
+    const lastWordStart = title.lastIndexOf(" ");
+    if (lastWordStart >= 0) bodyStart = lastWordStart + 1;
+  }
+  const body = note.slice(bodyStart).trim().replace(/^[\s,.;:!?—-]+/u, "");
+  return body || note;
+}
+
 function CapturePreview({ item }: { readonly item: CaptureInboxItem }) {
   const source = useCaptureObjectUrl(item);
   if (source && item.mimeType?.startsWith("image/")) {
@@ -107,7 +121,7 @@ function CapturePreview({ item }: { readonly item: CaptureInboxItem }) {
     );
   }
   if (item.kind === "note") {
-    return <p className="cp-capture-card__note">{item.text}</p>;
+    return <p className="cp-capture-card__note">{notePreviewText(item)}</p>;
   }
   return <span className={`cp-capture-card__glyph kind-${item.kind}`} aria-hidden="true">{kindIcon(item.kind)}</span>;
 }

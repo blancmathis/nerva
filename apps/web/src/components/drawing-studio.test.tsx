@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { deserializeScene } from "@codex-pad/drawing";
+import { DiagramDocumentSchema } from "@codex-pad/protocol";
 import { deleteDrawingDraft, loadDrawingDraft } from "../lib/draft-store";
 import { loadPendingDrawingDelivery } from "../lib/drawing-delivery-store";
 import { DrawingStudio, type DrawingTarget } from "./DrawingStudio";
@@ -52,6 +53,116 @@ beforeEach(async () => {
 });
 
 describe("DrawingStudio routing", () => {
+  it("opens an exact-task agent diagram, syncs structural edits, and sends one combined annotated PNG", async () => {
+    const agentDiagram = DiagramDocumentSchema.parse({
+      version: 1,
+      diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+      threadId: firstTarget.threadId,
+      revision: 0,
+      title: "Agent round trip",
+      nodes: [
+        {
+          id: "codex",
+          label: "Codex proposes",
+          x: 140,
+          y: 200,
+          width: 260,
+          height: 112,
+          shape: "rectangle",
+          tone: "blue",
+        },
+        {
+          id: "ipad",
+          label: "iPad refines",
+          x: 720,
+          y: 200,
+          width: 260,
+          height: 112,
+          shape: "ellipse",
+          tone: "violet",
+        },
+      ],
+      edges: [
+        { id: "handoff", from: "codex", to: "ipad", label: "structured", style: "solid" },
+      ],
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: "codex",
+      lastEditedBy: "codex",
+      sourceLabel: "Codex diagram",
+    });
+    const onUpdateDiagram = vi.fn(async (_diagramId, _threadId, input) => {
+      const { expectedRevision: _expectedRevision, ...editable } = input;
+      return {
+        ...agentDiagram,
+        ...editable,
+        revision: 1,
+        updatedAt: 2,
+        lastEditedBy: "ipad" as const,
+      };
+    });
+    const onSend = vi.fn().mockResolvedValue({
+      ok: false,
+      deliveryUnknown: true,
+      message: "Keep the combined draft for inspection",
+    });
+
+    render(
+      <DrawingStudio
+        open
+        target={firstTarget}
+        connected
+        onClose={vi.fn()}
+        onSend={onSend}
+        onListDiagrams={vi.fn().mockResolvedValue([agentDiagram])}
+        onUpdateDiagram={onUpdateDiagram}
+      />,
+    );
+
+    expect(await screen.findByText("Agent round trip")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Draw on top" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Edit selected diagram block" }));
+    const blockLabel = screen.getByRole("textbox", { name: "Selected block" });
+    fireEvent.change(blockLabel, { target: { value: "Codex proposes a flow" } });
+    fireEvent.blur(blockLabel);
+    fireEvent.click(screen.getByRole("button", { name: "Close inspector and draw" }));
+
+    const canvas = screen.getByRole("img", { name: /Sketch canvas/ });
+    const down = new Event("pointerdown", { bubbles: true, cancelable: true });
+    Object.defineProperties(down, {
+      pointerId: { value: 91 }, pointerType: { value: "pen" }, clientX: { value: 200 },
+      clientY: { value: 180 }, pressure: { value: 0.7 }, tiltX: { value: 4 },
+      tiltY: { value: -2 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
+    });
+    fireEvent(canvas, down);
+    const up = new Event("pointerup", { bubbles: true, cancelable: true });
+    Object.defineProperties(up, {
+      pointerId: { value: 91 }, pointerType: { value: "pen" }, clientX: { value: 270 },
+      clientY: { value: 230 }, pressure: { value: 0.4 }, tiltX: { value: 3 },
+      tiltY: { value: -1 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
+    });
+    fireEvent(canvas, up);
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(onUpdateDiagram).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onUpdateDiagram).toHaveBeenCalledWith(
+      agentDiagram.diagramId,
+      firstTarget.threadId,
+      expect.objectContaining({
+        expectedRevision: 0,
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ id: "codex", label: "Codex proposes a flow" }),
+        ]),
+      }),
+    );
+    const sentScene = onSend.mock.calls[0]?.[0].scene as {
+      elements: readonly { id: string; kind: string }[];
+    };
+    expect(sentScene.elements.some((element) => element.id.includes(":node:codex"))).toBe(true);
+    expect(sentScene.elements.some((element) => element.kind === "stroke")).toBe(true);
+  }, 10_000);
+
   it("keeps the Mac confirmation visible when parent callbacks change during Keep", async () => {
     let resolveKeep: ((value: { ok: true; message: string }) => void) | undefined;
     const onKeep = vi.fn(() => new Promise<{ ok: true; message: string }>((resolve) => {

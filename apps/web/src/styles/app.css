@@ -352,7 +352,7 @@ button:disabled {
   display: flex;
   min-height: 52px;
   align-items: center;
-  padding-left: 210px;
+  padding-left: 184px;
 }
 
 .cp-home__title h1 {
@@ -2382,7 +2382,7 @@ button:disabled {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 18px;
-  padding-left: 210px;
+  padding-left: 184px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--cp-stroke);
 }
@@ -2534,6 +2534,12 @@ button:disabled {
   border-color: var(--cp-stroke);
   background: var(--cp-content-raised);
   text-align: left;
+}
+
+.cp-settings-action > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
 }
 
 .cp-preset-list,
@@ -4413,22 +4419,6 @@ button:disabled {
 .cp-activity-timeline li small { color: var(--cp-ink-tertiary); font-size: 10px; }
 .cp-activity-timeline time { color: var(--cp-ink-tertiary); font: 9px var(--cp-font-mono); }
 
-.cp-capability-trigger {
-  position: relative;
-  display: grid;
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
-  padding: 0;
-  place-items: center;
-  border: 1px solid var(--cp-stroke);
-  border-radius: 50%;
-  color: var(--cp-ink-secondary);
-  background: color-mix(in srgb, var(--cp-glass-strong) 76%, transparent);
-  box-shadow: 0 1px 0 var(--cp-glass-highlight) inset, 0 7px 18px rgba(0, 0, 0, .12);
-  pointer-events: auto;
-}
-
 .cp-notification-permission {
   display: flex;
   min-height: 58px;
@@ -4509,36 +4499,16 @@ button:disabled {
 .cp-nerva-card__status[data-tone="warning"] strong { color: var(--cp-amber); }
 .cp-nerva-card__status[data-tone="danger"] strong { color: var(--cp-red); }
 
-.cp-capability-trigger svg {
-  width: 18px;
-  height: 18px;
-}
-
-.cp-capability-trigger > span {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--cp-glass-strong);
-  border-radius: 50%;
-  background: var(--cp-green);
-  box-shadow: 0 0 10px rgba(var(--cp-green-rgb), .6);
-}
-
-.cp-capability-trigger[data-state="recovering"] > span,
 .cp-capability-row[data-state="recovering"] .cp-capability-row__light {
   background: var(--cp-blue);
   box-shadow: 0 0 10px rgba(var(--cp-blue-rgb), .65);
 }
 
-.cp-capability-trigger[data-state="needsVerification"] > span,
 .cp-capability-row[data-state="needsVerification"] .cp-capability-row__light {
   background: var(--cp-amber);
   box-shadow: 0 0 10px rgba(var(--cp-amber-rgb), .62);
 }
 
-.cp-capability-trigger[data-state="unavailable"] > span,
 .cp-capability-row[data-state="unavailable"] .cp-capability-row__light {
   background: var(--cp-red);
   box-shadow: 0 0 10px rgba(var(--cp-red-rgb), .62);

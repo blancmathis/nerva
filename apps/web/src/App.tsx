@@ -15,7 +15,6 @@ import type {
 } from "@codex-pad/protocol";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandStatusToast } from "./components/CommandStatusToast";
-import { CapabilityCenter } from "./components/CapabilityCenter";
 import type {
   DrawingKeepPayload,
   DrawingSendPayload,
@@ -1352,18 +1351,6 @@ function App() {
           {view === "settings" && <span>Settings</span>}
         </nav>
         <div className="cp-topbar__status">
-          <CapabilityCenter
-            phase={bridge.phase}
-            diagnostics={bridge.runtimeDiagnostics}
-            diagnosticsLoaded={bridge.runtimeDiagnosticsLoaded}
-            pwa={pwa}
-            pushStatus={bridge.pushStatus}
-            pushStatusLoaded={bridge.pushStatusLoaded}
-            onRefresh={async () => {
-              await Promise.all([bridge.refreshRuntimeDiagnostics(), bridge.refreshPushStatus()]);
-            }}
-            onCheckForUpdate={pwa.check}
-          />
           <span className={`cp-connection phase-${bridge.phase}`}><i aria-hidden="true" /><span>{bridge.phase === "online" ? "Mac connected" : statusLabel(bridge.phase)}</span></span>
           {bridge.snapshot && <span className="cp-sequence">#{bridge.snapshot.seq}</span>}
         </div>
@@ -1588,6 +1575,14 @@ function App() {
             contextRoomStatus={bridge.contextRoomStatus}
             contextRoomStatusLoaded={bridge.contextRoomStatusLoaded}
             onRefreshContextRoom={bridge.refreshContextRoomStatus}
+            connectionPhase={bridge.phase}
+            runtimeDiagnostics={bridge.runtimeDiagnostics}
+            runtimeDiagnosticsLoaded={bridge.runtimeDiagnosticsLoaded}
+            pwa={pwa}
+            onRefreshRuntimeDiagnostics={async () => {
+              await Promise.all([bridge.refreshRuntimeDiagnostics(), bridge.refreshPushStatus()]);
+            }}
+            onCheckForUpdate={pwa.check}
           />
         )}
         </Suspense>
@@ -1702,6 +1697,8 @@ function App() {
             onSend={sendDrawing}
             onKeep={keepDrawing}
             onReconcileDelivery={reconcileDrawingDelivery}
+            onListDiagrams={bridge.fetchDiagrams}
+            onUpdateDiagram={bridge.updateDiagram}
           />
         </Suspense>
       )}

@@ -163,6 +163,77 @@ test("pairs with one tap and no code or device-name form", async ({ page }) => {
   expect(bridge.pairRequests).toEqual([{ nonce: "cedar-4821", deviceName: expect.stringContaining("Nerva") }]);
 });
 
+test("keeps the compact Home chrome separated at every supported viewport", async ({ page }) => {
+  await openAuthenticatedApp(page);
+
+  const bounds = await Promise.all([
+    page.getByRole("heading", { name: "Your working set." }).boundingBox(),
+    page.getByRole("button", { name: "Open Nerva Home" }).boundingBox(),
+    page.locator(".cp-topbar__status .cp-connection").boundingBox(),
+    page.getByRole("complementary", { name: "Codex usage" }).boundingBox(),
+    page.getByRole("button", { name: /Open current Mac session/ }).boundingBox(),
+  ]);
+  expect(bounds.every((box) => box !== null)).toBe(true);
+  const [heading, brand, connection, usage, currentMac] = bounds as Exclude<(typeof bounds)[number], null>[];
+  const intersectionArea = (first: typeof heading, second: typeof heading) => (
+    Math.max(0, Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x))
+    * Math.max(0, Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y))
+  );
+
+  for (const [label, element] of [
+    ["brand", brand],
+    ["connection light", connection],
+    ["usage", usage],
+    ["current Mac", currentMac],
+  ] as const) {
+    expect(intersectionArea(heading, element), `${label} must not overlap the Home heading`).toBe(0);
+  }
+});
+
+test("keeps the 768-wide iPad header legible and moves diagnostics into Settings", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "iPad landscape", "One intermediate-width geometry proof is sufficient");
+  await page.setViewportSize({ width: 768, height: 1_024 });
+  await openAuthenticatedApp(page);
+
+  const usage = page.getByRole("complementary", { name: "Codex usage" });
+  const currentMac = page.getByRole("button", { name: /Open current Mac session/ });
+  const settings = page.getByRole("button", { name: "Open Settings" });
+  await expect(usage.locator(".cp-usage-window:visible")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Open System Diagnostics/ })).toHaveCount(0);
+
+  const [usageBounds, currentMacBounds, settingsBounds, usageLineBounds, refreshBounds] = await Promise.all([
+    usage.boundingBox(),
+    currentMac.boundingBox(),
+    settings.boundingBox(),
+    usage.locator(".cp-usage-window:visible .cp-usage-window__line").boundingBox(),
+    usage.getByRole("button", { name: "Refresh Codex usage" }).boundingBox(),
+  ]);
+  expect(usageBounds).not.toBeNull();
+  expect(currentMacBounds).not.toBeNull();
+  expect(settingsBounds).not.toBeNull();
+  expect(usageLineBounds).not.toBeNull();
+  expect(refreshBounds).not.toBeNull();
+  expect(Math.abs(usageBounds!.height - currentMacBounds!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(usageBounds!.height - settingsBounds!.height)).toBeLessThanOrEqual(1);
+  expect(usageLineBounds!.x + usageLineBounds!.width).toBeLessThanOrEqual(refreshBounds!.x);
+  await settings.click();
+  await expect(page.getByRole("button", { name: /Open System Diagnostics/ })).toBeVisible();
+});
+
+test("keeps the first Session input reachable in the initial viewport", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+
+  const dictation = page.getByRole("button", { name: /^Dictation/ });
+  await expect(dictation).toBeVisible();
+  const bounds = await dictation.boundingBox();
+  const viewport = page.viewportSize();
+  expect(bounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(bounds!.y).toBeLessThan(viewport!.height);
+  expect(bounds!.height).toBeGreaterThanOrEqual(44);
+});
+
 test("Capture Inbox stays neutral, persists, and is reused from the exact open Session", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   const commandCount = bridge.commandRequests;
@@ -845,6 +916,204 @@ test("commits a Pencil stroke when iPadOS ends pointer capture so Send becomes a
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 });
 
+test("round-trips one exact-task agent diagram through structural touch edits and Pencil annotation", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const agentDiagram = {
+    version: 1,
+    diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+    threadId: THREADS[0].id,
+    revision: 0,
+    title: "Agent collaboration loop",
+    nodes: [
+      { id: "codex", label: "Codex proposes", x: 160, y: 210, width: 280, height: 116, shape: "rectangle", tone: "blue" },
+      { id: "nerva", label: "Nerva refines", x: 760, y: 210, width: 280, height: 116, shape: "ellipse", tone: "violet" },
+    ],
+    edges: [
+      { id: "handoff", from: "codex", to: "nerva", label: "structured revision", style: "solid" },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+    createdBy: "codex",
+    lastEditedBy: "codex",
+    sourceLabel: "Playwright agent",
+  };
+  bridge.setDiagrams([agentDiagram]);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+
+  await expect(page.getByRole("button", { name: "Edit selected diagram block" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Diagram title" })).toHaveCount(0);
+  await expect(page.getByRole("status", { name: "Diagram synced" })).toContainText("Synced");
+  const sketchCanvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  const canvasBeforeInspector = await sketchCanvas.boundingBox();
+  const diagramDock = await page.locator(".drawing-diagram-dock").boundingBox();
+  if (!canvasBeforeInspector || !diagramDock) throw new Error("Diagram canvas and dock need measurable bounds");
+  expect(canvasBeforeInspector.y + canvasBeforeInspector.height).toBeLessThanOrEqual(diagramDock.y + 2);
+  const firstNode = page.locator(".diagram-node-hitbox").first();
+  const box = await firstNode.boundingBox();
+  if (!box) throw new Error("Diagram node has no rendered bounds");
+  await firstNode.dispatchEvent("pointerdown", {
+    pointerId: 301,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: box.x + box.width * .5,
+    clientY: box.y + box.height * .5,
+  });
+  await firstNode.dispatchEvent("pointermove", {
+    pointerId: 301,
+    pointerType: "touch",
+    isPrimary: true,
+    button: -1,
+    buttons: 1,
+    clientX: box.x + box.width * .5 + 38,
+    clientY: box.y + box.height * .5 + 21,
+  });
+  await firstNode.dispatchEvent("pointerup", {
+    pointerId: 301,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: box.x + box.width * .5 + 38,
+    clientY: box.y + box.height * .5 + 21,
+  });
+  await expect(page.getByRole("button", { name: "Sync revision" })).toBeEnabled();
+  await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
+  const inspector = page.locator(".drawing-diagram-panel");
+  const viewport = page.viewportSize();
+  if ((viewport?.width ?? 0) <= 700) {
+    await expect(page.locator(".drawing-canvas")).toHaveCSS("visibility", "hidden");
+  } else {
+    const canvasWithInspector = await sketchCanvas.boundingBox();
+    const inspectorBounds = await inspector.boundingBox();
+    if (!canvasWithInspector || !inspectorBounds) throw new Error("Canvas and inspector need measurable bounds");
+    expect(canvasWithInspector.x + canvasWithInspector.width).toBeLessThanOrEqual(inspectorBounds.x + 1);
+  }
+  await expect(page.getByRole("textbox", { name: "Diagram title" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "More" }).click();
+  await expect(page.getByRole("textbox", { name: "Diagram title" })).toHaveValue("Agent collaboration loop");
+
+  await page.getByRole("button", { name: "Close inspector and draw" }).click();
+  await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  await expect.poll(
+    () => bridge.diagramUpdateRequests,
+    { timeout: 15_000, message: "dirty diagram revision should synchronize before image attachment" },
+  ).toBe(1);
+  await expect.poll(
+    () => bridge.commands.at(-1)?.type,
+    { timeout: 15_000, message: "combined diagram and Pencil image should attach after PNG preparation" },
+  ).toBe("sendSketch");
+  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toBeHidden();
+
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await expect(page.getByText("Apple Pencil ready")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Diagram title" })).toHaveCount(0);
+});
+
+test("keeps every drawing tool illustration optically centered and unclipped", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  bridge.setDiagrams([{
+    version: 1,
+    diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba2",
+    threadId: THREADS[0].id,
+    revision: 0,
+    title: "Alignment fixture",
+    nodes: [
+      { id: "one", label: "One", x: 240, y: 220, width: 280, height: 116, shape: "rectangle", tone: "blue" },
+    ],
+    edges: [],
+    createdAt: 1,
+    updatedAt: 1,
+    createdBy: "codex",
+    lastEditedBy: "codex",
+    sourceLabel: "Playwright agent",
+  }]);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await expect(page.getByRole("button", { name: "Draw on top" })).toBeVisible();
+
+  const dockMetrics = await page.locator(".drawing-diagram-dock button").evaluateAll((buttons) => (
+    buttons.map((button) => {
+      const bounds = button.getBoundingClientRect();
+      const icon = button.querySelector(".drawing-icon")?.getBoundingClientRect();
+      const label = button.querySelector("span:last-child")?.getBoundingClientRect();
+      const pieces = [icon, label].filter((piece): piece is DOMRect => Boolean(piece));
+      const left = Math.min(...pieces.map((piece) => piece.left));
+      const right = Math.max(...pieces.map((piece) => piece.right));
+      const top = Math.min(...pieces.map((piece) => piece.top));
+      const bottom = Math.max(...pieces.map((piece) => piece.bottom));
+      return {
+        name: button.getAttribute("aria-label"),
+        width: bounds.width,
+        height: bounds.height,
+        centerX: (left + right) / 2 - (bounds.left + bounds.width / 2),
+        centerY: (top + bottom) / 2 - (bounds.top + bounds.height / 2),
+      };
+    })
+  ));
+  for (const metric of dockMetrics) {
+    expect(metric.width, `${metric.name} touch width`).toBeGreaterThanOrEqual(44);
+    expect(metric.height, `${metric.name} touch height`).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(metric.centerX), `${metric.name} horizontal optical center`).toBeLessThanOrEqual(1);
+    expect(Math.abs(metric.centerY), `${metric.name} vertical optical center`).toBeLessThanOrEqual(1);
+  }
+
+  await page.getByRole("button", { name: "Draw on top" }).click();
+  const toolMetrics = await page.locator(".drawing-tool").evaluateAll((buttons) => (
+    buttons.map((button) => {
+      const bounds = button.getBoundingClientRect();
+      const icon = button.querySelector(".drawing-tool__glyph")?.getBoundingClientRect();
+      const label = button.querySelector<HTMLElement>(".drawing-tool__label");
+      const labelBounds = label?.getBoundingClientRect();
+      const pieces = [icon, labelBounds].filter((piece): piece is DOMRect => Boolean(piece));
+      const left = Math.min(...pieces.map((piece) => piece.left));
+      const right = Math.max(...pieces.map((piece) => piece.right));
+      const top = Math.min(...pieces.map((piece) => piece.top));
+      const bottom = Math.max(...pieces.map((piece) => piece.bottom));
+      return {
+        name: button.getAttribute("aria-label"),
+        width: bounds.width,
+        height: bounds.height,
+        centerX: (left + right) / 2 - (bounds.left + bounds.width / 2),
+        centerY: (top + bottom) / 2 - (bounds.top + bounds.height / 2),
+        labelClipped: label ? label.scrollWidth > label.clientWidth + 1 : true,
+      };
+    })
+  ));
+  for (const metric of toolMetrics) {
+    expect(metric.width, `${metric.name} touch width`).toBeGreaterThanOrEqual(44);
+    expect(metric.height, `${metric.name} touch height`).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(metric.centerX), `${metric.name} horizontal optical center`).toBeLessThanOrEqual(1);
+    expect(Math.abs(metric.centerY), `${metric.name} vertical optical center`).toBeLessThanOrEqual(1);
+    expect(metric.labelClipped, `${metric.name} label clipping`).toBe(false);
+  }
+
+  const iconOnlyMetrics = await page.locator([
+    ".drawing-studio__close",
+    ".drawing-tools__history button",
+    ".drawing-zoom button:first-child",
+    ".drawing-zoom button:last-child",
+  ].join(",")).evaluateAll((buttons) => (
+    buttons.map((button) => {
+      const bounds = button.getBoundingClientRect();
+      const icon = button.querySelector(".drawing-icon")?.getBoundingClientRect();
+      return {
+        name: button.getAttribute("aria-label"),
+        centerX: icon ? icon.left + icon.width / 2 - (bounds.left + bounds.width / 2) : Number.POSITIVE_INFINITY,
+        centerY: icon ? icon.top + icon.height / 2 - (bounds.top + bounds.height / 2) : Number.POSITIVE_INFINITY,
+      };
+    })
+  ));
+  for (const metric of iconOnlyMetrics) {
+    expect(Math.abs(metric.centerX), `${metric.name} horizontal icon center`).toBeLessThanOrEqual(1);
+    expect(Math.abs(metric.centerY), `${metric.name} vertical icon center`).toBeLessThanOrEqual(1);
+  }
+});
+
 test("keeps the visible Pencil stroke when palm rejection cancels the active pointer", async ({ page }) => {
   await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
@@ -1122,6 +1391,17 @@ test("shows real Settings controls and paired device management", async ({ page 
   await expect(page.getByText("This iPad", { exact: true })).toBeVisible();
   await expect(page.getByText("Background alerts", { exact: true })).toBeVisible();
   await expect(page.getByText(/Only the moments that matter/)).toBeVisible();
+  const systemDiagnostics = page.getByRole("button", { name: /Open System Diagnostics/ });
+  await expect(systemDiagnostics).toBeVisible();
+  const [diagnosticsButtonBounds, diagnosticsChevronBounds] = await Promise.all([
+    systemDiagnostics.boundingBox(),
+    systemDiagnostics.locator("svg").boundingBox(),
+  ]);
+  expect(diagnosticsButtonBounds).not.toBeNull();
+  expect(diagnosticsChevronBounds).not.toBeNull();
+  expect(diagnosticsButtonBounds!.height).toBeLessThanOrEqual(72);
+  expect(diagnosticsChevronBounds!.width).toBeLessThanOrEqual(20);
+  expect(diagnosticsChevronBounds!.height).toBeLessThanOrEqual(20);
   await page.getByRole("button", { name: "Add preset" }).click();
   await expect(page.getByLabel("Model")).toContainText("GPT Test");
   await expect(page.getByLabel("Model")).toContainText("GPT Test Pro");
@@ -1138,8 +1418,9 @@ test("shows real Settings controls and paired device management", async ({ page 
 
 test("shows privacy-safe live capability proof", async ({ page }) => {
   await openAuthenticatedApp(page);
-  await page.getByRole("button", { name: /Open Capability Center/ }).click();
-  const center = page.getByRole("dialog", { name: "Capability Center" });
+  await page.getByRole("button", { name: "Open Settings" }).click();
+  await page.getByRole("button", { name: /Open System Diagnostics/ }).click();
+  const center = page.getByRole("dialog", { name: "System Diagnostics" });
   await expect(center).toBeVisible();
   await expect(center.getByText("Native controls", { exact: true })).toBeVisible();
   await expect(center.getByText("Composer attachment", { exact: true })).toBeVisible();

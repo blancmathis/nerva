@@ -2,6 +2,8 @@ import type {
   Command,
   CodexUsageSnapshot,
   ContextRoomStatus,
+  DiagramDocument,
+  DiagramUpdateRequest,
   NativeSessionsResponse,
   PairedDevice,
   ProductState,
@@ -232,6 +234,12 @@ export interface BridgeController {
     readonly message: string;
   }>;
   readonly deleteSavedDrawing: (drawingId: string) => Promise<{ readonly ok: boolean; readonly message: string }>;
+  readonly fetchDiagrams: (threadId: string) => Promise<readonly DiagramDocument[]>;
+  readonly updateDiagram: (
+    diagramId: string,
+    threadId: string,
+    input: DiagramUpdateRequest,
+  ) => Promise<DiagramDocument>;
   readonly clearAck: () => void;
 }
 
@@ -1010,6 +1018,16 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
     loadSavedDrawing,
     saveDrawing,
     deleteSavedDrawing,
+    fetchDiagrams: useCallback(async (threadId) => {
+      const client = clientRef.current;
+      if (!client) throw new Error("Mac connection is unavailable");
+      return client.fetchDiagrams(threadId);
+    }, []),
+    updateDiagram: useCallback(async (diagramId, threadId, input) => {
+      const client = clientRef.current;
+      if (!client) throw new Error("Mac connection is unavailable");
+      return client.updateDiagram(diagramId, threadId, input);
+    }, []),
     clearAck: useCallback(() => setLastAck(null), []),
   };
 }

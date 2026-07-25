@@ -63,6 +63,7 @@ export class MockBridge {
   commandRequests = 0;
   socketCommandAttempts = 0;
   productStateSaveRequests = 0;
+  diagramUpdateRequests = 0;
 
   private authorized: boolean;
   private bridgeInstanceId = INITIAL_BRIDGE_INSTANCE_ID;
@@ -108,6 +109,7 @@ export class MockBridge {
     },
   };
   private savedDrawings: Array<Readonly<Record<string, unknown>>> = [];
+  private diagrams: Array<Readonly<Record<string, unknown>>> = [];
   private readonly completedCommands = new Map<string, {
     readonly sequence: number;
     readonly targetThreadId: string | null;
@@ -181,6 +183,10 @@ export class MockBridge {
         modelReasoningPresets: [...presets],
       },
     };
+  }
+
+  setDiagrams(diagrams: readonly Readonly<Record<string, unknown>>[]): void {
+    this.diagrams = [...diagrams];
   }
 
   setCapabilitiesAvailable(available: boolean): void {
@@ -457,6 +463,49 @@ export class MockBridge {
       const drawingId = decodeURIComponent(url.pathname.slice("/api/saved-drawings/".length));
       this.savedDrawings = this.savedDrawings.filter((candidate) => candidate.id !== drawingId);
       await fulfillJson(route, 200, { ok: true, data: { deleted: true, drawingId } });
+      return;
+    }
+    if (url.pathname === "/api/diagrams" && request.method() === "GET") {
+      const threadId = url.searchParams.get("threadId");
+      await fulfillJson(route, 200, {
+        ok: true,
+        data: {
+          diagrams: this.diagrams
+            .filter((diagram) => diagram.threadId === threadId)
+            .sort((left, right) => Number(right.updatedAt) - Number(left.updatedAt)),
+        },
+      });
+      return;
+    }
+    if (url.pathname.startsWith("/api/diagrams/") && request.method() === "PUT") {
+      const diagramId = decodeURIComponent(url.pathname.slice("/api/diagrams/".length));
+      const threadId = url.searchParams.get("threadId");
+      const current = this.diagrams.find((diagram) => (
+        diagram.diagramId === diagramId && diagram.threadId === threadId
+      ));
+      if (!current) {
+        await fulfillJson(route, 404, errorEnvelope("NOT_FOUND", "Diagram not found."));
+        return;
+      }
+      const input = request.postDataJSON() as Readonly<Record<string, unknown>>;
+      if (input.expectedRevision !== current.revision) {
+        await fulfillJson(route, 409, errorEnvelope("CONFLICT", "Diagram changed."));
+        return;
+      }
+      const { expectedRevision: _expectedRevision, ...editable } = input;
+      const next = {
+        ...current,
+        ...editable,
+        revision: Number(current.revision) + 1,
+        updatedAt: Date.now(),
+        lastEditedBy: "ipad",
+      };
+      this.diagrams = [
+        next,
+        ...this.diagrams.filter((diagram) => diagram.diagramId !== diagramId),
+      ];
+      this.diagramUpdateRequests += 1;
+      await fulfillJson(route, 200, { ok: true, data: next });
       return;
     }
     if (url.pathname === "/api/capabilities" && request.method() === "GET") {

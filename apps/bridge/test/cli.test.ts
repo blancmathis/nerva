@@ -1,6 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../src/cli.js";
 import type { SetupDependencies } from "../src/setup.js";
+
+const cliRoots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(cliRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 function io() {
   const stdout: string[] = [];
@@ -14,6 +24,65 @@ function io() {
 }
 
 describe("runCli", () => {
+  it("publishes one structured diagram to the exact ambient Codex task", async () => {
+    const output = io();
+    const root = await mkdtemp(join(tmpdir(), "nerva-cli-diagram-"));
+    cliRoots.push(root);
+    const file = join(root, "diagram.json");
+    await writeFile(file, JSON.stringify({
+      title: "Collaborative architecture",
+      nodes: [
+        {
+          id: "codex",
+          label: "Codex",
+          x: 100,
+          y: 100,
+          width: 220,
+          height: 96,
+          shape: "rectangle",
+          tone: "blue",
+        },
+      ],
+      edges: [],
+    }));
+    const publish = vi.fn(async (input) => ({
+      ...input,
+      version: 1 as const,
+      diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+      revision: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: "codex" as const,
+      lastEditedBy: "codex" as const,
+      sourceLabel: null,
+    }));
+    const previousThreadId = process.env.CODEX_THREAD_ID;
+    process.env.CODEX_THREAD_ID = "019f7ec2-68eb-7183-bb3a-0e67312a8ba1";
+    try {
+      const code = await runCli(["diagram", "publish", "--file", file], {
+        stdout: output.writeOut,
+        stderr: output.writeError,
+        loadDiagrams: async () => ({
+          publish,
+          list: async () => [],
+          get: async () => { throw new Error("unused"); },
+        }),
+      });
+      expect(code).toBe(0);
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: process.env.CODEX_THREAD_ID,
+          title: "Collaborative architecture",
+        }),
+        "codex",
+      );
+      expect(output.stdout.join("\n")).toContain("Open Draw in Nerva");
+    } finally {
+      if (previousThreadId === undefined) delete process.env.CODEX_THREAD_ID;
+      else process.env.CODEX_THREAD_ID = previousThreadId;
+    }
+  });
+
   it("installs the background Mac bridge and prints one QR without a second terminal", async () => {
     const output = io();
     const pairing = {

@@ -27,6 +27,7 @@ import {
   MicIcon,
   PencilIcon,
   PinIcon,
+  SlidersIcon,
   SparkIcon,
   ArrowUpIcon,
   XIcon,
@@ -396,7 +397,7 @@ export function SessionWorkspace({
 
           <div className="cp-model-control">
             <div className="cp-control-header cp-control-header--static">
-              <span><SlidersGlyph /></span><span><strong>Model + Reasoning</strong><small>{selectedModel?.displayName ?? currentModel ?? "Codex model"} · {selectedPreset?.reasoning ?? currentReasoningMode ?? "loading"}</small></span>
+              <span><SlidersIcon /></span><span><strong>Model + Reasoning</strong><small>{selectedModel?.displayName ?? currentModel ?? "Codex model"} · {selectedPreset?.reasoning ?? currentReasoningMode ?? "loading"}</small></span>
             </div>
             <div className="cp-reasoning-slider">
               <input
@@ -488,8 +489,4 @@ export function SessionWorkspace({
       )}
     </main>
   );
-}
-
-function SlidersGlyph() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>;
 }

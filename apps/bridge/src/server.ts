@@ -11,6 +11,7 @@ import {
   CommandAckSchema,
   CommandRequestSchema,
   CommandStatusResponseSchema,
+  DiagramUpdateRequestSchema,
   ProductStateUpdateRequestSchema,
   SavedDrawingCreateRequestSchema,
   SiteQaRecordedActionSchema,
@@ -81,6 +82,10 @@ import { startRuntimeCleanupSchedule } from "./runtime-cleanup.js";
 import { ProductStateConflictError, ProductStateStore } from "./product-state-store.js";
 import { SavedDrawingsStore } from "./saved-drawings-store.js";
 import {
+  DiagramConflictError,
+  DiagramStore,
+} from "./diagram-store.js";
+import {
   acquireBridgeLifetimeLease,
   type BridgeLifetimeLease,
 } from "./lifetime-lease.js";
@@ -110,6 +115,8 @@ const pairRequestSchema = z.object({
 
 const deviceParamsSchema = z.object({ id: z.uuid() }).strict();
 const savedDrawingParamsSchema = z.object({ id: z.uuid() }).strict();
+const diagramParamsSchema = z.object({ id: z.uuid() }).strict();
+const diagramQuerySchema = z.object({ threadId: z.uuid() }).strict();
 const commandParamsSchema = z.object({ commandId: z.uuid() }).strict();
 const siteParamsSchema = z.object({ siteId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/u) }).strict();
 const browserTabParamsSchema = z.object({ tabId: z.string().regex(/^tab_[a-f0-9]{24}$/u) }).strict();
@@ -478,6 +485,7 @@ async function startBridgeWithLifetimeLease(
     publicOrigin?.startsWith("https://") === true ? publicOrigin : "https://nerva.local",
   );
   const savedDrawingsStore = new SavedDrawingsStore({ paths });
+  const diagramStore = new DiagramStore({ paths });
   const adapter = options.adapter ?? new CodexDesktopAdapter();
   // One process-local domain binds state-issued exact-target proofs to this
   // provider only. Tokens minted by any other domain fail at the write sink.
@@ -625,6 +633,7 @@ async function startBridgeWithLifetimeLease(
   const browserTabConcurrency = new DualScopeConcurrencyLimiter(2, 4);
   const imageCommandConcurrency = new DualScopeConcurrencyLimiter(1, 2);
   const savedDrawingConcurrency = new DualScopeConcurrencyLimiter(1, 2);
+  const diagramConcurrency = new DualScopeConcurrencyLimiter(1, 2);
   const webSocketTickets = new WebSocketTicketStore();
   const webSocketAdmissions = new WebSocketAdmissionGate(
     options.maxWebSocketConnections ?? MAX_WS_CONNECTIONS,
@@ -1168,6 +1177,50 @@ async function startBridgeWithLifetimeLease(
     try {
       await savedDrawingsStore.delete(id);
       return { ok: true, data: { deleted: true, drawingId: id } };
+    } finally {
+      lease.release();
+    }
+  });
+
+  app.get("/api/diagrams", async (request, reply) => {
+    if (await authenticate(request, reply) === null) return;
+    const { threadId } = diagramQuerySchema.parse(request.query);
+    return { ok: true, data: { diagrams: await diagramStore.list(threadId) } };
+  });
+
+  app.get("/api/diagrams/:id", async (request, reply) => {
+    if (await authenticate(request, reply) === null) return;
+    const { id } = diagramParamsSchema.parse(request.params);
+    return { ok: true, data: await diagramStore.get(id) };
+  });
+
+  app.put("/api/diagrams/:id", { bodyLimit: 512 * 1024 }, async (request, reply) => {
+    requireOrigin(request);
+    const device = await authenticate(request, reply);
+    if (device === null || !await allowMutation(device, reply)) return;
+    const { id } = diagramParamsSchema.parse(request.params);
+    const { threadId } = diagramQuerySchema.parse(request.query);
+    const lease = diagramConcurrency.tryAcquire(device.id);
+    if (lease === null) return sendRateLimit(reply, 1, "Another diagram change is still in progress");
+    try {
+      const input = DiagramUpdateRequestSchema.parse(request.body);
+      try {
+        return {
+          ok: true,
+          data: await diagramStore.update(id, threadId, input, "ipad"),
+        };
+      } catch (error) {
+        if (error instanceof DiagramConflictError) {
+          return reply.code(409).send({
+            ok: false,
+            error: {
+              ...apiError("CONFLICT", error.message),
+              details: { currentRevision: error.current.revision },
+            },
+          });
+        }
+        throw error;
+      }
     } finally {
       lease.release();
     }

@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { MockBridge } from "./mock-bridge";
+import { THREADS } from "./fixture-data";
 
 async function expectNoSeriousAccessibilityViolations(page: Page, surface: string): Promise<void> {
   await page.evaluate(async () => {
@@ -26,7 +27,7 @@ async function expectNoSeriousAccessibilityViolations(page: Page, surface: strin
   expect(violations, `${surface} has serious or critical accessibility violations`).toEqual([]);
 }
 
-async function pairFixture(page: Page): Promise<void> {
+async function pairFixture(page: Page): Promise<MockBridge> {
   const bridge = new MockBridge({ authorized: false });
   await bridge.install(page);
   await page.goto("/pair?nonce=fixture-pairing-code");
@@ -34,10 +35,11 @@ async function pairFixture(page: Page): Promise<void> {
   await expectNoSeriousAccessibilityViolations(page, "Pairing");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
+  return bridge;
 }
 
 test("rendered Nerva surfaces have no serious or critical axe violations", async ({ page }) => {
-  await pairFixture(page);
+  const bridge = await pairFixture(page);
 
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
@@ -52,9 +54,30 @@ test("rendered Nerva surfaces have no serious or critical axe violations", async
   await expectNoSeriousAccessibilityViolations(page, "Capture Inbox");
   await page.getByRole("button", { name: "Session", exact: true }).click();
 
+  bridge.setDiagrams([{
+    version: 1,
+    diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+    threadId: THREADS[0].id,
+    revision: 0,
+    title: "Accessible collaboration loop",
+    nodes: [
+      { id: "codex", label: "Codex proposes", x: 160, y: 210, width: 280, height: 116, shape: "rectangle", tone: "blue" },
+      { id: "nerva", label: "Nerva refines", x: 760, y: 210, width: 280, height: 116, shape: "ellipse", tone: "violet" },
+    ],
+    edges: [
+      { id: "handoff", from: "codex", to: "nerva", label: "structured revision", style: "solid" },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+    createdBy: "codex",
+    lastEditedBy: "codex",
+    sourceLabel: "Accessibility fixture",
+  }]);
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toBeVisible();
-  await expectNoSeriousAccessibilityViolations(page, "Drawing");
+  await page.getByRole("button", { name: "Edit diagram block Codex proposes" }).click();
+  await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page, "Drawing with collaborative diagram");
   await page.getByRole("button", { name: "Close drawing studio" }).click();
 
   await page.getByRole("button", { name: "Saved Drawings" }).click();

@@ -31,6 +31,7 @@ import { BridgeLifetimeLeaseError } from "../src/lifetime-lease.js";
 import { listUnresolvedCommands } from "../src/idempotency.js";
 import type { BrowserTabRuntime } from "../src/browser-tab-runtime.js";
 import { PushSubscriptionStore } from "../src/push-notifications.js";
+import { DiagramStore } from "../src/diagram-store.js";
 
 const THREAD_ID = "019f7ec2-68eb-7183-bb3a-0e67312a8ba1";
 const temporaryRoots: string[] = [];
@@ -989,6 +990,89 @@ describe("bridge routes", () => {
       headers: { host: "pad.example.test", origin: "https://pad.example.test", authorization },
     });
     expect(deleted.json().data).toEqual({ deleted: true, drawingId });
+  });
+
+  it("lists exact-task agent diagrams and saves one optimistic iPad revision", async () => {
+    const { handle, paths, authorization } = await setup();
+    const published = await new DiagramStore({ paths }).publish({
+      threadId: THREAD_ID,
+      title: "Bridge diagram",
+      nodes: [
+        {
+          id: "codex",
+          label: "Codex",
+          x: 100,
+          y: 100,
+          width: 220,
+          height: 96,
+          shape: "rectangle",
+          tone: "blue",
+        },
+      ],
+      edges: [],
+    });
+    const authenticated = { host: "pad.example.test", authorization };
+    const listed = await handle.app.inject({
+      method: "GET",
+      url: `/api/diagrams?threadId=${THREAD_ID}`,
+      headers: authenticated,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().data.diagrams).toHaveLength(1);
+    expect(listed.json().data.diagrams[0]).toMatchObject({
+      diagramId: published.diagramId,
+      revision: 0,
+      threadId: THREAD_ID,
+    });
+
+    const missingOrigin = await handle.app.inject({
+      method: "PUT",
+      url: `/api/diagrams/${published.diagramId}?threadId=${THREAD_ID}`,
+      headers: authenticated,
+      payload: {
+        expectedRevision: 0,
+        title: "iPad revision",
+        nodes: published.nodes,
+        edges: published.edges,
+      },
+    });
+    expect(missingOrigin.statusCode).toBe(403);
+
+    const saved = await handle.app.inject({
+      method: "PUT",
+      url: `/api/diagrams/${published.diagramId}?threadId=${THREAD_ID}`,
+      headers: { ...authenticated, origin: "https://pad.example.test" },
+      payload: {
+        expectedRevision: 0,
+        title: "iPad revision",
+        nodes: published.nodes,
+        edges: published.edges,
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().data).toMatchObject({
+      diagramId: published.diagramId,
+      revision: 1,
+      lastEditedBy: "ipad",
+      title: "iPad revision",
+    });
+
+    const stale = await handle.app.inject({
+      method: "PUT",
+      url: `/api/diagrams/${published.diagramId}?threadId=${THREAD_ID}`,
+      headers: { ...authenticated, origin: "https://pad.example.test" },
+      payload: {
+        expectedRevision: 0,
+        title: "Stale revision",
+        nodes: published.nodes,
+        edges: published.edges,
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toMatchObject({
+      code: "CONFLICT",
+      details: { currentRevision: 1 },
+    });
   });
 
   it("rate-limits failed bearer authentication without charging valid snapshot polling", async () => {
