@@ -123,6 +123,7 @@ describe("loopback-only CDP discovery", () => {
     const randomPort = 54_321;
     const found = await discoverCodexCdpTarget({
       processArgs: [],
+      devToolsActivePortFiles: defaultDevToolsActivePortFiles("darwin"),
       readFile: async (path) => {
         readPaths.push(path);
         if (path.endsWith("/Codex/DevToolsActivePort")) return `${randomPort}\n/devtools/browser/test`;
@@ -143,6 +144,7 @@ describe("loopback-only CDP discovery", () => {
   it("rejects a random-port endpoint that advertises only a non-loopback renderer", async () => {
     await expect(discoverCodexCdpTarget({
       processArgs: [],
+      devToolsActivePortFiles: defaultDevToolsActivePortFiles("darwin"),
       readFile: async (path) => {
         if (path.endsWith("/Codex/DevToolsActivePort")) return "54322\n/devtools/browser/test";
         throw new Error("not present");

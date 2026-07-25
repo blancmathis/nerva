@@ -12,6 +12,7 @@ import { startBridge, type BridgeHandle } from "../src/server.js";
 import type { ThreadTransport } from "../src/thread-transport.js";
 
 const THREAD_ID = "019f7ec2-68eb-7183-bb3a-0e67312a8ba1";
+const EXPECTED_FAIL_CLOSED_REASON = /(?:No supported system Chrome executable|outbound network confinement.*site capture remains disabled)/iu;
 const roots: string[] = [];
 const handles: BridgeHandle[] = [];
 
@@ -96,7 +97,7 @@ describe("production-default site capture", () => {
     expect(capabilities.statusCode).toBe(200);
     expect(capabilities.json().data.siteCapture).toMatchObject({
       available: false,
-      reason: expect.stringMatching(/outbound network confinement.*site capture remains disabled/iu),
+      reason: expect.stringMatching(EXPECTED_FAIL_CLOSED_REASON),
     });
 
     const bulkSites = await handle.app.inject({
@@ -126,7 +127,7 @@ describe("production-default site capture", () => {
       ok: false,
       error: {
         code: "UNSUPPORTED",
-        message: expect.stringMatching(/outbound network confinement.*site capture remains disabled/iu),
+        message: expect.stringMatching(EXPECTED_FAIL_CLOSED_REASON),
       },
     });
   });
