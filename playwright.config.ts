@@ -8,6 +8,7 @@ if (configuredPort !== e2ePort) process.env.CODEX_PAD_E2E_PORT = String(e2ePort)
 const localBrowser = process.env.CODEX_PAD_E2E_USE_SYSTEM_CHROME === "1"
   ? { channel: "chrome" as const }
   : {};
+const isCi = process.env.CI === "true";
 
 export default defineConfig({
   testDir: "./apps/web/e2e",
@@ -17,7 +18,11 @@ export default defineConfig({
   fullyParallel: false,
   // Keep service-worker/WebSocket startup bounded across the Chromium and
   // WebKit responsive matrices on the same deterministic local fixture.
-  workers: 3,
+  // GitHub's two-core hosted runner becomes timing-bound when three WebKit
+  // contexts run together. Keep the same matrix and zero-retry policy while
+  // matching concurrency and per-test budget to that slower environment.
+  workers: isCi ? 2 : 3,
+  timeout: isCi ? 60_000 : 30_000,
   retries: 0,
   reporter: "list",
   use: {
