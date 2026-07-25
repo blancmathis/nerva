@@ -26,12 +26,12 @@ Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
 Codex Desktop / bundled Codex: 26.721.41059 build 5848 / codex-cli 0.146.0-alpha.3.1
 Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
 iPad / iPadOS / Pencil: not recorded in this run
-Evidence: current checkout and clean local Git clone
+Evidence: current checkout, clean local Git clone and GitHub Actions run 30172381118
 ```
 
 Historical release-baseline result at `b94e30a`: check, 889 unit tests, build, 381.70 KiB bundle ceiling, release audit, Context Room doctor, screenshots and both sequential/parallel E2E matrices passed. Each baseline matrix recorded 250 passes, eight explicit profile skips, zero failures and no retry. The critical Drawing scenarios passed 72/72 over three repetitions.
 
-Current pre-alpha result: a clean clone of `383f5c4` passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 902 unit tests plus 11/11 probe-safety tests, build, a 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 432-file release audit, Context Room doctor and both npm audits. Collaborative diagrams, the compact Home header and `Settings → System Diagnostics` are included. Physical iPad/Pencil checks remain deliberately unchecked.
+Current pre-alpha result: a clean clone of `383f5c4` passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 902 unit tests plus 11/11 probe-safety tests, build, a 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 432-file release audit, Context Room doctor and both npm audits. GitHub Actions run `30172381118` reproduced the hosted CI gate on `b6e731c` with the same 275 passes and 13 explicit skips. Collaborative diagrams, the compact Home header and `Settings → System Diagnostics` are included. Physical iPad/Pencil checks remain deliberately unchecked.
 
 Runtime result: **blocked/degraded**. Nerva doctor reports seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
 

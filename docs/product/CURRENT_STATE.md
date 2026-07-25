@@ -24,7 +24,7 @@ Le parcours privé Tailscale et le pairing ont fonctionné manuellement sur le M
 
 Le canal app-server local a été prouvé en direct sur une version antérieure, mais cette preuve n'est pas extrapolée à la version installée aujourd'hui. Le 25 juillet 2026, `npm run doctor` est rouge : sept writers app-server stdio indépendants sont observés, le socket géré est absent et l'ownership Desktop n'est pas attestée. Le cache de schémas correspond bien au Codex Desktop installé (`26.721.41059`, build `5848`, `codex-cli 0.146.0-alpha.3.1`), mais cette compatibilité de schéma n'établit pas une topologie live sûre. `/api/health` répond donc honnêtement `state: degraded`, `desktopOwnershipVerified: false` et `multiImageInputVerified: false`.
 
-Le dépôt possède désormais un historique Git local et une branche de préparation de release. Aucun remote, push, déploiement ou tag n'a été créé. Les preuves restent locales : aucune exécution GitHub Actions n'est revendiquée.
+Le code source est publié comme pre-alpha dans le dépôt public [`blancmathis/nerva`](https://github.com/blancmathis/nerva), sur `main` uniquement. Aucun tag, GitHub Release, package npm ou déploiement n'a été créé. GitHub Actions [run 30172381118](https://github.com/blancmathis/nerva/actions/runs/30172381118) est vert sur `b6e731c` : Check, 902 tests unitaires plus 11/11 tests de sûreté, build, budget bundle, 275 E2E avec 13 exclusions explicites, audit release, Context Room doctor et audit des dépendances ont réussi.
 
 ## Surfaces réellement présentes
 
