@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { initializeReviewStore } from "./lib/review-store";
 import { startPwaUpdateMonitor } from "./lib/pwa-updates";
-import "./styles.css";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import "./styles/studios.css";

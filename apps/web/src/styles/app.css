@@ -10,6 +10,12 @@ body,
   overflow: hidden;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   color: var(--cp-ink);
   background: var(--cp-canvas);
@@ -45,6 +51,19 @@ button:disabled {
 :where(button, input, select, textarea):focus-visible {
   outline: 3px solid color-mix(in srgb, var(--cp-blue) 82%, white);
   outline-offset: 3px;
+}
+
+.sr-only,
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 .app-shell.cp-app-shell {
@@ -3144,8 +3163,13 @@ button:disabled {
   padding: 0 13px;
   border: 1px solid var(--cp-stroke);
   border-radius: 12px;
-  color: var(--cp-ink-secondary);
-  background: var(--cp-content);
+  color: var(--cp-ink);
+  background: var(--cp-content-strong);
+}
+
+.cp-saved-drawings__toolbar select {
+  color: var(--cp-ink);
+  background-color: var(--cp-content-strong);
 }
 
 .cp-saved-drawings__message {
@@ -3387,6 +3411,20 @@ button:disabled {
   pointer-events: auto;
 }
 
+.ack-mark {
+  width: 7px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--cp-green);
+  box-shadow: 0 0 14px rgba(var(--cp-green-rgb), .35);
+}
+
+.ack-toast.is-error .ack-mark {
+  background: var(--cp-red);
+  box-shadow: 0 0 14px rgba(var(--cp-red-rgb), .35);
+}
+
 .cp-return-banner > span {
   display: grid;
   gap: 3px;
@@ -3495,6 +3533,12 @@ button:disabled {
   margin-bottom: 34px;
   color: var(--cp-ink);
   font-weight: 650;
+}
+
+.cp-preset-empty {
+  margin: 18px 4px 7px;
+  color: var(--cp-ink-tertiary);
+  font-size: 11px;
 }
 
 .pairing-brand .brand-grid {

@@ -23,8 +23,6 @@ import type {
   SavedDrawingWorkingCopy,
 } from "./components/DrawingStudio";
 import type { DrawingDeliveryStatus } from "./components/drawing-delivery";
-import { HomeDashboard } from "./components/HomeDashboard";
-import { PairingScreen } from "./components/PairingScreen";
 import { PwaUpdateBanner } from "./components/PwaUpdateBanner";
 import type {
   AllowedReviewSite,
@@ -32,10 +30,6 @@ import type {
   CapturedReviewImage,
   CaptureReviewSiteInput,
 } from "./components/ReviewStudio";
-import { SessionWorkspace } from "./components/SessionWorkspace";
-import { SiteHubPage } from "./components/SiteHubPage";
-import { BrowserSiteStudio } from "./components/BrowserSiteStudio";
-import { SettingsPage } from "./components/SettingsPage";
 import { ChevronIcon, CloseIcon } from "./components/Icons";
 import {
   createInitialHomeLayout,
@@ -63,10 +57,6 @@ import {
   isGenericApprovalBinding,
   microActionReference,
 } from "./lib/control-commands";
-import { prepareReviewImage, reviewImageBlobRef, reviewImageDataUrl } from "./lib/review-media";
-import { reviewCommand } from "./lib/review-command";
-import { getReviewBlob, loadReviewDraft } from "./lib/review-store";
-import { associatedSitePath, capturedFrameGeometry, captureViewportPreset } from "./lib/site-capture";
 import { buildProductSessions, type ProductSession } from "./lib/session-presentation";
 import {
   claimLegacyPresetRecovery,
@@ -83,9 +73,7 @@ import { useBridge } from "./lib/use-bridge";
 import { usePwaUpdate } from "./lib/pwa-updates";
 import { createUuidV4 } from "./lib/uuid";
 import { useCaptureInboxSummary } from "./lib/capture-inbox-store";
-import { blobToBase64 } from "./components/drawing-image";
 import type { OpenBrowserTab } from "./lib/bridge-client";
-import { buildSiteQaCommand } from "./lib/site-qa-command";
 import type { SiteQaSendPayload } from "./lib/site-qa-types";
 import {
   activityEventForSession,
@@ -137,6 +125,12 @@ function saveSiteSelections(value: Readonly<Record<string, string>>): void {
 const DrawingStudio = lazy(() => import("./components/DrawingStudio").then((module) => ({ default: module.DrawingStudio })));
 const ReviewStudio = lazy(() => import("./components/ReviewStudio").then((module) => ({ default: module.ReviewStudio })));
 const CaptureInboxPage = lazy(() => import("./components/CaptureInboxPage").then((module) => ({ default: module.CaptureInboxPage })));
+const PairingScreen = lazy(() => import("./components/PairingScreen").then((module) => ({ default: module.PairingScreen })));
+const HomeDashboard = lazy(() => import("./components/HomeDashboard").then((module) => ({ default: module.HomeDashboard })));
+const SessionWorkspace = lazy(() => import("./components/SessionWorkspace").then((module) => ({ default: module.SessionWorkspace })));
+const SiteHubPage = lazy(() => import("./components/SiteHubPage").then((module) => ({ default: module.SiteHubPage })));
+const BrowserSiteStudio = lazy(() => import("./components/BrowserSiteStudio").then((module) => ({ default: module.BrowserSiteStudio })));
+const SettingsPage = lazy(() => import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 
 function FeatureLoading({ label }: { readonly label: string }) {
   return <section className="feature-placeholder" aria-busy="true"><div><strong>{label}</strong><span>Opening local workspace…</span></div></section>;
@@ -1085,6 +1079,7 @@ function App() {
 
   async function sendSiteAnnotation(png: Blob) {
     if (!drawingTarget) return { ok: false, message: "The exact selected task is unavailable." };
+    const { blobToBase64 } = await import("./components/drawing-image");
     return sendDrawing({
       commandId: createId(),
       expectedBridgeInstanceId: drawingTarget.bridgeInstanceId,
@@ -1115,6 +1110,7 @@ function App() {
       return { ok: false, message: "This exact Codex task cannot accept the complete QA report right now. It remains saved locally." };
     }
     try {
+      const { buildSiteQaCommand } = await import("./lib/site-qa-command");
       const armedSkills = selectedSkillsByThread[payload.manifest.sourceThreadId] ?? [];
       const suffix = appendSkillSuffix("", armedSkills);
       const command = await buildSiteQaCommand({
@@ -1239,6 +1235,7 @@ function App() {
       };
     }
     try {
+      const { reviewCommand } = await import("./lib/review-command");
       const armedSkills = selectedSkillsByThread[payload.targetThreadId] ?? [];
       const command = await reviewCommand({
         ...payload,
@@ -1268,6 +1265,14 @@ function App() {
     ) {
       throw new Error(capabilities.siteCapture.reason ?? "Site capture is unavailable.");
     }
+    const [{ prepareReviewImage }, {
+      associatedSitePath,
+      capturedFrameGeometry,
+      captureViewportPreset,
+    }] = await Promise.all([
+      import("./lib/review-media"),
+      import("./lib/site-capture"),
+    ]);
     const { width, height } = input.viewport;
     const viewport = captureViewportPreset(width, height);
     const result = await bridge.captureSite({
@@ -1292,7 +1297,13 @@ function App() {
     };
   }
 
-  if (bridge.phase === "pairing") return <PairingScreen onPair={bridge.pair} />;
+  if (bridge.phase === "pairing") {
+    return (
+      <Suspense fallback={<FeatureLoading label="Secure pairing" />}>
+        <PairingScreen onPair={bridge.pair} />
+      </Suspense>
+    );
+  }
 
   const targetReady = Boolean(
     viewedSession
@@ -1359,6 +1370,7 @@ function App() {
       </header>
 
       <div className="cp-app-content">
+        <Suspense fallback={<FeatureLoading label="Opening workspace" />}>
         {view === "home" && homeLayout && (
           <HomeDashboard
             layout={homeLayout}
@@ -1578,6 +1590,7 @@ function App() {
             onRefreshContextRoom={bridge.refreshContextRoomStatus}
           />
         )}
+        </Suspense>
       </div>
 
       {pwa.updateReady && (

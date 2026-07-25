@@ -1,5 +1,59 @@
 /* Focused creation surfaces: Live Site, Drawing and Review. */
 
+.drawing-canvas-editor {
+  display: grid;
+  min-height: 300px;
+  grid-template-rows: auto minmax(240px, 1fr);
+}
+
+.drawing-canvas-editor__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px;
+  border-bottom: 1px solid var(--cp-stroke);
+  background: var(--cp-glass-strong);
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawing-canvas-editor__tools button,
+.drawing-canvas-editor__text,
+.drawing-canvas-editor__color {
+  min-height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--cp-stroke);
+  border-radius: 11px;
+  color: var(--cp-ink-secondary);
+  background: var(--cp-content);
+}
+
+.drawing-canvas-editor__tools button {
+  min-width: 44px;
+}
+
+.drawing-canvas-editor__tools button.is-active {
+  border-color: rgba(var(--cp-blue-rgb), .46);
+  color: var(--cp-blue);
+  background: rgba(var(--cp-blue-rgb), .11);
+}
+
+.drawing-canvas-editor__color {
+  width: 44px;
+  padding: 4px;
+}
+
+.drawing-canvas-editor__text {
+  min-width: 120px;
+}
+
+.drawing-canvas-editor__canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  background: #f7f6ef;
+}
+
 /* Live Site ------------------------------------------------------------- */
 
 .cp-browser-site {

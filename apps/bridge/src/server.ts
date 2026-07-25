@@ -988,7 +988,10 @@ async function startBridgeWithLifetimeLease(
         body.nonce,
         origin,
         () => credentialStore.issue(body.deviceName),
-        async (issued) => { await credentialStore.revoke(issued.device.id); },
+        async (issued) => {
+          await credentialStore.revoke(issued.device.id);
+          await pendingDeviceCleanup.get(issued.device.id);
+        },
       );
     } catch (error) {
       if (error instanceof CredentialCapacityError) {
@@ -1482,6 +1485,7 @@ async function startBridgeWithLifetimeLease(
     const { id } = deviceParamsSchema.parse(request.params);
     const revoked = await credentialStore.revoke(id);
     if (!revoked) return reply.code(404).send({ ok: false, error: apiError("NOT_FOUND", "Device was not found") });
+    await pendingDeviceCleanup.get(id);
     return { ok: true, data: { revoked: true, deviceId: id } };
   });
 
@@ -1591,11 +1595,19 @@ async function startBridgeWithLifetimeLease(
     }
   });
 
+  const pendingDeviceCleanup = new Map<string, Promise<void>>();
   const closeDeviceSockets = (deviceId: string): void => {
     webSocketTickets.revokeDevice(deviceId);
-    void pushSubscriptions.removeDevice(deviceId).catch(() => {
-      logger.warn("Nerva could not remove the revoked device's Web Push subscription.");
-    });
+    const cleanup = (pendingDeviceCleanup.get(deviceId) ?? Promise.resolve())
+      .then(() => pushSubscriptions.removeDevice(deviceId))
+      .then(() => undefined)
+      .catch(() => {
+        logger.warn("Nerva could not remove the revoked device's Web Push subscription.");
+      })
+      .finally(() => {
+        if (pendingDeviceCleanup.get(deviceId) === cleanup) pendingDeviceCleanup.delete(deviceId);
+      });
+    pendingDeviceCleanup.set(deviceId, cleanup);
     for (const record of sockets) {
       if (record.device.id === deviceId) record.socket.close(4401, "credential revoked");
     }
@@ -1677,6 +1689,9 @@ async function startBridgeWithLifetimeLease(
     for (const record of sockets) record.socket.close(1001, "bridge stopping");
     await attempt(() => runtimeCleanup.stop());
     await attempt(() => app.close());
+    await attempt(async () => {
+      await Promise.all([...pendingDeviceCleanup.values()]);
+    });
     // No request can enqueue a new ledger write after Fastify has closed. Wait
     // for active command finalization and every prune snapshot before allowing
     // another bridge or offline administrator to acquire the data-root lease.
@@ -1698,7 +1713,11 @@ async function startBridgeWithLifetimeLease(
     createPairing(origin, deviceNameHint) {
       return pairingStore.rotate({ publicOrigin: origin, ...(deviceNameHint === undefined ? {} : { deviceNameHint }) });
     },
-    revokeDevice(deviceId) { return credentialStore.revoke(deviceId); },
+    async revokeDevice(deviceId) {
+      const revoked = await credentialStore.revoke(deviceId);
+      await pendingDeviceCleanup.get(deviceId);
+      return revoked;
+    },
     close() {
       closePromise ??= closeBridge();
       return closePromise;

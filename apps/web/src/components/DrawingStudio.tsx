@@ -1622,6 +1622,7 @@ export function DrawingStudio({
             ref={cameraInputRef}
             className="visually-hidden"
             type="file"
+            aria-label="Capture drawing background with camera"
             accept="image/*"
             capture="environment"
             onChange={(event) => { setImportSourceOpen(false); void importImage(event); }}
@@ -1631,6 +1632,7 @@ export function DrawingStudio({
             ref={fileInputRef}
             className="visually-hidden"
             type="file"
+            aria-label="Choose drawing background from photos"
             accept={PHOTO_IMPORT_ACCEPT}
             onChange={(event) => { setImportSourceOpen(false); void importImage(event); }}
             tabIndex={-1}
@@ -1639,6 +1641,7 @@ export function DrawingStudio({
             ref={filesInputRef}
             className="visually-hidden"
             type="file"
+            aria-label="Choose drawing background from files"
             accept={PHOTO_IMPORT_ACCEPT}
             onChange={(event) => { setImportSourceOpen(false); void importImage(event); }}
             tabIndex={-1}

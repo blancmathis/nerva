@@ -13,7 +13,7 @@ export default defineConfig({
   testDir: "./apps/web/e2e",
   testMatch: process.env.CODEX_PAD_CAPTURE_SCREENSHOTS === "1"
     ? "screenshots.spec.ts"
-    : ["codex-pad.spec.ts", "pwa-offline.spec.ts", "review-iteration.spec.ts"],
+    : ["accessibility.spec.ts", "codex-pad.spec.ts", "pwa-offline.spec.ts", "review-iteration.spec.ts"],
   fullyParallel: false,
   // Keep service-worker/WebSocket startup bounded across the Chromium and
   // WebKit responsive matrices on the same deterministic local fixture.

@@ -26,11 +26,12 @@
     "fixture:web": "npm run build:packages && npm run build --workspace @codex-pad/web && tsx apps/web/e2e/fixture-server.ts",
     "test:integration": "CODEX_PAD_REAL_INTEGRATION=1 vitest run apps/bridge/test/real-app-server.integration.test.ts",
     "check": "npm run build:packages && npm run check --workspace @codex-pad/protocol && npm run typecheck --workspace @codex-pad/codex-desktop && npm run check --workspace @codex-pad/drawing && npm run check --workspace @codex-pad/review && npm run check --workspace @codex-pad/site-review && npm run check --workspace @codex-pad/web && npm run check --workspace @codex-pad/bridge",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "build:packages": "npm run build --workspace @codex-pad/protocol && npm run build --workspace @codex-pad/codex-desktop && npm run build --workspace @codex-pad/drawing && npm run build --workspace @codex-pad/review && npm run build --workspace @codex-pad/site-review",
     "build:apps": "npm run build --workspace @codex-pad/web && npm run build --workspace @codex-pad/bridge",
     "build": "npm run build:packages && npm run build:apps",
     "start": "npm run build && node apps/bridge/dist/cli.js start",
-    "validate": "npm run check && npm test && npm run build && npm run test:e2e && npm run audit:release",
+    "validate": "npm run check && npm test && npm run build && npm run check:bundle && npm run test:e2e && npm run audit:release",
     "licenses:generate": "tsx scripts/generate-third-party-inventory.ts",
     "audit:release": "tsx scripts/audit-release.ts",
     "probe:multi-image": "node scripts/multi-image-capability-probe.mjs",
@@ -39,6 +40,7 @@
     "context-room:doctor": "context-room doctor --root . --strict"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.62.0",
     "@types/node": "^24.10.1",
     "@types/qrcode": "^1.5.6",

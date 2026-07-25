@@ -365,11 +365,18 @@ describe("DrawingStudio routing", () => {
   });
 
   it("clears the working draft after a confirmed send and does not recreate it on close", async () => {
+    const deliveredTarget: DrawingTarget = {
+      ...firstTarget,
+      threadId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd1",
+      threadKey: "native:019f7ec2-68eb-7183-bb3a-0e67312a8bd1",
+      title: "Delivered drawing task",
+    };
+    await deleteDrawingDraft(deliveredTarget.threadId);
     const onClose = vi.fn();
     const view = render(
       <DrawingStudio
         open
-        target={firstTarget}
+        target={deliveredTarget}
         connected
         onClose={onClose}
         onSend={vi.fn().mockResolvedValue({ ok: true, message: "Attached" })}
@@ -394,14 +401,14 @@ describe("DrawingStudio routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    await waitFor(async () => expect(await loadDrawingDraft(firstTarget.threadId)).toBeNull());
+    await waitFor(async () => expect(await loadDrawingDraft(deliveredTarget.threadId)).toBeNull());
     view.unmount();
-    await waitFor(async () => expect(await loadDrawingDraft(firstTarget.threadId)).toBeNull());
+    await waitFor(async () => expect(await loadDrawingDraft(deliveredTarget.threadId)).toBeNull());
 
     render(
       <DrawingStudio
         open
-        target={firstTarget}
+        target={deliveredTarget}
         connected
         onClose={vi.fn()}
         onSend={vi.fn()}

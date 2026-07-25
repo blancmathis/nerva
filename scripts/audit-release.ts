@@ -386,7 +386,10 @@ async function main(): Promise<void> {
       candidate.startsWith("apps/web/public/"),
   )) {
     if (!textExtensions.test(file) || /\.test\.[cm]?[jt]sx?$/u.test(file)) continue;
-    const text = await readFile(resolve(root, file), "utf8");
+    const absolute = resolve(root, file);
+    const metadata = await stat(absolute).catch(() => undefined);
+    if (!metadata?.isFile()) continue;
+    const text = await readFile(absolute, "utf8");
     const remoteRuntimePatterns = [
       /<(?:script|img|iframe|source)\b[^>]*\bsrc=["']https?:\/\//iu,
       /<link\b[^>]*\bhref=["']https?:\/\//iu,
