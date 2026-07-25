@@ -4,7 +4,7 @@
 
 > **Current compatibility warning (25 July 2026):** on Codex Desktop `26.721.41059` build `5848`, doctor observes seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. The schema cache is current, Tailscale/bridge checks are green and pairing may still work, but app-server-backed mutations remain degraded. Do not repeat Desktop restarts or kill writers blindly; wait for a version-compatible supported topology and rerun doctor.
 
-The legacy `npm run setup` command remains inspection/local-state only. The separate `npm run setup:mac` command is explicit authorization to run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary, create or update Codex Pad's bridge LaunchAgent, set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain, and configure its private Serve route. It does not quit or relaunch Codex Desktop, use Funnel, reset unrelated Serve routes, or bind the bridge outside loopback. The environment value affects subsequently launched GUI processes; save work before any manual Desktop relaunch.
+The legacy `npm run setup` command remains inspection/local-state only. The separate `npm run setup:mac` command is explicit authorization to run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary, create or update Nerva's bridge LaunchAgent, set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain, and configure its private Serve route. It does not quit or relaunch Codex Desktop, use Funnel, reset unrelated Serve routes, or bind the bridge outside loopback. The environment value affects subsequently launched GUI processes; save work before any manual Desktop relaunch.
 
 ## Fast path from a clone
 
@@ -28,7 +28,7 @@ invokes the installed Codex daemon manager, and verifies that
 `~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, checks
 local bridge health, and prints the QR.
 
-Setup removes the obsolete Codex Pad raw-listener LaunchAgent only when its
+Setup removes the obsolete Nerva raw-listener LaunchAgent only when its
 exact old generated shape is recognized. The command waits for the iPad in the
 same terminal. Pressing `Ctrl-C` stops only the wait; the durable Codex daemon
 and launchd bridge remain running.
@@ -94,7 +94,7 @@ Treat the capability report literally. Native Micro controls, full session list/
 
 ## 3. Inspect the managed app-server
 
-`setup:mac` configures Codex's own durable app-server control-socket service; it is not a Codex Pad-owned raw listener. Before replacing or debugging that service manually, confirm that active Codex turns are idle and investigate every existing app-server process:
+`setup:mac` configures Codex's own durable app-server control-socket service; it is not a Nerva-owned raw listener. Before replacing or debugging that service manually, confirm that active Codex turns are idle and investigate every existing app-server process:
 
 ```bash
 pgrep -lf 'codex.*app-server'
@@ -102,7 +102,7 @@ ls -l "$HOME/.codex/app-server-control/app-server-control.sock"
 /Applications/ChatGPT.app/Contents/Resources/codex app-server daemon version
 ```
 
-Do not stop or reuse an unfamiliar process merely to make doctor green. Resolve its owner and purpose first. Codex owns the durable daemon lifecycle; Codex Pad performs a WebSocket handshake directly against its private Unix control socket. `app-server proxy` is a byte relay for SSH/stdio clients and is not Codex Pad's local transport.
+Do not stop or reuse an unfamiliar process merely to make doctor green. Resolve its owner and purpose first. Codex owns the durable daemon lifecycle; Nerva performs a WebSocket handshake directly against its private Unix control socket. `app-server proxy` is a byte relay for SSH/stdio clients and is not Nerva's local transport.
 
 Verify the job and actual socket rather than assuming setup succeeded:
 
@@ -129,11 +129,11 @@ Quit and relaunch Codex Desktop only after saving composer text and waiting for 
 npm run setup -- --attest-desktop-ownership
 ```
 
-The record is bound to the socket device/inode, kernel listener address/inode/generation, exact reciprocal Desktop peer, and the process-start identities of the daemon, Desktop, and Desktop-owned client. Codex Pad revalidates it on every managed connection. The asynchronous probe returns a one-shot opaque token tied to the current client, delegate, and topology epoch; a concurrent probe or disconnect revokes it, and the managed client synchronously checks the token plus exact socket/two-peer topology at the WebSocket message write. Runtime full-ownership authority requires exactly two reciprocal clients on that generation: the attested Desktop peer and the current bridge socket client.
+The record is bound to the socket device/inode, kernel listener address/inode/generation, exact reciprocal Desktop peer, and the process-start identities of the daemon, Desktop, and Desktop-owned client. Nerva revalidates it on every managed connection. The asynchronous probe returns a one-shot opaque token tied to the current client, delegate, and topology epoch; a concurrent probe or disconnect revokes it, and the managed client synchronously checks the token plus exact socket/two-peer topology at the WebSocket message write. Runtime full-ownership authority requires exactly two reciprocal clients on that generation: the attested Desktop peer and the current bridge socket client.
 
 An unlinked socket A cannot be composed with replacement socket B; either split generation, any restart, PID reuse, version change, third peer, unsafe file mode, or topology mismatch closes the delegate and returns mutations to unavailable. This closes cooperative bridge/provider races but is not an OS sandbox against a hostile or uncooperative same-UID process. There is no environment-variable override. Do not create or edit the attestation by hand.
 
-Without that optional full-ownership attestation, Codex Pad may still perform only operations that already have an exact selected native target. For each such app-server write it issues a one-shot authority after a final slot/thread revalidation and consumes it synchronously at the WebSocket sink. Session listing/read, cwd-scoped skills, model catalog, exact Drawing/Review send and exact model/effort update can therefore work while public health remains `degraded` with `desktopOwnershipVerified=false`. Native Micro controls use their separately revalidated HID path. New-task creation and any command without a pre-existing exact target remain disabled.
+Without that optional full-ownership attestation, Nerva may still perform only operations that already have an exact selected native target. For each such app-server write it issues a one-shot authority after a final slot/thread revalidation and consumes it synchronously at the WebSocket sink. Session listing/read, cwd-scoped skills, model catalog, exact Drawing/Review send and exact model/effort update can therefore work while public health remains `degraded` with `desktopOwnershipVerified=false`. Native Micro controls use their separately revalidated HID path. New-task creation and any command without a pre-existing exact target remain disabled.
 
 ## 5. Launch Codex with loopback CDP
 
@@ -149,7 +149,7 @@ Wait for all turns to become idle, save unsent composer text, and quit Codex Des
 
 Do not use `open -na` while Codex is already running; a second application/app-server instance can create writer ambiguity. Run `npm run doctor` again. Doctor must verify the resolved listener is loopback and select the main `app://` renderer before native controls are enabled.
 
-CDP is not exposed by the Codex Pad HTTP or WebSocket API. The browser can send only fixed typed commands that the adapter translates into bridge-authored native events.
+CDP is not exposed by the Nerva HTTP or WebSocket API. The browser can send only fixed typed commands that the adapter translates into bridge-authored native events.
 
 ## 6. Installed-version protocol generation
 
@@ -180,9 +180,9 @@ The command uses synthetic generated images and writes `~/Library/Application Su
 
 With `--write-attestation`, the command first validates Node, the acknowledgement and supplied identities, then resolves the Codex binary to an executable canonical path. Only after that non-mutating preflight does it invalidate a prior record, still before app-server launch. Automatic invalidation accepts only a strict, bounded, owner-matching, mode-`0600` regular file with one link beneath verified non-symlink directories. A symlink, wrong type, wrong mode or owner, extra hard link, malformed/non-strict JSON, oversized content, or identity change stops the command without deleting the entry or creating a probe thread. Inspect and remediate that local path manually before retrying; do not point the probe at another path. A failed or interrupted probe after successful invalidation cannot leave an old result enabled.
 
-At normal startup, Codex Pad does not trust the record alone. It strictly parses the installed-version cache manifest, recomputes the deterministic SHA-256 over every non-manifest schema file, verifies the exact file list, binary path, and version, and only then projects the private attestation. Absence is normal. An invalid or stale record produces a path-free local warning and the bridge continues with the one-image Review limit.
+At normal startup, Nerva does not trust the record alone. It strictly parses the installed-version cache manifest, recomputes the deterministic SHA-256 over every non-manifest schema file, verifies the exact file list, binary path, and version, and only then projects the private attestation. Absence is normal. An invalid or stale record produces a path-free local warning and the bridge continues with the one-image Review limit.
 
-This attestation proves only the isolated binary's bounded multi-image `turn/start` behavior. It does not prove that Codex Desktop and Codex Pad share one writer, grant exact-thread authority, prove live same-Desktop delivery, or prove image input to `turn/steer`; those independent gates must still pass.
+This attestation proves only the isolated binary's bounded multi-image `turn/start` behavior. It does not prove that Codex Desktop and Nerva share one writer, grant exact-thread authority, prove live same-Desktop delivery, or prove image input to `turn/steer`; those independent gates must still pass.
 
 ## 7. Build the bridge
 
@@ -297,7 +297,7 @@ npm run codex-pad -- site add \
 
 Replace the synthetic UUID, host, and port with the intended target. `--url` remains the private loopback source; `--public-origin` records intended future metadata only. Its hostname must exactly equal the authoritative bridge MagicDNS hostname from `CODEX_PAD_PUBLIC_ORIGIN` or the persisted pairing record, while its dedicated port must equal the local source port. The CLI fails closed when that bridge origin is unavailable or the hostname differs.
 
-Use `--thread` for one exact task, or `--project "/absolute/project/cwd"` to make the registration available to sanitized sessions with the same opaque `projectId`. The API never returns that absolute cwd, and an exact thread registration takes precedence when both scopes match. The command writes only the private Codex Pad registry and reports live preview unavailable; it prints no Serve command.
+Use `--thread` for one exact task, or `--project "/absolute/project/cwd"` to make the registration available to sanitized sessions with the same opaque `projectId`. The API never returns that absolute cwd, and an exact thread registration takes precedence when both scopes match. The command writes only the private Nerva registry and reports live preview unavailable; it prints no Serve command.
 
 The stored source must use IPv4 loopback `127.0.0.1`; `localhost` is normalized and IPv6 `[::1]` is rejected. The current fixed port allowlist is `3000`, `3001`, `4173`, `4200`, `4321`, `5000`, `5173`, `5174`, `8000`, and `9000`. The intended HTTPS port must equal that local port and cannot be `443` or `8787`. Do not configure a sibling Site Serve route for this legacy registered-route path. It would provide no supported experience to the current live-tab picker and would reintroduce the shared-host cookie risk described below.
 
@@ -311,7 +311,7 @@ npm run codex-pad -- site remove "$CODEX_PAD_SITE_ID"
 
 A legacy registration proves only operator intent for that registered-route Review driver. It does not appear in the current Sites picker, does not embed or top-level-open the page, and does not authorize the bounded live-tab driver. The bridge and registered site use the same MagicDNS hostname on different ports, but ports do not isolate cookies; even an opaque sandboxed response can set host-wide cookies that later reach or overflow bridge request headers.
 
-Capture is independently unavailable. The current production build returns `process-sandbox-unavailable` before launching Chrome: on the audited Mac, its exact-egress macOS process policy could not coexist with Chrome's own required child sandbox. Do not work around this by disabling Chrome's sandbox. Manually capture a screenshot outside Codex Pad, import it through Photos/Files, then annotate, compare, and send through the independently gated review path.
+Capture is independently unavailable. The current production build returns `process-sandbox-unavailable` before launching Chrome: on the audited Mac, its exact-egress macOS process policy could not coexist with Chrome's own required child sandbox. Do not work around this by disabling Chrome's sandbox. Manually capture a screenshot outside Nerva, import it through Photos/Files, then annotate, compare, and send through the independently gated review path.
 
 ## 12. Development-only unsafe LAN mode
 

@@ -1,6 +1,6 @@
 # Contributing
 
-Codex Pad accepts focused contributions that preserve its exact-thread and loopback-only safety boundaries. A feature is not complete because the interface looks connected; it needs evidence at the layer it claims to change.
+Nerva accepts focused contributions that preserve its exact-thread and loopback-only safety boundaries. A feature is not complete because the interface looks connected; it needs evidence at the layer it claims to change.
 
 By participating, you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Use the repository issue forms for non-sensitive bugs and feature requests. Report credentials, exploit details, private task content, or other sensitive security material only through [GitHub Private Vulnerability Reporting](https://github.com/blancmathis/nerva/security/advisories/new).
 

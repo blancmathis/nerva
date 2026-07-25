@@ -26,9 +26,9 @@ fi
 TAILSCALE_BE_CLI=1 "$CODEX_PAD_TAILSCALE_BIN" serve --bg --https=443 http://127.0.0.1:8787
 ```
 
-Never use Tailscale Funnel for Codex Pad. Never bind CDP or the Codex app-server socket to a tailnet, LAN, or public interface. An explicitly unsafe LAN development mode, if enabled, is for an isolated trusted network only and is not a production deployment.
+Never use Tailscale Funnel for Nerva. Never bind CDP or the Codex app-server socket to a tailnet, LAN, or public interface. An explicitly unsafe LAN development mode, if enabled, is for an isolated trusted network only and is not a production deployment.
 
-`npm run setup:mac` is the only setup command authorized to make persistent network/process changes. It may create or update only `~/Library/LaunchAgents/com.codex-pad.bridge.plist` and the exact HTTPS Serve route from port 443 to `127.0.0.1:8787`. It first requires authoritative Funnel-negative evidence and refuses an existing competing route. It never runs `tailscale serve reset`, edits another LaunchAgent, uses `sudo`, enables Funnel or changes the loopback bind. The legacy `npm run setup` and `npm run doctor` remain non-mutating outside Codex Pad-owned Application Support state.
+`npm run setup:mac` is the only setup command authorized to make persistent network/process changes. It may create or update only `~/Library/LaunchAgents/com.codex-pad.bridge.plist` and the exact HTTPS Serve route from port 443 to `127.0.0.1:8787`. It first requires authoritative Funnel-negative evidence and refuses an existing competing route. It never runs `tailscale serve reset`, edits another LaunchAgent, uses `sudo`, enables Funnel or changes the loopback bind. The legacy `npm run setup` and `npm run doctor` remain non-mutating outside Nerva-owned state beneath `~/Library/Application Support/CodexPad/`.
 
 ## Trust boundaries
 
@@ -143,11 +143,11 @@ Registered-site capture is a separate experimental capability. The current produ
 
 ## Native dictation boundary
 
-- Codex Pad never requests iPad microphone permission and never calls `getUserMedia`, `MediaRecorder`, or browser `SpeechRecognition`.
+- Nerva never requests iPad microphone permission and never calls `getUserMedia`, `MediaRecorder`, or browser `SpeechRecognition`.
 - Production responses set `Permissions-Policy: microphone=()`. The PWA has no audio recorder, audio store, voice segment, transcription adapter, editable transcript, or transcript-to-review routing path.
 - The Dictate control is only the current native Micro `ACT10_ACT11` / `MIC` action for the exact selected native task, accepting the observed `dictation.toggle` identity or the known current nullable identity. The bridge requires a fresh authoritative snapshot and a successful live revalidation immediately before dispatch.
-- A missing, stale, changed, or unverified Dictate binding disables the control or fails before the first native event. Codex Pad does not fall back to app-server text, another task, iPad audio capture, or a guessed Desktop control.
-- Codex Desktop owns recording and transcription and uses the microphone selected on the Mac. Codex Pad does not receive, persist, inspect, log, cache, or resend that audio or resulting text.
+- A missing, stale, changed, or unverified Dictate binding disables the control or fails before the first native event. Nerva does not fall back to app-server text, another task, iPad audio capture, or a guessed Desktop control.
+- Codex Desktop owns recording and transcription and uses the microphone selected on the Mac. Nerva does not receive, persist, inspect, log, cache, or resend that audio or resulting text.
 
 ## Web hardening
 
@@ -166,13 +166,13 @@ The service worker caches only the application shell. It must not cache API resp
 
 The all-session catalog is an authenticated, data-minimized part of current Home and `Unpinned Sessions`; the superseded Spatial opt-in does not exist. The browser receives bounded summaries, not a transcript corpus. Product State stores exact pinned IDs, layout and preferences in a private Mac file; it uses a strict schema, atomic replacement and expected revisions so an overlapping client cannot blindly overwrite newer state.
 
-Saved Drawings are a separate private Mac store. The bridge accepts only strict bounded records, validates and decodes canonical PNG bytes, verifies declared dimensions, generates its own thumbnail and writes records/indexes atomically beneath Codex Pad Application Support. It permits at most 48 records, 8 MiB per PNG and 128 MiB total PNG data. The list endpoint omits full PNG and scene data; fetching one detail and deleting it require an exact validated ID, and deletion is always explicit.
+Saved Drawings are a separate private Mac store. The bridge accepts only strict bounded records, validates and decodes canonical PNG bytes, verifies declared dimensions, generates its own thumbnail and writes records/indexes atomically beneath `~/Library/Application Support/CodexPad/`. It permits at most 48 records, 8 MiB per PNG and 128 MiB total PNG data. The list endpoint omits full PNG and scene data; fetching one detail and deleting it require an exact validated ID, and deletion is always explicit.
 
 `GET /api/native-sessions` remains separate from the catalog. It returns at most six exact native sessions plus sanitized registry/project/site association required by current controls. The bridge single-flights targeted reads, retains no cwd or turns, and never grants a catalog-only session native authority. Lifecycle polling occurs only while connected, online and visible; transient failure preserves last-good orientation, older registry generations are ignored, and disconnect/authentication loss disables dependent controls.
 
 ## Data handling and logging
 
-Codex Pad has no telemetry and requires no cloud database, analytics provider, CDN, or authentication service. By default, logs contain structural health information such as versions, state sequence numbers, error categories, and redacted ID suffixes. They must not contain:
+Nerva has no telemetry and requires no cloud database, analytics provider, CDN, or authentication service. By default, logs contain structural health information such as versions, state sequence numbers, error categories, and redacted ID suffixes. They must not contain:
 
 - prompts or agent responses;
 - source code or file contents;
@@ -197,7 +197,7 @@ Do not weaken these fail-closed states to make a demo appear connected.
 
 Do not open a public issue containing a credential, private thread title, prompt, screenshot, local path, or exploit details. Use [GitHub Private Vulnerability Reporting](https://github.com/blancmathis/nerva/security/advisories/new). Include:
 
-- the affected Codex Pad commit;
+- the affected Nerva commit;
 - macOS, Codex Desktop, bundled Codex, Safari, and iPadOS versions;
 - a minimal reproduction using synthetic data;
 - the security impact and whether a credential should be revoked.

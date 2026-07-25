@@ -10,7 +10,7 @@
 
 ## Context
 
-Codex Pad is an extension of Codex Desktop, not a replacement. The iPad surface
+Nerva is an extension of Codex Desktop, not a replacement. The iPad surface
 is valuable where touch, Pencil, camera, and immediate visual review are better
 than the Mac. A review may move through several site states and
 physical references before the user is ready to ask Codex to act.
@@ -85,7 +85,7 @@ outbound contract permits at most 12 ordered images and an 8,000-character
 complete instruction/metadata manifest. These are separate limits: a valid
 local draft can still need editing before it can send.
 
-Codex Pad does not crawl the photo library or upload background media. For
+Nerva does not crawl the photo library or upload background media. For
 non-HEIC PNG, JPEG, and WebP imports, the original local draft blob is retained
 unchanged and can therefore still contain EXIF/XMP, including location, until
 the frame/draft is deleted, local garbage collection removes it, or site data
@@ -111,7 +111,7 @@ fails before the first native event; there is no app-server text, guessed
 shortcut, alternate-task, or iPad-capture fallback.
 
 After a proven dispatch, Codex Desktop owns recording and transcription with
-the microphone selected on the Mac. Codex Pad neither receives nor persists the
+the microphone selected on the Mac. Nerva neither receives nor persists the
 audio or resulting text, and dictated text is never added to this review
 manifest. No live exact-task Dictate dispatch has been observed on the audited
 baseline. See [ADR 002](002-cdp-adapter.md).
@@ -198,7 +198,7 @@ view -> annotate -> explain -> send -> agent changes
 ## Local-first and privacy boundary
 
 Review frames, vector scenes, photos, and iteration links remain in local
-PWA/bridge storage. Nothing is synchronized through a Codex Pad cloud service,
+PWA/bridge storage. Nothing is synchronized through a Nerva cloud service,
 and no content telemetry is emitted. Only the user-confirmed typed manifest and
 normalized images cross the authenticated local app-server boundary. Local
 retention and deletion controls must distinguish editable drafts from temporary
@@ -266,7 +266,7 @@ Readiness requires automated and real-device evidence for:
    capture counts as one flattened composite rather than source plus composite;
 7. aggregate count, byte, dimension, and pixel-limit rejection before dispatch;
 8. immutable before/after sources and repeatable review iterations;
-9. no Codex Pad-managed cloud upload or content telemetry, no audio or
+9. no Nerva-managed cloud upload or content telemetry, no audio or
    transcript data in PWA storage or review payloads, and no claim of live
    native Dictate proof without exact runtime evidence;
 10. successful delivery retaining the local deck for Before/After until an

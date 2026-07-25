@@ -8,7 +8,7 @@
 
 ## Context
 
-Codex Pad needs a focused annotation editor that survives PWA suspension and can
+Nerva needs a focused annotation editor that survives PWA suspension and can
 export a bounded PNG for the exact native Codex composer. Current tldraw packages
 are excluded because their production licensing does not fit this project.
 
@@ -20,7 +20,7 @@ pipeline.
 ## Decision
 
 Pin `perfect-freehand` to published version `1.2.3` and use its `getStroke`
-function for pen and highlighter outline generation. Codex Pad owns every other
+function for pen and highlighter outline generation. Nerva owns every other
 part of the drawing model.
 
 ### Serializable scene
@@ -69,7 +69,7 @@ for pen, touch, and mouse input.
 9. Suppress `selectstart`, browser text selection, touch callouts and overscroll
    across the full-screen drawing studio. Re-enable ordinary selection only for
    true editable controls. This prevents Pencil plus palm contact from selecting
-   surrounding page chrome without making the rest of Codex Pad non-selectable.
+   surrounding page chrome without making the rest of Nerva non-selectable.
 
 `getCoalescedEvents()` is secure-context-only and remains limited availability,
 including on older iPads, so the fallback is a required path rather than a
@@ -123,7 +123,7 @@ MIT, copyright 2021 Stephen Ruiz Ltd. Its complete notice is retained in
 [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) and must ship with
 packaged releases.
 
-Codex Pad uses original controls, icons, and visual design. No tldraw assets or
+Nerva uses original controls, icons, and visual design. No tldraw assets or
 OpenAI/Work Louder/Apple artwork is included.
 
 ## Consequences

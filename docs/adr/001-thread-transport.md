@@ -17,7 +17,7 @@
 
 ## Context
 
-Codex Pad must move one PNG from the iPad drawing surface into the exact Codex
+Nerva must move one PNG from the iPad drawing surface into the exact Codex
 Desktop task selected by the user. A title, recent task, foreground window or
 stale composer marker is not routing authority. Silent forking, guessed targets,
 duplicate replay and starting an agent turn before the user finishes the Mac
@@ -96,7 +96,7 @@ Drawing/Photo uses one native composer attachment path:
     identity. Any error after paste may have fired becomes `DELIVERY_UNKNOWN`
     and is never replayed automatically. The editable iPad draft and immutable
     retry binding remain available for reconciliation.
-12. Skills remain armed because Drawing contains no text. Codex Pad does not
+12. Skills remain armed because Drawing contains no text. Nerva does not
     inspect or alter text typed or dictated into the native Mac composer.
 
 The path does not read app-server turn state and does not care whether the agent

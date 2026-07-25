@@ -1,4 +1,4 @@
-# Codex Pad research record
+# Nerva research record
 
 Research snapshot: 2026-07-20
 
@@ -34,17 +34,17 @@ proven.
   Home Screen installation and credential reuse worked manually. That later
   observation still does not prove the complete timed/replacement-device matrix.
 
-For the current native-Micro transport studied here, Codex Pad must fail closed
+For the current native-Micro transport studied here, Nerva must fail closed
 until it can prove both the selected native slot and shared ownership of the
 corresponding app-server thread. The later product target generalizes selection
 to an exact authenticated session/composer authority, but it keeps the same rule:
 never create an invisible parallel copy of a live Desktop thread.
 
-## Official remote surface and Codex Pad's distinct role
+## Official remote surface and Nerva's distinct role
 
 OpenAI now documents **Remote** in the ChatGPT mobile app. It can connect a phone to a desktop host, continue chats, send instructions, approve actions, review outputs and switch between hosts or chats. Setup begins in the desktop app and completes through a QR plus the user's ChatGPT account and workspace. OpenAI also documents the experimental `codex remote-control` CLI for managed Remote and SSH workflows, while explicitly distinguishing it from `codex app-server --listen` for a custom local protocol client.
 
-Codex Pad therefore must not be described as the only way to access Codex from mobile. Its confirmed value is the dedicated iPad tactile and Pencil workflow, pinned-session Home organization, native-composer media handoff, Saved Drawings and Site Review. The product may reuse documented primitives only where their exact contracts fit; it must not claim compatibility merely because official Remote exists.
+Nerva therefore must not be described as the only way to access Codex from mobile. Its confirmed value is the dedicated iPad tactile and Pencil workflow, pinned-session Home organization, native-composer media handoff, Saved Drawings and Site Review. The product may reuse documented primitives only where their exact contracts fit; it must not claim compatibility merely because official Remote exists.
 
 Official sources: [Remote connections](https://learn.chatgpt.com/docs/remote-connections), [`codex remote-control`](https://learn.chatgpt.com/docs/developer-commands?surface=cli#cli-codex-remote-control).
 
@@ -55,7 +55,7 @@ Official sources: [Remote connections](https://learn.chatgpt.com/docs/remote-con
 | Official | Published product or developer documentation from the vendor. |
 | Version-matched | Generated schema, source tag, or observed behavior matching the installed binary. |
 | Reverse-engineered | Open-source inspection of undocumented Desktop renderer behavior. Compatibility may break without notice. |
-| Target | A Codex Pad design decision that still needs implementation or operational proof. |
+| Target | A Nerva design decision that still needs implementation or operational proof. |
 
 ## Current Mac baseline
 
@@ -72,7 +72,7 @@ persistent configuration.
 | Tailscale | No CLI, application bundle, process, launchd job, package receipt, or system extension was found. |
 
 An unrelated independent app-server owned by an existing local service was also
-running. It is not Desktop's stdio child or a shared managed daemon. Codex Pad
+running. It is not Desktop's stdio child or a shared managed daemon. Nerva
 must establish ownership and stop or isolate competing writers before any live
 thread test; it must not attach to that process by assumption.
 
@@ -154,7 +154,7 @@ used as interaction references, not as protocol documentation.
 None of those product sources publishes a programmatic API for reading the six
 slots or dispatching their actions. Their artwork, keycap SVGs, screenshots,
 logos, video, and trade dress have no open-source grant and are not copied into
-Codex Pad.
+Nerva.
 
 ## Official Codex app-server boundary
 
@@ -235,7 +235,7 @@ The research snapshot of `main` was
 It is MIT-licensed, copyright 2021 Stephen Ruiz Ltd.
 
 The package converts input points into a stroke polygon. It is not a scene
-editor. Codex Pad therefore owns the serializable scene, tools, transforms,
+editor. Nerva therefore owns the serializable scene, tools, transforms,
 hit-testing, undo/redo, background image, and PNG export.
 
 [Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent),
@@ -275,7 +275,7 @@ snapshot polling as fallback. See [ADR 004](adr/004-tailscale-serve.md).
 
 ## Intellectual-property and security boundary
 
-Codex Pad is an independent community project. Research and interoperability do
+Nerva is an independent community project. Research and interoperability do
 not grant trademark or asset rights.
 
 - Do not copy or distribute OpenAI, Codex, Work Louder, Apple, Stream Deck,

@@ -47,7 +47,7 @@ Short MagicDNS names are not used as the canonical HTTPS origin.
 3. In the legacy guided setup, print the exact command and expected FQDN,
    explain that `--bg` persists the route, and require operator consent. For the
    target one-command path, invoking `npm run setup:mac` is itself explicit
-   consent to create or repair only Codex Pad's exact route and LaunchAgent; do
+   consent to create or repair only Nerva's exact route and LaunchAgent; do
    not add a duplicate confirmation. Do not use `--yes` to broaden authority.
 4. Never run `tailscale serve reset`; it can delete unrelated routes.
 5. Run `doctor` after setup to verify bridge loopback binding, private Serve
@@ -75,7 +75,7 @@ authentication.
   HTTPS origin for mutations. Mint a separate origin-bound, single-use
   30-second ticket for each WebSocket upgrade and carry it only in the
   subprotocol header.
-- Do not treat `Tailscale-User-*` headers as the Codex Pad credential. Shared
+- Do not treat `Tailscale-User-*` headers as the Nerva credential. Shared
   users or tagged devices may not provide the same identity data, and local
   processes can spoof headers to a loopback service.
 - Keep the bridge on loopback so tailnet callers cannot bypass Serve.

@@ -39,7 +39,7 @@ Runtime result: **blocked/degraded**. Nerva doctor reports seven independent std
 
 - [ ] From a clean supported clone, with Tailscale already signed in, install the official standalone Codex CLI once if absent, then run `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
 - [ ] `setup:mac` generates a schema cache for the currently installed Desktop-bundled Codex before installing the bridge; Settings → System Diagnostics reports it as `Current` rather than silently relying on an older version.
-- [ ] The command uses the Desktop-bundled Codex daemon manager, changes only its managed daemon state plus Codex Pad Application Support, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Tailscale Serve route; it never enables Funnel, uses `sudo`, resets unrelated Serve routes or restarts Codex Desktop.
+- [ ] The command uses the Desktop-bundled Codex daemon manager, changes only its managed daemon state plus `~/Library/Application Support/CodexPad/`, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Tailscale Serve route; it never enables Funnel, uses `sudo`, resets unrelated Serve routes or restarts Codex Desktop.
 - [ ] The bridge remains on `127.0.0.1:8787`; CDP and app-server sockets are not exposed to LAN/tailnet interfaces.
 - [ ] A fresh physical-iPad setup completes in under 120 seconds after the Tailscale preflight.
 - [ ] Safari shows the install-first instructions without consuming the invitation; **Share → Add to Home Screen** produces a standalone Nerva icon.
@@ -119,7 +119,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] `Steer`, `Cancel` and `Interrupt` never appear as iPad controls.
 - [ ] Skills is loaded from `skills/list` using the exact selected thread cwd when readable; while that read is temporarily unavailable, the global user/system catalog appears instead of a false empty list and no other task cwd is borrowed.
 - [ ] Skills are organized automatically by provider/scope. A provider with at least two skills is a collapsible folder; a singleton skill is directly visible without a folder. Counts and selected counts are correct, exact skill IDs remain unchanged, and no local path or plugin version reaches the browser response.
-- [ ] A text-bearing Codex Pad-originated send appends `Use the following skills for this task: skill-a, skill-b.` after all other instruction text.
+- [ ] A text-bearing Nerva-originated send appends `Use the following skills for this task: skill-a, skill-b.` after all other instruction text.
 - [ ] A Drawing send contains only its PNG, does not append a skill suffix, and leaves selected skills armed for the next text-bearing action.
 - [ ] A direct native Mac-composer send is not claimed to consume selected iPad skills until exact interception exists.
 - [ ] Model + Reasoning shows only combinations returned by the installed live `model/list` catalog and applies the exact selected combination through `thread/settings/update` after one touch drag/release, including Safari's final-input-after-`pointerup` ordering.

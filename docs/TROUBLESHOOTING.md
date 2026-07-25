@@ -123,15 +123,15 @@ Determine which application or service owns each process before making a change.
 
 ## A private state-file lock timed out
 
-Codex Pad automatically reclaims a crash-stale `<state-file>.lock` only when the lock is a private regular file with valid ownership metadata, both its recorded and filesystem ages are at least 30 seconds, and its recorded PID is dead or now has a different process-start identity. Reclaim ownership uses a private `0700` `.lock.reclaim-<targetToken>/` directory with a mode-`0600` `owner.json`. A valid claim whose owner crashed and whose metadata is at least 30 seconds old is quarantined automatically as `.stale-<claimToken>` before recovery; that tombstone is non-authoritative and may remain without blocking later locks.
+Nerva automatically reclaims a crash-stale `<state-file>.lock` only when the lock is a private regular file with valid ownership metadata, both its recorded and filesystem ages are at least 30 seconds, and its recorded PID is dead or now has a different process-start identity. Reclaim ownership uses a private `0700` `.lock.reclaim-<targetToken>/` directory with a mode-`0600` `owner.json`. A valid claim whose owner crashed and whose metadata is at least 30 seconds old is quarantined automatically as `.stale-<claimToken>` before recovery; that tombstone is non-authoritative and may remain without blocking later locks.
 
-A live owner, a young lock/claim, unavailable ownership proof, malformed metadata, insecure permissions, or a symlink remains fail-closed. Malformed or insecure metadata is never deleted automatically. First stop every Codex Pad bridge, use the exact path and PID named by the error, and verify with `pgrep -lf`/`ps` that no owner remains. Start the bridge again and allow valid stale lock/claim recovery to run; do not manually remove a valid stale claim that can recover itself.
+A live owner, a young lock/claim, unavailable ownership proof, malformed metadata, insecure permissions, or a symlink remains fail-closed. Malformed or insecure metadata is never deleted automatically. First stop every Nerva bridge, use the exact path and PID named by the error, and verify with `pgrep -lf`/`ps` that no owner remains. Start the bridge again and allow valid stale lock/claim recovery to run; do not manually remove a valid stale claim that can recover itself.
 
 As a last resort only for a malformed or insecure object that cannot be recovered automatically, preserve a backup and move aside the **exact** `.lock` file or `.lock.reclaim-<targetToken>/` directory named by the error. Do not use a wildcard, remove the Application Support directory, or delete `.stale-*` tombstones. If ownership is still ambiguous, leave every object in place and report the redacted structural error.
 
 ## Desktop and bridge disagree after an update
 
-1. Stop the Codex Pad bridge.
+1. Stop the Nerva bridge.
 2. Save all Desktop work and allow active turns to finish.
 3. Record the Desktop and bundled Codex versions.
 4. Restart Desktop once through the documented CDP path.
@@ -157,13 +157,13 @@ Refresh the snapshot, confirm the destination suffix, and retry only with the sa
 
 ## Agent is busy during Review send
 
-Busy is not an error to work around. Codex Pad may steer only when it knows the exact active turn ID and the installed protocol has passed the image-input steering probe. Otherwise production returns immediate typed `AGENT_BUSY`, keeps the draft, and releases the request/media admission path.
+Busy is not an error to work around. Nerva may steer only when it knows the exact active turn ID and the installed protocol has passed the image-input steering probe. Otherwise production returns immediate typed `AGENT_BUSY`, keeps the draft, and releases the request/media admission path.
 
 There is no hidden wait, delayed delivery, or offline replay. Wait for the active turn to complete, review the exact destination again, and initiate a new explicit send. A busy result must never open a parallel session, fork silently, or auto-post when the agent becomes idle.
 
 ## Skills, Model + Reasoning, or Fast is unavailable
 
-- Skills prefers the exact selected thread cwd. If app-server cannot read that selected task yet, Codex Pad shows the global user/system skill catalog and never inherits another task's cwd-scoped catalog.
+- Skills prefers the exact selected thread cwd. If app-server cannot read that selected task yet, Nerva shows the global user/system skill catalog and never inherits another task's cwd-scoped catalog.
 - Model + Reasoning requires a non-empty live `model/list` catalog and one exact selected native target. Settings presets that are absent from the current catalog are intentionally hidden.
 - Fast is not an app-server setting. It requires the exact current native `ACT06` / `FAST` binding and immediate live revalidation.
 
@@ -200,7 +200,7 @@ The browser never supplies a local filename or path. A Drawing send contains onl
 
 Confirm `Pencil only` is enabled. In the current input policy, only Apple Pencil can create marks; one finger or a palm is passive, and pan/zoom begins only after two deliberate touch pointers are present. Lifting either finger ends navigation. A WebKit `pointercancel` preserves the Pencil samples already visible instead of deleting the stroke.
 
-If one touch still moves the canvas or a cancelled Pencil stroke disappears, the installed PWA is serving an older Drawing chunk. Fully close Codex Pad from the iPad app switcher and reopen it so the service worker activates the latest bundle; re-pairing is not required. Physical palm rejection still depends partly on iPadOS hardware classification, so record the iPad/iPadOS/Pencil versions if the updated build continues to cancel strokes repeatedly.
+If one touch still moves the canvas or a cancelled Pencil stroke disappears, the installed PWA is serving an older Drawing chunk. Fully close Nerva from the iPad app switcher and reopen it so the service worker activates the latest bundle; re-pairing is not required. Physical palm rejection still depends partly on iPadOS hardware classification, so record the iPad/iPadOS/Pencil versions if the updated build continues to cancel strokes repeatedly.
 
 ## Send timed out
 
@@ -322,7 +322,7 @@ If **Send** is disabled, the page has either no committed stroke or the exact na
 
 A one-image Review does not require the private multi-image attestation. If one image is disabled, inspect the ordinary exact native target, managed control-socket connection, one-shot final-write authority, idle/start route, snapshot freshness, and image validation gates first.
 
-A deck containing 2–12 images requires the standalone bounded multi-`localImage` attestation. Without it, Codex Pad keeps the complete deck local and disables confirmation/send; it must not drop frames, flatten the deck, split it into hidden commands, or partially send it. A deliberately separate one-image Review is a new reviewed command, not a retry of the retained multi-image deck.
+A deck containing 2–12 images requires the standalone bounded multi-`localImage` attestation. Without it, Nerva keeps the complete deck local and disables confirmation/send; it must not drop frames, flatten the deck, split it into hidden commands, or partially send it. A deliberately separate one-image Review is a new reviewed command, not a retry of the retained multi-image deck.
 
 If startup prints `multi-image attestation is invalid or stale`, regenerate the installed-version cache:
 
@@ -382,7 +382,7 @@ If list/get/delete fails, verify authentication, exact Origin and the private `s
 
 When reporting a compatibility problem, include only:
 
-- Codex Pad commit;
+- Nerva commit;
 - macOS architecture/version;
 - Codex Desktop and bundled Codex versions;
 - Node, Safari, and iPadOS versions;

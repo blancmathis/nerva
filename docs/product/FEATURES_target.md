@@ -29,7 +29,7 @@ Principes immuables :
 3. L'iPad ne propose ni terminal, ni commande shell arbitraire, ni contrôle CDP brut. Une URL HTTP(S) peut être saisie uniquement pour naviguer un onglet Codex Browser explicitement choisi et ré-attesté pour la Session exacte.
 4. Toute l'interface visible et tout texte injecté dans un prompt sont en anglais.
 5. Une information sur l'activité de l'agent n'est affichée que si elle vient d'un état fiable. L'interface n'invente jamais ce que l'agent est en train de faire.
-6. Codex Pad invoque les actions natives de Codex ; il ne réimplémente pas ses règles d'envoi, de queue, de steer, de permission ou de modèle.
+6. Nerva invoque les actions natives de Codex ; il ne réimplémente pas ses règles d'envoi, de queue, de steer, de permission ou de modèle.
 
 ## 2. Carte des surfaces
 
@@ -137,7 +137,7 @@ section -> case -> session cards
 - Les sections, les cases et leurs cartes restent visibles ensemble sur Home. Une case ne se comporte pas comme un dossier qu'il faudrait ouvrir avant de choisir une session.
 - Une session épinglée sans case reste directement visible sur Home ; il n'existe pas de zone artificielle `To arrange`.
 - Supprimer une case ne désépingle ni ne supprime ses sessions : elles redeviennent des cartes directes de Home.
-- Le déplacement change uniquement la présentation Codex Pad, jamais l'état ou le projet de la session Codex.
+- Le déplacement change uniquement la présentation Nerva, jamais l'état ou le projet de la session Codex.
 
 ### 4.2 Focus priorité et état
 
@@ -223,7 +223,7 @@ Il n'existe pas de barre d'actions permanente supplémentaire. Un panneau contex
 
 `View command` montre la commande complète et son répertoire de travail. `Add instruction` lance la dictée native de Codex sur le Mac ; il n'ouvre pas un clavier de prompt sur l'iPad. `Steer`, `Cancel` et `Interrupt` ne sont jamais proposés sur l'iPad.
 
-Toute autre action native qui n'est pas prouvée pour la session exacte est cachée ou explicitement indisponible. Codex Pad ne simule jamais une action Codex manquante.
+Toute autre action native qui n'est pas prouvée pour la session exacte est cachée ou explicitement indisponible. Nerva ne simule jamais une action Codex manquante.
 
 ## 8. Skills, dictée et envoi
 
@@ -233,10 +233,10 @@ Toute autre action native qui n'est pas prouvée pour la session exacte est cach
 - Chaque groupe affiche son nombre de skills et le nombre sélectionné. Le regroupement ne change jamais l'identifiant exact envoyé à Codex et ne nécessite aucune configuration manuelle.
 - Le Mac dérive seulement un identifiant de fournisseur borné depuis la provenance validée du skill. Aucun chemin local, version de plugin ou répertoire utilisateur n'est exposé à l'iPad.
 - La sélection est multiple et visible sous forme de chips.
-- Elle vaut uniquement pour le prochain envoi textuel composé par Codex Pad, puis s'efface après cet envoi accepté.
+- Elle vaut uniquement pour le prochain envoi textuel composé par Nerva, puis s'efface après cet envoi accepté.
 - Les skills sont ajoutés au moment de composer le payload final, jamais au moment de leur sélection.
-- La sélection est liée à la session exacte. Un envoi de dessin image-only ne la consomme pas ; elle reste armée jusqu'au prochain envoi textuel contrôlé par Codex Pad ou jusqu'à son annulation explicite.
-- Codex Pad ne prétend jamais modifier une saisie ou dictée envoyée directement par le composer natif du Mac s'il ne peut pas garantir cette interception pour la session exacte.
+- La sélection est liée à la session exacte. Un envoi de dessin image-only ne la consomme pas ; elle reste armée jusqu'au prochain envoi textuel contrôlé par Nerva ou jusqu'à son annulation explicite.
+- Nerva ne prétend jamais modifier une saisie ou dictée envoyée directement par le composer natif du Mac s'il ne peut pas garantir cette interception pour la session exacte.
 - Le suffixe anglais est toujours la toute dernière partie du message, même si la transcription a été produite après la sélection :
 
 ```text
@@ -252,7 +252,7 @@ Use the following skills for this task: skill-a, skill-b.
 - `Dictation` déclenche la dictée native de Codex Desktop avec le microphone configuré sur le Mac.
 - L'écriture manuelle reste sur le Mac ; l'iPad n'offre pas de clavier de prompt général.
 
-À la fin d'une dictée, Codex Desktop reste propriétaire de son flux natif, de la transcription et de l'éventuel envoi. Codex Pad ne reproduit pas ce composer sur l'iPad et n'affiche ni transcript ni état de queue.
+À la fin d'une dictée, Codex Desktop reste propriétaire de son flux natif, de la transcription et de l'éventuel envoi. Nerva ne reproduit pas ce composer sur l'iPad et n'affiche ni transcript ni état de queue.
 
 Le bouton compact `Send prompt` permet de soumettre depuis l'iPad le composer préparé sur le Mac. Hors dictée, il utilise directement l'identité native exacte `ACT12` / `CODEX` / `composer.submit` de la session sélectionnée. Pendant une dictée active, une pression relâche d'abord le geste `dictation.toggle` exact, attend sa confirmation et le snapshot natif actualisé, puis déclenche `composer.submit`. Si l'arrêt échoue ou reste d'issue inconnue, la soumission n'est pas tentée automatiquement. Le comportement effectif reste celui configuré dans Codex Desktop : Queue ou Steer. L'iPad ne choisit pas ce mode, ne rejoue pas l'action hors ligne et n'affiche pas un faux état `Queued` ou `Sent`.
 
@@ -310,7 +310,7 @@ Site Review doit également accueillir l'action cible `Record flow`. Le Recorder
 - `Sites` reste accessible dans chaque Session et ouvre une page unique limitée aux pages HTTP(S) actuellement ouvertes dans Codex Browser pour cette tâche exacte.
 - La page contient une barre d'adresse. L'utilisateur choisit d'abord une page prouvée, puis peut la naviguer vers une URL HTTP(S) saisie ou favorite. Sans page ré-attestée pour cette Session, `Go` reste indisponible.
 - Les favoris sont globaux, synchronisés avec les autres préférences et ne deviennent jamais une autorité de routage : ils fournissent seulement une adresse à la page explicitement choisie.
-- Les sites locaux, Codex Pad lui-même et les sites HTTPS externes ont exactement le même statut dans cette liste. L'interface ne montre aucune catégorie `Linked`, `Unlinked`, `Registered` ou équivalente.
+- Les sites locaux, Nerva lui-même et les sites HTTPS externes ont exactement le même statut dans cette liste. L'interface ne montre aucune catégorie `Linked`, `Unlinked`, `Registered` ou équivalente.
 - Toucher une ligne choisit explicitement cette page pour la Session actuellement visible. Aucun titre, URL, projet, onglet au premier plan ou historique ne crée automatiquement cette sélection.
 - Si une page ouvre un nouvel onglet, celui-ci apparaît comme une ligne distincte au prochain rafraîchissement du sélecteur.
 - Fermer ou naviguer l'onglet sur le Mac invalide ou met à jour sa représentation ; l'app ne réattribue jamais silencieusement une autre page au même choix.
@@ -405,7 +405,7 @@ Les décisions produit ci-dessus sont confirmées. Les points suivants sont des 
 3. ouverture bidirectionnelle exacte des sessions et reprise de l'état iPad ;
 4. dictée native réelle avec le microphone du Mac ;
 5. envoi image-only exact, animation confirmée et récupération locale sans double action ;
-6. suffixe Skills à la fin de tout futur payload textuel contrôlé par Codex Pad ;
+6. suffixe Skills à la fin de tout futur payload textuel contrôlé par Nerva ;
 7. Apple Pencil, pression, paume et rendu 60/120 Hz sur matériel ;
 8. navigation Site Review sûre, fluide et liée à la bonne page ;
 9. persistance globale après remplacement de l'iPad ;

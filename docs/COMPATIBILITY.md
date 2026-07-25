@@ -70,7 +70,7 @@ The bridge and PWA negotiate extension capabilities independently. A capability 
 | Session catalog | Authenticated bounded `/api/sessions` listing is always part of Home/`Unpinned Sessions`; the superseded Spatial opt-in no longer exists. Its last successful validated result may authorize navigation-only `openSession` during a transient app-server reconnect, but never a mutation or an unknown target. Native Micro actions remain independently limited to exact verified native slots. |
 | Native-six session enrichment | Authenticated max-six `/api/native-sessions` response built from authoritative slots and targeted reads, plus sanitized registry/project/site association. Visible connected polling is bounded, single-flight and monotonic by registry generation. |
 | Saved Drawings | Authenticated private Mac store; strict scene/PNG validation, max 48 records, 8 MiB per PNG and 128 MiB total; explicit Keep and manual delete only. |
-| Skills | Available skills come from `skills/list` for the exact thread cwd when readable, with a temporary global user/system fallback that never borrows another task cwd. Groups with at least two skills appear as provider folders; singleton skills remain directly visible. The English suffix is assembled at the very end of text-bearing Codex Pad payloads; Drawing is image-only and keeps selections armed. Codex Pad can attach the image but cannot intercept, rewrite or submit native Mac composer text. |
+| Skills | Available skills come from `skills/list` for the exact thread cwd when readable, with a temporary global user/system fallback that never borrows another task cwd. Groups with at least two skills appear as provider folders; singleton skills remain directly visible. The English suffix is assembled at the very end of text-bearing Nerva payloads; Drawing is image-only and keeps selections armed. Nerva can attach the image but cannot intercept, rewrite or submit native Mac composer text. |
 | Model + reasoning | Live `model/list` defines supported combinations; exact-target `thread/settings/update` applies them. The touch range commits Safari's final value even when `input` follows `pointerup`, and a definitive rejection restores the last observed preset. Presets synchronize globally and stale combinations are hidden instead of downgraded. Native reasoning/Fast remain separate exact bindings. |
 | Runtime diagnostics | Authenticated privacy-safe checks report each transport/capability independently, with last proof and installed-schema state. Diagnostics never create authority and contain no prompt, response, title, cwd, local path, bearer or full thread ID. |
 | PWA update | A complete new cache must install before activation. Reload remains user-controlled and is disabled while Drawing, Review or Site can contain unsaved work. Service-worker activation alone is not presented as proof that the visible document already runs the new build. |
@@ -144,7 +144,7 @@ Browser microphone compatibility is deliberately narrow. A build may keep `Permi
 
 Production compatibility requires a Tailscale version that supports Serve for a loopback HTTP backend and private HTTPS/WSS at a stable MagicDNS name. The installed client's `serve --help` output is authoritative because CLI syntax can evolve. On macOS, use the Standalone CLI integration or the App Store app's bundled executable as documented in [Mac setup](SETUP_MAC.md).
 
-Codex Pad documents this baseline command:
+Nerva documents this baseline command:
 
 ```bash
 TAILSCALE_BE_CLI=1 "$CODEX_PAD_TAILSCALE_BIN" serve --bg --https=443 http://127.0.0.1:8787
@@ -173,11 +173,11 @@ After a Codex Desktop, macOS, Node, Safari, iPadOS, or Tailscale update:
 
 If any structural or ownership check changes, ship a compatibility fix with mutations disabled by default for that version until the proof is complete.
 
-## Codex Pad release versioning
+## Nerva release versioning
 
 Before `1.0.0`, minor releases may add or change compatibility probes and the local typed API, while patch releases should preserve the API and fix behavior. Every release should publish:
 
-- Codex Pad version and commit;
+- Nerva version and commit;
 - fixture-tested Desktop versions;
 - isolated app-server versions;
 - live-verified and hardware-validated matrices, if any;
@@ -185,7 +185,7 @@ Before `1.0.0`, minor releases may add or change compatibility probes and the lo
 - security-relevant setup changes;
 - migration steps for stored credentials or drafts.
 
-After `1.0.0`, incompatible browser/bridge protocol or persisted-data changes require a major version. A Codex Desktop update that merely requires a new adapter probe does not automatically require a Codex Pad major version, but the compatibility report must make the newly supported range explicit.
+After `1.0.0`, incompatible browser/bridge protocol or persisted-data changes require a major version. A Codex Desktop update that merely requires a new adapter probe does not automatically require a Nerva major version, but the compatibility report must make the newly supported range explicit.
 
 ## Adding a compatibility fixture
 

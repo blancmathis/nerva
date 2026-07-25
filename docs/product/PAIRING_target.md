@@ -43,7 +43,7 @@ npm run setup:mac
 1. installer les dépendances manquantes et construire les artefacts nécessaires ;
 2. vérifier Codex Desktop et le bridge ;
 3. détecter Tailscale, son état et l'origine MagicDNS sans demander de copier cette origine ;
-4. configurer uniquement la route Tailscale Serve appartenant à Codex Pad ;
+4. configurer uniquement la route Tailscale Serve appartenant à Nerva ;
 5. installer ou mettre à jour un LaunchAgent utilisateur, sans `sudo`, pour lancer le bridge à l'ouverture de session ;
 6. démarrer ou recharger le bridge ;
 7. créer une invitation et afficher son QR dans ce même terminal ;
@@ -55,11 +55,11 @@ La commande effectue un preflight automatique :
 
 1. bridge local démarré et sain ;
 2. Tailscale installé, connecté et privé ;
-3. route Tailscale Serve exacte de Codex Pad disponible ;
+3. route Tailscale Serve exacte de Nerva disponible ;
 4. Funnel absent pour cette route ;
 5. origine HTTPS stable et non sensible.
 
-Elle maintient uniquement la route qu'elle possède et ne lance jamais un reset global de Tailscale Serve. L'exécution explicite de `setup:mac` autorise la création ou la réparation de cette seule route et du seul LaunchAgent Codex Pad. Un conflit avec une route tierce provoque un arrêt avec l'action exacte à effectuer, sans écraser la configuration.
+Elle maintient uniquement la route qu'elle possède et ne lance jamais un reset global de Tailscale Serve. L'exécution explicite de `setup:mac` autorise la création ou la réparation de cette seule route et du seul LaunchAgent Nerva `com.codex-pad.bridge`. Un conflit avec une route tierce provoque un arrêt avec l'action exacte à effectuer, sans écraser la configuration.
 
 Lorsque le preflight passe, le Mac affiche immédiatement :
 
@@ -148,11 +148,11 @@ Cette séquence évite un verrouillage accidentel. Deux appareils actifs ne cons
 - chaque WebSocket utilise un ticket séparé, lié à l'origine, à usage unique et de courte durée ;
 - une révocation invalide le credential, les tickets inutilisés et les sockets actifs de cet appareil.
 
-Tailnet et credential applicatif sont deux barrières indépendantes. Le tailnet limite qui peut atteindre le bridge ; le credential décide quel appareil Codex Pad peut utiliser ses API typées.
+Tailnet et credential applicatif sont deux barrières indépendantes. Le tailnet limite qui peut atteindre le bridge ; le credential décide quel appareil Nerva peut utiliser ses API typées.
 
 ### Ce qui n'est pas demandé
 
-- aucun compte Codex Pad ;
+- aucun compte Nerva ;
 - aucun mot de passe ;
 - aucun Face ID supplémentaire : le verrouillage de l'iPad et la possession physique du QR constituent déjà les gestes utilisateur ;
 - aucune confirmation Mac après le scan ;
