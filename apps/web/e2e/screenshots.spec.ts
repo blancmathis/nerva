@@ -6,6 +6,7 @@ import { MockBridge } from "./mock-bridge";
 import { THREADS, fixtureSessions } from "./fixture-data";
 
 const CAPTURE_SCREENSHOTS = process.env.CODEX_PAD_CAPTURE_SCREENSHOTS === "1";
+const SCREENSHOT_NOW = Date.parse("2026-07-25T19:00:00.000Z");
 const SCREENSHOT_DIAGRAM = {
   version: 1,
   diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
@@ -134,9 +135,10 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   const suffix = screenshotSuffix(testInfo.project.name);
   test.skip(suffix === null, "No screenshot naming profile for this project");
 
+  await page.clock.setFixedTime(SCREENSHOT_NOW);
   const output = resolve(process.cwd(), "docs/screenshots");
   await mkdir(output, { recursive: true });
-  const bridge = new MockBridge({ authorized: false });
+  const bridge = new MockBridge({ authorized: false, fixedNow: SCREENSHOT_NOW });
   bridge.setDiagrams([SCREENSHOT_DIAGRAM]);
   await bridge.install(page);
   await installScreenshotSite(page);
@@ -268,6 +270,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
     await page.getByRole("button", { name: "Close diagram inspector" }).click();
   }
   await page.getByRole("button", { name: "Close drawing studio" }).click();
+  await resetViewportScroll(page);
   await page.getByRole("button", { name: "Saved Drawings" }).click();
   await expect(page.getByRole("dialog", { name: "Saved Drawings" })).toContainText("Untitled drawing");
   await page.waitForTimeout(550);
@@ -277,10 +280,11 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
 test("capture the compact 768-wide iPad Home header", async ({ page }, testInfo) => {
   test.skip(!CAPTURE_SCREENSHOTS, "Generated only by npm run screenshots");
   test.skip(testInfo.project.name !== "iPad landscape", "One intermediate-width proof is sufficient");
+  await page.clock.setFixedTime(SCREENSHOT_NOW);
   await page.setViewportSize({ width: 768, height: 1_024 });
   const output = resolve(process.cwd(), "docs/screenshots");
   await mkdir(output, { recursive: true });
-  const bridge = new MockBridge({ authorized: false });
+  const bridge = new MockBridge({ authorized: false, fixedNow: SCREENSHOT_NOW });
   await bridge.install(page);
   await page.goto("/pair?nonce=fixture-pairing-code");
   await page.getByRole("button", { name: "Connect", exact: true }).click();

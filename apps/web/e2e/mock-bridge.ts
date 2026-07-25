@@ -110,6 +110,7 @@ export class MockBridge {
   };
   private savedDrawings: Array<Readonly<Record<string, unknown>>> = [];
   private diagrams: Array<Readonly<Record<string, unknown>>> = [];
+  private readonly fixedNow: number | null;
   private readonly completedCommands = new Map<string, {
     readonly sequence: number;
     readonly targetThreadId: string | null;
@@ -120,11 +121,13 @@ export class MockBridge {
     readonly initialSequence?: number;
     readonly initialSelectedIndex?: number;
     readonly reviewMaxImages?: 0 | 1 | 12;
+    readonly fixedNow?: number;
   } = {}) {
     this.authorized = options.authorized ?? true;
     this.reviewMaxImages = options.reviewMaxImages ?? 12;
     this.sequence = options.initialSequence ?? 73;
     this.selectedIndex = options.initialSelectedIndex ?? 0;
+    this.fixedNow = options.fixedNow ?? null;
   }
 
   get currentBridgeInstanceId(): string {
@@ -446,7 +449,7 @@ export class MockBridge {
         ...body,
         id: crypto.randomUUID(),
         byteLength: Math.max(1, Math.floor(String(body.pngBase64 ?? "").length * .75)),
-        createdAt: Date.now(),
+        createdAt: this.fixedNow ?? Date.now(),
         thumbnailBase64: body.pngBase64,
       };
       this.savedDrawings = [drawing, ...this.savedDrawings];
