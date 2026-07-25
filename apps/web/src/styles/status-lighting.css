@@ -1,0 +1,157 @@
+/*
+ * State-lighting enhancement.
+ *
+ * Loaded last so the status hierarchy can be tuned or removed as one unit.
+ * The effect uses a bright core, a colored mid-field and a broad low-opacity
+ * falloff: visible at a glance without turning session surfaces into flat fills.
+ */
+
+:root {
+  --cp-state-wash-alpha: .24;
+  --cp-state-ambient-alpha: .13;
+  --cp-state-label-mix: 82%;
+  --cp-state-border-mix: 38%;
+}
+
+:root[data-theme="light"] {
+  --cp-state-wash-alpha: .16;
+  --cp-state-ambient-alpha: .09;
+  --cp-state-label-mix: 88%;
+  --cp-state-border-mix: 41%;
+}
+
+.cp-session-card {
+  border-color: color-mix(in srgb, var(--status-light) var(--cp-state-border-mix), var(--cp-stroke));
+  background:
+    radial-gradient(120% 105% at 100% 0%, rgba(var(--status-rgb), var(--cp-state-wash-alpha)) 0%, rgba(var(--status-rgb), var(--cp-state-ambient-alpha)) 30%, transparent 59%),
+    linear-gradient(145deg, rgba(255, 255, 255, .045), transparent 48%),
+    var(--cp-content);
+  box-shadow:
+    var(--cp-shadow-key),
+    0 14px 40px rgba(var(--status-rgb), var(--cp-state-ambient-alpha));
+}
+
+.cp-session-card::before {
+  inset: auto 12px -9px;
+  height: 25px;
+  background: rgba(var(--status-rgb), .32);
+  filter: blur(18px);
+  opacity: .68;
+}
+
+.cp-session-card__light {
+  inset: -82px -56px auto auto;
+  width: 214px;
+  height: 214px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, .42) 0%,
+    rgba(var(--status-rgb), .68) 3%,
+    rgba(var(--status-rgb), .42) 15%,
+    rgba(var(--status-rgb), .21) 37%,
+    rgba(var(--status-rgb), .07) 56%,
+    transparent 72%
+  );
+  filter: saturate(112%);
+  opacity: .96;
+}
+
+.cp-session-card__state {
+  color: color-mix(in srgb, var(--status-light) var(--cp-state-label-mix), var(--cp-ink-secondary));
+  text-shadow: 0 0 18px rgba(var(--status-rgb), .2);
+}
+
+.cp-session-card__state i {
+  width: 9px;
+  height: 9px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, .2) inset,
+    0 0 7px rgba(var(--status-rgb), .95),
+    0 0 19px rgba(var(--status-rgb), .56);
+}
+
+.cp-session-card__edge {
+  right: 14px;
+  left: 14px;
+  height: 3px;
+  box-shadow:
+    0 -2px 15px rgba(var(--status-rgb), .58),
+    0 -8px 32px rgba(var(--status-rgb), .18);
+  opacity: .88;
+}
+
+.cp-session-card.is-on-mac {
+  border-color: color-mix(in srgb, var(--status-light) 58%, var(--cp-stroke));
+  box-shadow:
+    var(--cp-shadow-key),
+    0 0 0 1px rgba(var(--status-rgb), .2),
+    0 14px 42px rgba(var(--status-rgb), .13);
+}
+
+.cp-status-section {
+  border-color: color-mix(in srgb, var(--section-color, var(--cp-silver)) 19%, var(--cp-stroke));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--section-color, var(--cp-silver)) 7%, transparent), transparent 34%),
+    color-mix(in srgb, var(--cp-content) 96%, transparent);
+}
+
+.cp-status-section__signal,
+.cp-unpinned-row__signal,
+.cp-session-nav__signal,
+.cp-session-hero__status i,
+.cp-session-hero__light {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, .18) inset,
+    0 0 8px currentColor,
+    0 0 20px currentColor;
+}
+
+.cp-status-section__signal {
+  width: 9px;
+  height: 9px;
+  color: var(--section-color, var(--cp-silver));
+}
+
+.cp-unpinned-row {
+  border-color: color-mix(in srgb, var(--status-light) 22%, var(--cp-stroke));
+  background:
+    radial-gradient(70% 120% at 0% 50%, color-mix(in srgb, var(--status-light) 9%, transparent), transparent 65%),
+    var(--cp-content);
+}
+
+.cp-unpinned-row__signal,
+.cp-session-nav__signal,
+.cp-session-hero__status i,
+.cp-session-hero__light {
+  color: var(--status-light);
+}
+
+.cp-session-hero {
+  border-color: color-mix(in srgb, var(--status-light) 34%, var(--cp-stroke));
+  background:
+    radial-gradient(80% 120% at 100% 0%, rgba(var(--status-rgb), .18), transparent 68%),
+    linear-gradient(135deg, rgba(var(--status-rgb), .13), transparent 48%),
+    var(--cp-content);
+}
+
+.cp-session-hero::after {
+  background: radial-gradient(circle, rgba(var(--status-rgb), .27), rgba(var(--status-rgb), .08) 42%, transparent 70%);
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-theme="light"] {
+    --cp-state-wash-alpha: .2;
+    --cp-state-label-mix: 92%;
+    --cp-state-border-mix: 48%;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .cp-session-card,
+  .cp-status-section,
+  .cp-unpinned-row,
+  .cp-session-hero {
+    background: var(--cp-content);
+  }
+}

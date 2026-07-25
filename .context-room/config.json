@@ -1,0 +1,273 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Swarek/context-room/main/schemas/config.schema.json",
+  "title": "Codex Pad — Produit",
+  "projectOnly": true,
+  "allowedPaths": [
+    "docs/product/"
+  ],
+  "watchAllow": [
+    "docs/product/"
+  ],
+  "watchRules": [],
+  "reviewPaths": [
+    "docs/product/FEATURES_target.md",
+    "docs/product/SITE_QA_RECORDER_target.md",
+    "docs/product/PAIRING_target.md",
+    "docs/product/CURRENT_STATE.md",
+    "docs/product/INDEX.md"
+  ],
+  "reviewAgentInstructions": false,
+  "integrations": {
+    "hermes": false
+  },
+  "startupContext": {
+    "enabled": false,
+    "fileNames": [
+      "AGENTS.md",
+      "CLAUDE.md"
+    ],
+    "globalPaths": [],
+    "projectOnly": true
+  },
+  "startupSkills": {
+    "enabled": false,
+    "folderNames": [
+      ".codex/skills",
+      "skills"
+    ],
+    "projectOnly": true
+  },
+  "startupHooks": {
+    "enabled": false,
+    "editable": false,
+    "agentHooks": true,
+    "codexHooks": true,
+    "gitHooks": true,
+    "hookManagers": true,
+    "fileNames": [
+      "pre-commit",
+      "pre-push",
+      "commit-msg",
+      "prepare-commit-msg"
+    ],
+    "agentHookSources": [
+      {
+        "id": "codex",
+        "label": "Codex",
+        "paths": [
+          ".codex/hooks.json"
+        ]
+      },
+      {
+        "id": "claude-code",
+        "label": "Claude Code",
+        "paths": [
+          ".claude/settings.json",
+          ".claude/settings.local.json"
+        ]
+      },
+      {
+        "id": "opencode",
+        "label": "OpenCode",
+        "paths": [
+          ".config/opencode/opencode.json",
+          ".config/opencode/plugin/",
+          ".config/opencode/plugins/",
+          ".opencode/plugin/",
+          ".opencode/plugins/",
+          "opencode.json",
+          "opencode.jsonc"
+        ]
+      }
+    ],
+    "agentHookPaths": [
+      ".codex/hooks.json",
+      ".claude/settings.json",
+      ".claude/settings.local.json",
+      ".config/opencode/opencode.json",
+      ".config/opencode/plugin/",
+      ".config/opencode/plugins/",
+      ".opencode/plugin/",
+      ".opencode/plugins/",
+      "opencode.json",
+      "opencode.jsonc"
+    ],
+    "codexPaths": [
+      ".codex/hooks.json"
+    ],
+    "managerPaths": [
+      ".husky/",
+      "lefthook.yml",
+      ".lefthook.yml",
+      "lefthook.yaml",
+      ".lefthook.yaml",
+      ".pre-commit-config.yaml",
+      ".pre-commit-config.yml",
+      "lint-staged.config.js",
+      "lint-staged.config.mjs",
+      "lint-staged.config.cjs",
+      ".lintstagedrc",
+      ".lintstagedrc.json",
+      ".lintstagedrc.js",
+      ".lintstagedrc.cjs",
+      "package.json"
+    ],
+    "projectOnly": true
+  },
+  "markdownTemplates": [
+    {
+      "id": "blank",
+      "title": "Blank",
+      "description": "Start with an empty Markdown file.",
+      "content": "",
+      "enabled": true
+    },
+    {
+      "id": "agents",
+      "title": "Agent instructions",
+      "description": "Root or scoped instructions that are injected into AI coding agents.",
+      "content": "---\ncontext_room:\n  kind: agents\n  scope: {{scope_yaml}}\n  status: {{status_yaml}}\n  canonical_for: {{canonical_for_yaml}}\n  last_verified: {{last_verified_yaml}}\n  sources: {{sources_inline}}\n---\n\n# {{title}}\n\n## Purpose\nWhat this instruction file controls, which agents read it, and what it must keep stable.\n\n## Operating Rules\n- Rule one.\n- Rule two.\n- Rule three.\n\n## Read First\n- Files or docs the agent should inspect before changing this scope.\n\n## Do Not\n- Things that would hurt quality, safety, or maintainability.\n\n## Verification\n- Commands, checks, or review gates expected before work is called done.\n",
+      "enabled": true
+    },
+    {
+      "id": "docs-index",
+      "title": "Docs index",
+      "description": "Short map of a documentation folder: what is canonical and where to go next.",
+      "content": "---\ncontext_room:\n  kind: index\n  scope: {{scope_yaml}}\n  status: {{status_yaml}}\n  canonical_for: {{canonical_for_yaml}}\n  last_verified: {{last_verified_yaml}}\n  sources: {{sources_inline}}\n---\n\n# {{title}}\n\n## Purpose\nWhat this documentation area covers.\n\n## Start Here\n- Primary doc:\n- Agent instructions:\n- Runbooks:\n- Decisions:\n\n## Current Sources Of Truth\n- Document or source file:\n\n## Historical Or Secondary Docs\n- Older docs that may still be useful but are not canonical.\n",
+      "enabled": true
+    },
+    {
+      "id": "context-golden",
+      "title": "Canonical doc",
+      "description": "Default source-of-truth document for a product, system, feature, or workflow.",
+      "content": "---\ncontext_room:\n  kind: canonical\n  scope: {{scope_yaml}}\n  status: {{status_yaml}}\n  canonical_for: {{canonical_for_yaml}}\n  last_verified: {{last_verified_yaml}}\n  sources: {{sources_inline}}\n---\n\n# {{title}}\n\n## Purpose\nWhy this file exists, who uses it, and what decision or action it should support.\n\n## Key facts\nThe 5 to 10 most important durable facts. Short, concrete, current.\n\n## Structure\nWhat lives here, what lives elsewhere, and the important paths to know.\n\n## Rules\nConventions, guardrails, pitfalls, quality criteria, and things not to do.\n\n## References\nSources of truth, related files, commands, or useful links. Do not copy what can be linked.\n",
+      "enabled": true
+    },
+    {
+      "id": "procedure",
+      "title": "Procedure",
+      "description": "A short repeatable workflow, runbook, checklist, or operational procedure.",
+      "content": "---\ncontext_room:\n  kind: procedure\n  scope: {{scope_yaml}}\n  status: {{status_yaml}}\n  canonical_for: {{canonical_for_yaml}}\n  last_verified: {{last_verified_yaml}}\n  sources: {{sources_inline}}\n---\n\n# {{title}}\n\n## When To Use\nThe exact situation where this procedure applies.\n\n## Inputs\n- Required files, environment, access, or context.\n\n## Steps\n1. First concrete step.\n2. Second concrete step.\n3. Verification step.\n\n## Failure Modes\n- What can go wrong and how to stop safely.\n\n## References\n{{sources_list}}\n",
+      "enabled": true
+    },
+    {
+      "id": "decision-record",
+      "title": "Decision record",
+      "description": "Small ADR-style note for decisions that should be easy to revisit.",
+      "content": "---\ncontext_room:\n  kind: decision\n  scope: {{scope_yaml}}\n  status: {{status_yaml}}\n  canonical_for: {{canonical_for_yaml}}\n  last_verified: {{last_verified_yaml}}\n  sources: {{sources_inline}}\n---\n\n# {{title}}\n\n## Decision\nThe decision made, in one or two sentences.\n\n## Context\nWhy this question matters now.\n\n## Options considered\nThe serious alternatives and their main trade-off.\n\n## Consequences\nWhat this changes concretely, and what to watch next.\n\n## References\nSources, discussions, PRs, or related files.\n",
+      "enabled": true
+    }
+  ],
+  "hubCards": {
+    "docs": false,
+    "context": false,
+    "source": false,
+    "tests": false,
+    "scripts": false,
+    "readme": false,
+    "target-docs-product": true,
+    "site-qa-recorder-target": true,
+    "pairing-target": true,
+    "docs-docs-product": true
+  },
+  "customHubCards": [
+    {
+      "id": "target-docs-product",
+      "title": "Fonctionnalités cibles",
+      "description": "Document principal : fonctionnalités, pages, priorité et décisions à valider.",
+      "paths": [
+        "docs/product/FEATURES_target.md"
+      ],
+      "enabled": true,
+      "path": "docs/product/FEATURES_target.md"
+    },
+    {
+      "id": "site-qa-recorder-target",
+      "title": "Site QA Recorder",
+      "description": "Parcours tactile enregistré, confidentialité, transport exact et proposition de test Playwright.",
+      "paths": [
+        "docs/product/SITE_QA_RECORDER_target.md"
+      ],
+      "enabled": true,
+      "path": "docs/product/SITE_QA_RECORDER_target.md"
+    },
+    {
+      "id": "docs-docs-product",
+      "title": "État actuel et guide",
+      "description": "Ce qui existe réellement dans le dépôt et comment lire la documentation.",
+      "paths": [
+        "docs/product/CURRENT_STATE.md",
+        "docs/product/INDEX.md"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "pairing-target",
+      "title": "Pairing en moins de deux minutes",
+      "description": "Commande unique depuis le dépôt, installation iPad, sécurité et critères de preuve.",
+      "paths": [
+        "docs/product/PAIRING_target.md"
+      ],
+      "enabled": true,
+      "path": "docs/product/PAIRING_target.md"
+    }
+  ],
+  "hubSections": [
+    {
+      "id": "target-documentation",
+      "title": "À vérifier en premier",
+      "cards": [
+        {
+          "id": "target-docs-product",
+          "title": "Fonctionnalités cibles",
+          "description": "Document principal : fonctionnalités, pages, priorité et décisions à valider.",
+          "paths": [
+            "docs/product/FEATURES_target.md"
+          ],
+          "cards": [],
+          "enabled": true,
+          "path": "docs/product/FEATURES_target.md"
+        },
+        {
+          "id": "site-qa-recorder-target",
+          "title": "Site QA Recorder",
+          "description": "Parcours tactile enregistré, confidentialité, transport exact et proposition de test Playwright.",
+          "paths": [
+            "docs/product/SITE_QA_RECORDER_target.md"
+          ],
+          "cards": [],
+          "enabled": true,
+          "path": "docs/product/SITE_QA_RECORDER_target.md"
+        },
+        {
+          "id": "pairing-target",
+          "title": "Pairing en moins de deux minutes",
+          "description": "Commande unique depuis le dépôt, installation iPad, sécurité et critères de preuve.",
+          "paths": [
+            "docs/product/PAIRING_target.md"
+          ],
+          "cards": [],
+          "enabled": true,
+          "path": "docs/product/PAIRING_target.md"
+        }
+      ]
+    },
+    {
+      "id": "current-product-documentation",
+      "title": "État et mode d'emploi",
+      "cards": [
+        {
+          "id": "docs-docs-product",
+          "title": "État actuel et guide",
+          "description": "Ce qui existe réellement dans le dépôt et comment lire la documentation.",
+          "paths": [
+            "docs/product/CURRENT_STATE.md",
+            "docs/product/INDEX.md"
+          ],
+          "cards": [],
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

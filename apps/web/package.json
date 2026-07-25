@@ -1,0 +1,28 @@
+{
+  "name": "@codex-pad/web",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@codex-pad/drawing": "0.1.0",
+    "@codex-pad/protocol": "0.1.0",
+    "@codex-pad/review": "0.1.0",
+    "idb": "^8.0.3",
+    "jsqr": "^1.4.0",
+    "perfect-freehand": "1.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2"
+  }
+}

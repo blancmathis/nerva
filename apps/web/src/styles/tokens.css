@@ -1,0 +1,173 @@
+/*
+ * Codex Pad premium material system.
+ *
+ * The legacy stylesheet still owns layout fallbacks for old/isolated
+ * components. These tokens and the two focused layers imported after it are
+ * the canonical visual language for the current Home -> Session product.
+ */
+
+:root {
+  color-scheme: dark;
+  --cp-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+  --cp-font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --cp-font-mono: "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+  --cp-canvas: #090b0f;
+  --cp-canvas-elevated: #0f1218;
+  --cp-content: #151820;
+  --cp-content-raised: #1b1f28;
+  --cp-content-strong: #222731;
+  --cp-glass: rgba(28, 31, 39, .72);
+  --cp-glass-strong: rgba(38, 41, 51, .84);
+  --cp-glass-highlight: rgba(255, 255, 255, .115);
+  --cp-stroke: rgba(255, 255, 255, .095);
+  --cp-stroke-strong: rgba(255, 255, 255, .16);
+  --cp-stroke-bright: rgba(255, 255, 255, .25);
+  --cp-ink: rgba(255, 255, 255, .96);
+  --cp-ink-secondary: rgba(239, 242, 248, .68);
+  --cp-ink-tertiary: rgba(230, 234, 242, .43);
+  --cp-ink-quaternary: rgba(226, 231, 240, .26);
+
+  --cp-blue: #67a2ff;
+  --cp-blue-rgb: 103, 162, 255;
+  --cp-green: #5ed3a3;
+  --cp-green-rgb: 94, 211, 163;
+  --cp-amber: #ffbd63;
+  --cp-amber-rgb: 255, 189, 99;
+  --cp-red: #ff716b;
+  --cp-red-rgb: 255, 113, 107;
+  --cp-violet: #bb9cff;
+  --cp-violet-rgb: 187, 156, 255;
+  --cp-silver: #b8c0cf;
+  --cp-silver-rgb: 184, 192, 207;
+
+  /* Compatibility aliases for existing components. */
+  --cp-bg: var(--cp-canvas);
+  --cp-bg-raised: var(--cp-glass);
+  --cp-surface: var(--cp-content);
+  --cp-surface-2: var(--cp-content-raised);
+  --cp-surface-3: var(--cp-content-strong);
+  --cp-line: var(--cp-stroke);
+  --cp-line-strong: var(--cp-stroke-strong);
+  --cp-text: var(--cp-ink);
+  --cp-text-soft: var(--cp-ink-secondary);
+  --cp-text-muted: var(--cp-ink-tertiary);
+  --cp-muted: var(--cp-ink-tertiary);
+  --cp-cobalt: var(--cp-blue);
+  --cp-sage: var(--cp-green);
+  --cp-coral: #ff8b78;
+  --cp-slate: var(--cp-silver);
+
+  --cp-radius-xs: 10px;
+  --cp-radius-sm: 14px;
+  --cp-radius-md: 18px;
+  --cp-radius-lg: 24px;
+  --cp-radius-xl: 30px;
+  --cp-radius-round: 999px;
+
+  --cp-shadow-key: 0 1px 0 rgba(255, 255, 255, .11) inset,
+    0 -1px 0 rgba(0, 0, 0, .34) inset,
+    0 10px 22px rgba(0, 0, 0, .24),
+    0 2px 4px rgba(0, 0, 0, .34);
+  --cp-shadow-key-hover: 0 1px 0 rgba(255, 255, 255, .15) inset,
+    0 -1px 0 rgba(0, 0, 0, .28) inset,
+    0 16px 34px rgba(0, 0, 0, .3),
+    0 3px 7px rgba(0, 0, 0, .32);
+  --cp-shadow-surface: 0 1px 0 rgba(255, 255, 255, .055) inset,
+    0 18px 42px rgba(0, 0, 0, .18);
+  --cp-shadow-glass: 0 1px 0 rgba(255, 255, 255, .13) inset,
+    0 24px 70px rgba(0, 0, 0, .28),
+    0 2px 9px rgba(0, 0, 0, .2);
+  --cp-shadow-large: var(--cp-shadow-glass);
+  --cp-shadow-card: var(--cp-shadow-key);
+  --cp-shadow-lg: var(--cp-shadow-glass);
+
+  --cp-glass-filter: blur(28px) saturate(175%);
+  --cp-glass-blur: var(--cp-glass-filter);
+  --cp-safe-top: max(12px, env(safe-area-inset-top));
+  --cp-safe-right: max(14px, env(safe-area-inset-right));
+  --cp-safe-bottom: max(18px, env(safe-area-inset-bottom));
+  --cp-safe-left: max(14px, env(safe-area-inset-left));
+
+  --cp-ease-snap: cubic-bezier(.22, 1, .36, 1);
+  --cp-ease-smooth: cubic-bezier(.32, .72, 0, 1);
+  --cp-spring-snappy: linear(
+    0, .009, .035 2.1%, .141 4.4%, .723 12.9%,
+    .938 16.7%, 1.017 19.4%, 1.067 22.5%, 1.089 26%,
+    1.079 30.3%, 1.049 36%, 1.024 42.6%, 1.011 50.3%,
+    1.004 59.2%, 1.001 69.3%, 1
+  );
+  --cp-spring-smooth: linear(
+    0, .004, .016 2.3%, .063 4.7%, .141 7.2%, .25 9.9%,
+    .601 16.5%, .815 21%, .929 25.2%, .987 29%, 1.025 33.5%,
+    1.042 38%, 1.04 43.5%, 1.027 50%, 1.013 57.5%,
+    1.005 67%, 1.001 79%, 1
+  );
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --cp-canvas: #eef0f5;
+  --cp-canvas-elevated: #f7f8fb;
+  --cp-content: #ffffff;
+  --cp-content-raised: #f7f8fb;
+  --cp-content-strong: #eceff5;
+  --cp-glass: rgba(248, 250, 255, .72);
+  --cp-glass-strong: rgba(255, 255, 255, .88);
+  --cp-glass-highlight: rgba(255, 255, 255, .82);
+  --cp-stroke: rgba(26, 31, 43, .085);
+  --cp-stroke-strong: rgba(26, 31, 43, .145);
+  --cp-stroke-bright: rgba(26, 31, 43, .22);
+  --cp-ink: rgba(18, 22, 31, .94);
+  --cp-ink-secondary: rgba(31, 37, 49, .64);
+  --cp-ink-tertiary: rgba(43, 50, 64, .43);
+  --cp-ink-quaternary: rgba(43, 50, 64, .24);
+  --cp-blue: #2477e8;
+  --cp-blue-rgb: 36, 119, 232;
+  --cp-green: #168f67;
+  --cp-green-rgb: 22, 143, 103;
+  --cp-amber: #c8750c;
+  --cp-amber-rgb: 200, 117, 12;
+  --cp-red: #d63d3a;
+  --cp-red-rgb: 214, 61, 58;
+  --cp-violet: #7652d5;
+  --cp-violet-rgb: 118, 82, 213;
+  --cp-silver: #667085;
+  --cp-silver-rgb: 102, 112, 133;
+  --cp-shadow-key: 0 1px 0 rgba(255, 255, 255, .96) inset,
+    0 -1px 0 rgba(54, 63, 81, .08) inset,
+    0 11px 25px rgba(38, 48, 68, .105),
+    0 2px 5px rgba(38, 48, 68, .08);
+  --cp-shadow-key-hover: 0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 -1px 0 rgba(54, 63, 81, .08) inset,
+    0 17px 36px rgba(38, 48, 68, .14),
+    0 4px 8px rgba(38, 48, 68, .08);
+  --cp-shadow-surface: 0 1px 0 rgba(255, 255, 255, .9) inset,
+    0 18px 44px rgba(43, 52, 72, .085);
+  --cp-shadow-glass: 0 1px 0 rgba(255, 255, 255, .95) inset,
+    0 24px 68px rgba(43, 52, 72, .14),
+    0 2px 9px rgba(43, 52, 72, .07);
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-theme="light"] {
+    --cp-stroke: color-mix(in srgb, currentColor 23%, transparent);
+    --cp-stroke-strong: color-mix(in srgb, currentColor 37%, transparent);
+    --cp-ink-secondary: color-mix(in srgb, currentColor 78%, transparent);
+    --cp-ink-tertiary: color-mix(in srgb, currentColor 62%, transparent);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --cp-glass: #1c2029;
+    --cp-glass-strong: #252a35;
+    --cp-glass-filter: none;
+  }
+
+  :root[data-theme="light"] {
+    --cp-glass: #f8f9fc;
+    --cp-glass-strong: #ffffff;
+  }
+}

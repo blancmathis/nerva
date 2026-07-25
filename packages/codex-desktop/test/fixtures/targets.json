@@ -1,0 +1,30 @@
+[
+  {
+    "id": "z-aux",
+    "type": "page",
+    "title": "Avatar",
+    "url": "app://-/avatar-overlay-composition-surface.html?surfaceId=mascot-badge",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:43123/devtools/page/z-aux"
+  },
+  {
+    "id": "b-routed",
+    "type": "page",
+    "title": "Codex",
+    "url": "app://-/index.html?initialRoute=%2Fsettings",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:43123/devtools/page/b-routed"
+  },
+  {
+    "id": "a-main",
+    "type": "page",
+    "title": "Codex",
+    "url": "app://-/index.html",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:43123/devtools/page/a-main"
+  },
+  {
+    "id": "remote",
+    "type": "page",
+    "title": "Codex",
+    "url": "app://-/index.html",
+    "webSocketDebuggerUrl": "ws://192.168.1.50:43123/devtools/page/remote"
+  }
+]

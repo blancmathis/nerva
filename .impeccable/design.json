@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-22T00:00:00.000Z",
+  "title": "Design System: Nerva",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": { "role": "primary", "displayName": "Working Blue", "canonical": "#67a2ff", "tonalRamp": ["#0e203d", "#173764", "#22518f", "#346fc0", "#5793eb", "#82b4ff", "#b3d1ff", "#eaf3ff"] },
+      "signal-green": { "role": "secondary", "displayName": "Completed Green", "canonical": "#5ed3a3", "tonalRamp": ["#0c2d23", "#14513d", "#1e7658", "#34a779", "#5ed3a3", "#8de4bf", "#bcefd9", "#edfbf5"] },
+      "signal-amber": { "role": "tertiary", "displayName": "Approval Amber", "canonical": "#ffbd63", "tonalRamp": ["#3b2309", "#674010", "#945f1b", "#c7822f", "#f3aa4d", "#ffca82", "#ffe0b2", "#fff6e8"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Compact page and studio titles." },
+      "body": { "displayName": "Body", "purpose": "Operational content and explanations." },
+      "label": { "displayName": "Label", "purpose": "Buttons, tabs, state and metadata." },
+      "denseScale": { "displayName": "Dense control scale", "purpose": "9, 10, 11, 12 and 14 px metadata plus 18, 21, 24 and 28 px icon glyphs in bounded browser chrome; not primary reading copy." }
+    },
+    "shadows": [
+      { "name": "physical-key", "value": "0 1px 0 rgba(255,255,255,.11) inset, 0 -1px 0 rgba(0,0,0,.34) inset, 0 10px 22px rgba(0,0,0,.24), 0 2px 4px rgba(0,0,0,.34)", "purpose": "Consequential tactile controls." },
+      { "name": "navigation-glass", "value": "0 1px 0 rgba(255,255,255,.13) inset, 0 24px 70px rgba(0,0,0,.28), 0 2px 9px rgba(0,0,0,.2)", "purpose": "Floating navigation, sheets, and docks." }
+    ],
+    "motion": [
+      { "name": "snap", "value": "cubic-bezier(.22, 1, .36, 1)", "purpose": "Opening and physical release." },
+      { "name": "smooth", "value": "cubic-bezier(.32, .72, 0, 1)", "purpose": "Sheets and state changes." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "720px" },
+      { "name": "portrait", "value": "900px" },
+      { "name": "wide-tablet", "value": "1100px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Key",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "A consequential tactile action with local blue light.",
+      "html": "<button class=\"ds-primary-key\">Continue</button>",
+      "css": ".ds-primary-key{height:52px;padding:0 18px;border:0;border-radius:14px;background:#67a2ff;color:#fff;font:650 15px -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 10px 22px rgba(0,0,0,.24),0 2px 4px rgba(0,0,0,.34);transition:transform .16s cubic-bezier(.22,1,.36,1),filter .16s}.ds-primary-key:hover{filter:brightness(1.06)}.ds-primary-key:focus-visible{outline:3px solid rgba(103,162,255,.42);outline-offset:3px}.ds-primary-key:active{transform:translateY(2px) scale(.99)}"
+    },
+    {
+      "name": "Touch Field",
+      "kind": "input",
+      "description": "Opaque address or text input with a clear focus state.",
+      "html": "<input class=\"ds-touch-field\" value=\"https://example.com\" aria-label=\"Address\">",
+      "css": ".ds-touch-field{height:52px;min-width:280px;padding:0 16px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:#151820;color:rgba(255,255,255,.96);font:500 15px -apple-system,BlinkMacSystemFont,sans-serif;outline:none}.ds-touch-field:hover{border-color:rgba(255,255,255,.18)}.ds-touch-field:focus-visible{border-color:#67a2ff;box-shadow:0 0 0 3px rgba(103,162,255,.2)}"
+    },
+    {
+      "name": "Content Surface",
+      "kind": "card",
+      "refersTo": "content-surface",
+      "description": "Opaque work surface under floating navigation.",
+      "html": "<section class=\"ds-content-surface\"><strong>Current sites</strong><p>Pages proven for this task.</p></section>",
+      "css": ".ds-content-surface{padding:20px;border-radius:24px;background:#151820;color:rgba(255,255,255,.96);box-shadow:0 1px 0 rgba(255,255,255,.055) inset,0 18px 42px rgba(0,0,0,.18);font:450 15px/1.45 -apple-system,BlinkMacSystemFont,sans-serif}.ds-content-surface p{margin:6px 0 0;color:rgba(239,242,248,.68)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Luminous Control Deck",
+    "overview": "Nerva combines the structural calm of iPadOS with the physical confidence of a purpose-built control surface. Content remains sober and legible; light appears only where it communicates a live state, a selected target, or an action ready to happen.",
+    "keyCharacteristics": ["Restrained adaptive palette with local semantic light", "Large forgiving touch geometry", "Opaque work planes beneath navigation glass", "Physical controls with grounded press feedback"],
+    "rules": [{ "name": "Local Light", "body": "Color may illuminate an active control or state region; it must not wash unrelated content or become ambient decoration.", "section": "colors" }],
+    "dos": ["Preserve 44 px minimum targets", "Keep important state visible", "Design complete degraded and error states"],
+    "donts": ["Do not place glass behind content lists", "Do not use color as decoration", "Do not rely on hover or perfect gestures"]
+  }
+}

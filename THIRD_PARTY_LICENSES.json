@@ -1,0 +1,1830 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "package-lock.json",
+  "packageLockVersion": 3,
+  "packages": [
+    {
+      "name": "@emnapi/runtime",
+      "version": "1.11.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.11.1.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@emnapi/runtime"
+      ]
+    },
+    {
+      "name": "@fastify/accept-negotiator",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/accept-negotiator/-/accept-negotiator-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/accept-negotiator"
+      ]
+    },
+    {
+      "name": "@fastify/ajv-compiler",
+      "version": "4.0.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/ajv-compiler/-/ajv-compiler-4.0.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/ajv-compiler"
+      ]
+    },
+    {
+      "name": "@fastify/error",
+      "version": "4.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/error/-/error-4.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/error"
+      ]
+    },
+    {
+      "name": "@fastify/fast-json-stringify-compiler",
+      "version": "5.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/fast-json-stringify-compiler/-/fast-json-stringify-compiler-5.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/fast-json-stringify-compiler"
+      ]
+    },
+    {
+      "name": "@fastify/forwarded",
+      "version": "3.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/forwarded/-/forwarded-3.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/forwarded"
+      ]
+    },
+    {
+      "name": "@fastify/merge-json-schemas",
+      "version": "0.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/merge-json-schemas/-/merge-json-schemas-0.2.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/merge-json-schemas"
+      ]
+    },
+    {
+      "name": "@fastify/proxy-addr",
+      "version": "5.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/proxy-addr/-/proxy-addr-5.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/proxy-addr"
+      ]
+    },
+    {
+      "name": "@fastify/send",
+      "version": "4.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/send/-/send-4.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/send"
+      ]
+    },
+    {
+      "name": "@fastify/static",
+      "version": "10.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/static/-/static-10.1.0.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/static"
+      ]
+    },
+    {
+      "name": "@fastify/websocket",
+      "version": "11.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@fastify/websocket/-/websocket-11.3.0.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@fastify/websocket"
+      ]
+    },
+    {
+      "name": "@img/colour",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@img/colour/-/colour-1.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@img/colour"
+      ]
+    },
+    {
+      "name": "@img/sharp-darwin-arm64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-darwin-arm64/-/sharp-darwin-arm64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-darwin-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-darwin-x64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-darwin-x64/-/sharp-darwin-x64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-darwin-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-freebsd-wasm32",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-freebsd-wasm32/-/sharp-freebsd-wasm32-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-freebsd-wasm32"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-darwin-arm64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-darwin-arm64/-/sharp-libvips-darwin-arm64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-darwin-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-darwin-x64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-darwin-x64/-/sharp-libvips-darwin-x64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-darwin-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-arm",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm/-/sharp-libvips-linux-arm-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-arm"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-arm64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm64/-/sharp-libvips-linux-arm64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-ppc64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-ppc64/-/sharp-libvips-linux-ppc64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-ppc64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-riscv64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-riscv64/-/sharp-libvips-linux-riscv64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-riscv64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-s390x",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-s390x/-/sharp-libvips-linux-s390x-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-s390x"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linux-x64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linux-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-arm64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-arm64/-/sharp-libvips-linuxmusl-arm64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linuxmusl-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-x64",
+      "version": "1.3.2",
+      "license": "LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.3.2.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-libvips-linuxmusl-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-arm",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-arm/-/sharp-linux-arm-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-arm"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-arm64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-arm64/-/sharp-linux-arm64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-ppc64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-ppc64/-/sharp-linux-ppc64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-ppc64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-riscv64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-riscv64/-/sharp-linux-riscv64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-riscv64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-s390x",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-s390x/-/sharp-linux-s390x-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-s390x"
+      ]
+    },
+    {
+      "name": "@img/sharp-linux-x64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linux-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linuxmusl-arm64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linuxmusl-arm64/-/sharp-linuxmusl-arm64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linuxmusl-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-linuxmusl-x64",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-linuxmusl-x64"
+      ]
+    },
+    {
+      "name": "@img/sharp-wasm32",
+      "version": "0.35.3",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
+      "source": "https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-wasm32"
+      ]
+    },
+    {
+      "name": "@img/sharp-webcontainers-wasm32",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@img/sharp-webcontainers-wasm32/-/sharp-webcontainers-wasm32-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-webcontainers-wasm32"
+      ]
+    },
+    {
+      "name": "@img/sharp-win32-arm64",
+      "version": "0.35.3",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-win32-arm64/-/sharp-win32-arm64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-win32-arm64"
+      ]
+    },
+    {
+      "name": "@img/sharp-win32-ia32",
+      "version": "0.35.3",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-win32-ia32/-/sharp-win32-ia32-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-win32-ia32"
+      ]
+    },
+    {
+      "name": "@img/sharp-win32-x64",
+      "version": "0.35.3",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "source": "https://registry.npmjs.org/@img/sharp-win32-x64/-/sharp-win32-x64-0.35.3.tgz",
+      "directFrom": [],
+      "optional": true,
+      "lockPaths": [
+        "node_modules/@img/sharp-win32-x64"
+      ]
+    },
+    {
+      "name": "@lukeed/ms",
+      "version": "2.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@lukeed/ms/-/ms-2.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@lukeed/ms"
+      ]
+    },
+    {
+      "name": "@pinojs/redact",
+      "version": "0.4.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@pinojs/redact/-/redact-0.4.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/@pinojs/redact"
+      ]
+    },
+    {
+      "name": "abstract-logging",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/abstract-logging/-/abstract-logging-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/abstract-logging"
+      ]
+    },
+    {
+      "name": "agent-base",
+      "version": "7.1.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/agent-base"
+      ]
+    },
+    {
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ajv-formats"
+      ]
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ajv"
+      ]
+    },
+    {
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ansi-regex"
+      ]
+    },
+    {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ansi-styles"
+      ]
+    },
+    {
+      "name": "asn1.js",
+      "version": "5.4.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/asn1.js/-/asn1.js-5.4.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/asn1.js"
+      ]
+    },
+    {
+      "name": "atomic-sleep",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/atomic-sleep/-/atomic-sleep-1.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/atomic-sleep"
+      ]
+    },
+    {
+      "name": "avvio",
+      "version": "9.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/avvio/-/avvio-9.3.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/avvio"
+      ]
+    },
+    {
+      "name": "balanced-match",
+      "version": "4.0.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/balanced-match"
+      ]
+    },
+    {
+      "name": "bn.js",
+      "version": "4.12.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/bn.js/-/bn.js-4.12.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/bn.js"
+      ]
+    },
+    {
+      "name": "brace-expansion",
+      "version": "5.0.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.7.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/brace-expansion"
+      ]
+    },
+    {
+      "name": "buffer-equal-constant-time",
+      "version": "1.0.1",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/buffer-equal-constant-time"
+      ]
+    },
+    {
+      "name": "camelcase",
+      "version": "5.3.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/camelcase/-/camelcase-5.3.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/camelcase"
+      ]
+    },
+    {
+      "name": "cliui",
+      "version": "6.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/cliui/-/cliui-6.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode/node_modules/cliui"
+      ]
+    },
+    {
+      "name": "color-convert",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/color-convert/-/color-convert-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/color-convert"
+      ]
+    },
+    {
+      "name": "color-name",
+      "version": "1.1.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/color-name"
+      ]
+    },
+    {
+      "name": "content-disposition",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/content-disposition/-/content-disposition-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/content-disposition"
+      ]
+    },
+    {
+      "name": "cookie",
+      "version": "1.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cookie/-/cookie-1.1.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/cookie"
+      ]
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/debug"
+      ]
+    },
+    {
+      "name": "decamelize",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/decamelize/-/decamelize-1.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/decamelize"
+      ]
+    },
+    {
+      "name": "depd",
+      "version": "2.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/depd/-/depd-2.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/depd"
+      ]
+    },
+    {
+      "name": "dequal",
+      "version": "2.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/dequal"
+      ]
+    },
+    {
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/detect-libc"
+      ]
+    },
+    {
+      "name": "dijkstrajs",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/dijkstrajs"
+      ]
+    },
+    {
+      "name": "duplexify",
+      "version": "4.1.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/duplexify/-/duplexify-4.1.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/duplexify"
+      ]
+    },
+    {
+      "name": "ecdsa-sig-formatter",
+      "version": "1.0.11",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ecdsa-sig-formatter"
+      ]
+    },
+    {
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-8.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/emoji-regex"
+      ]
+    },
+    {
+      "name": "end-of-stream",
+      "version": "1.4.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/end-of-stream/-/end-of-stream-1.4.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/end-of-stream"
+      ]
+    },
+    {
+      "name": "escape-html",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/escape-html"
+      ]
+    },
+    {
+      "name": "fast-decode-uri-component",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-decode-uri-component"
+      ]
+    },
+    {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-deep-equal"
+      ]
+    },
+    {
+      "name": "fast-json-stringify",
+      "version": "7.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-7.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-json-stringify"
+      ]
+    },
+    {
+      "name": "fast-querystring",
+      "version": "1.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-querystring"
+      ]
+    },
+    {
+      "name": "fast-uri",
+      "version": "3.1.4",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-uri"
+      ]
+    },
+    {
+      "name": "fast-uri",
+      "version": "4.1.1",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/fast-uri/-/fast-uri-4.1.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fast-json-stringify/node_modules/fast-uri"
+      ]
+    },
+    {
+      "name": "fastify-plugin",
+      "version": "6.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-6.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fastify-plugin"
+      ]
+    },
+    {
+      "name": "fastify",
+      "version": "5.10.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fastify/-/fastify-5.10.0.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fastify"
+      ]
+    },
+    {
+      "name": "fastq",
+      "version": "1.20.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/fastq/-/fastq-1.20.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/fastq"
+      ]
+    },
+    {
+      "name": "find-my-way",
+      "version": "9.6.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/find-my-way/-/find-my-way-9.6.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/find-my-way"
+      ]
+    },
+    {
+      "name": "find-up",
+      "version": "4.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/find-up/-/find-up-4.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/find-up"
+      ]
+    },
+    {
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/get-caller-file/-/get-caller-file-2.0.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/get-caller-file"
+      ]
+    },
+    {
+      "name": "glob",
+      "version": "13.0.6",
+      "license": "BlueOak-1.0.0",
+      "source": "https://registry.npmjs.org/glob/-/glob-13.0.6.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/glob"
+      ]
+    },
+    {
+      "name": "http_ece",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/http_ece/-/http_ece-1.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/http_ece"
+      ]
+    },
+    {
+      "name": "http-errors",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/http-errors/-/http-errors-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/http-errors"
+      ]
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "7.0.6",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/https-proxy-agent"
+      ]
+    },
+    {
+      "name": "idb",
+      "version": "8.0.3",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/idb/-/idb-8.0.3.tgz",
+      "directFrom": [
+        "apps/web"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/idb"
+      ]
+    },
+    {
+      "name": "inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/inherits"
+      ]
+    },
+    {
+      "name": "ipaddr.js",
+      "version": "2.4.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-2.4.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ipaddr.js"
+      ]
+    },
+    {
+      "name": "is-fullwidth-code-point",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/is-fullwidth-code-point"
+      ]
+    },
+    {
+      "name": "json-schema-ref-resolver",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-3.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/json-schema-ref-resolver"
+      ]
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/json-schema-traverse"
+      ]
+    },
+    {
+      "name": "jsqr",
+      "version": "1.4.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/jsqr/-/jsqr-1.4.0.tgz",
+      "directFrom": [
+        "apps/web"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/jsqr"
+      ]
+    },
+    {
+      "name": "jwa",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/jwa/-/jwa-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/jwa"
+      ]
+    },
+    {
+      "name": "jws",
+      "version": "4.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/jws/-/jws-4.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/jws"
+      ]
+    },
+    {
+      "name": "light-my-request",
+      "version": "6.6.0",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/light-my-request/-/light-my-request-6.6.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/light-my-request"
+      ]
+    },
+    {
+      "name": "locate-path",
+      "version": "5.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/locate-path/-/locate-path-5.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/locate-path"
+      ]
+    },
+    {
+      "name": "lru-cache",
+      "version": "11.5.2",
+      "license": "BlueOak-1.0.0",
+      "source": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/lru-cache"
+      ]
+    },
+    {
+      "name": "mime",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/mime/-/mime-3.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/mime"
+      ]
+    },
+    {
+      "name": "minimalistic-assert",
+      "version": "1.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/minimalistic-assert/-/minimalistic-assert-1.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/minimalistic-assert"
+      ]
+    },
+    {
+      "name": "minimatch",
+      "version": "10.2.5",
+      "license": "BlueOak-1.0.0",
+      "source": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/minimatch"
+      ]
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/minimist"
+      ]
+    },
+    {
+      "name": "minipass",
+      "version": "7.1.3",
+      "license": "BlueOak-1.0.0",
+      "source": "https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/minipass"
+      ]
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ms"
+      ]
+    },
+    {
+      "name": "on-exit-leak-free",
+      "version": "2.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/on-exit-leak-free/-/on-exit-leak-free-2.1.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/on-exit-leak-free"
+      ]
+    },
+    {
+      "name": "once",
+      "version": "1.4.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/once"
+      ]
+    },
+    {
+      "name": "p-limit",
+      "version": "2.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/p-limit/-/p-limit-2.3.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/p-limit"
+      ]
+    },
+    {
+      "name": "p-locate",
+      "version": "4.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/p-locate/-/p-locate-4.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/p-locate"
+      ]
+    },
+    {
+      "name": "p-try",
+      "version": "2.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/p-try/-/p-try-2.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/p-try"
+      ]
+    },
+    {
+      "name": "path-exists",
+      "version": "4.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/path-exists"
+      ]
+    },
+    {
+      "name": "path-scurry",
+      "version": "2.0.2",
+      "license": "BlueOak-1.0.0",
+      "source": "https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/path-scurry"
+      ]
+    },
+    {
+      "name": "perfect-freehand",
+      "version": "1.2.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/perfect-freehand/-/perfect-freehand-1.2.3.tgz",
+      "directFrom": [
+        "apps/web",
+        "packages/drawing"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/perfect-freehand"
+      ]
+    },
+    {
+      "name": "pino-abstract-transport",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-3.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/pino-abstract-transport"
+      ]
+    },
+    {
+      "name": "pino-std-serializers",
+      "version": "7.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/pino-std-serializers"
+      ]
+    },
+    {
+      "name": "pino",
+      "version": "10.3.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/pino/-/pino-10.3.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/pino"
+      ]
+    },
+    {
+      "name": "pngjs",
+      "version": "5.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/pngjs/-/pngjs-5.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/pngjs"
+      ]
+    },
+    {
+      "name": "process-warning",
+      "version": "4.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/process-warning/-/process-warning-4.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/light-my-request/node_modules/process-warning"
+      ]
+    },
+    {
+      "name": "process-warning",
+      "version": "5.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/process-warning/-/process-warning-5.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/process-warning"
+      ]
+    },
+    {
+      "name": "qrcode",
+      "version": "1.5.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/qrcode/-/qrcode-1.5.4.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode"
+      ]
+    },
+    {
+      "name": "quick-format-unescaped",
+      "version": "4.0.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/quick-format-unescaped"
+      ]
+    },
+    {
+      "name": "react-dom",
+      "version": "19.2.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.7.tgz",
+      "directFrom": [
+        "apps/web"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/react-dom"
+      ]
+    },
+    {
+      "name": "react",
+      "version": "19.2.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/react/-/react-19.2.7.tgz",
+      "directFrom": [
+        "apps/web"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/react"
+      ]
+    },
+    {
+      "name": "readable-stream",
+      "version": "3.6.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/readable-stream"
+      ]
+    },
+    {
+      "name": "real-require",
+      "version": "0.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/real-require/-/real-require-0.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/real-require"
+      ]
+    },
+    {
+      "name": "real-require",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/real-require/-/real-require-1.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/thread-stream/node_modules/real-require"
+      ]
+    },
+    {
+      "name": "require-directory",
+      "version": "2.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/require-directory/-/require-directory-2.1.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/require-directory"
+      ]
+    },
+    {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/require-from-string"
+      ]
+    },
+    {
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/require-main-filename/-/require-main-filename-2.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/require-main-filename"
+      ]
+    },
+    {
+      "name": "ret",
+      "version": "0.5.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ret/-/ret-0.5.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ret"
+      ]
+    },
+    {
+      "name": "reusify",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/reusify"
+      ]
+    },
+    {
+      "name": "rfdc",
+      "version": "1.4.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/rfdc"
+      ]
+    },
+    {
+      "name": "safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/safe-buffer"
+      ]
+    },
+    {
+      "name": "safe-regex2",
+      "version": "5.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-regex2/-/safe-regex2-5.1.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/safe-regex2"
+      ]
+    },
+    {
+      "name": "safe-stable-stringify",
+      "version": "2.5.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/safe-stable-stringify"
+      ]
+    },
+    {
+      "name": "safer-buffer",
+      "version": "2.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/safer-buffer"
+      ]
+    },
+    {
+      "name": "scheduler",
+      "version": "0.27.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/scheduler"
+      ]
+    },
+    {
+      "name": "secure-json-parse",
+      "version": "4.1.0",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-4.1.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/secure-json-parse"
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/semver"
+      ]
+    },
+    {
+      "name": "set-blocking",
+      "version": "2.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/set-blocking/-/set-blocking-2.0.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/set-blocking"
+      ]
+    },
+    {
+      "name": "set-cookie-parser",
+      "version": "2.7.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/set-cookie-parser"
+      ]
+    },
+    {
+      "name": "setprototypeof",
+      "version": "1.2.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/setprototypeof"
+      ]
+    },
+    {
+      "name": "sharp",
+      "version": "0.35.3",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/sharp/-/sharp-0.35.3.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/sharp"
+      ]
+    },
+    {
+      "name": "sonic-boom",
+      "version": "4.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/sonic-boom"
+      ]
+    },
+    {
+      "name": "split2",
+      "version": "4.2.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/split2/-/split2-4.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/split2"
+      ]
+    },
+    {
+      "name": "statuses",
+      "version": "2.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/statuses"
+      ]
+    },
+    {
+      "name": "stream-shift",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/stream-shift/-/stream-shift-1.0.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/stream-shift"
+      ]
+    },
+    {
+      "name": "string_decoder",
+      "version": "1.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/string_decoder"
+      ]
+    },
+    {
+      "name": "string-width",
+      "version": "4.2.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/string-width"
+      ]
+    },
+    {
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/strip-ansi"
+      ]
+    },
+    {
+      "name": "thread-stream",
+      "version": "4.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/thread-stream/-/thread-stream-4.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/thread-stream"
+      ]
+    },
+    {
+      "name": "toad-cache",
+      "version": "3.7.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/toad-cache/-/toad-cache-3.7.4.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/toad-cache"
+      ]
+    },
+    {
+      "name": "toidentifier",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/toidentifier"
+      ]
+    },
+    {
+      "name": "tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "source": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/tslib"
+      ]
+    },
+    {
+      "name": "util-deprecate",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/util-deprecate"
+      ]
+    },
+    {
+      "name": "web-push",
+      "version": "3.6.7",
+      "license": "MPL-2.0",
+      "source": "https://registry.npmjs.org/web-push/-/web-push-3.6.7.tgz",
+      "directFrom": [
+        "apps/bridge"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/web-push"
+      ]
+    },
+    {
+      "name": "which-module",
+      "version": "2.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/which-module/-/which-module-2.0.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/which-module"
+      ]
+    },
+    {
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-6.2.0.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode/node_modules/wrap-ansi"
+      ]
+    },
+    {
+      "name": "wrappy",
+      "version": "1.0.2",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/wrappy"
+      ]
+    },
+    {
+      "name": "ws",
+      "version": "8.21.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ws/-/ws-8.21.1.tgz",
+      "directFrom": [
+        "apps/bridge",
+        "packages/codex-desktop"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/ws"
+      ]
+    },
+    {
+      "name": "y18n",
+      "version": "4.0.3",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/y18n/-/y18n-4.0.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode/node_modules/y18n"
+      ]
+    },
+    {
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-18.1.3.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode/node_modules/yargs-parser"
+      ]
+    },
+    {
+      "name": "yargs",
+      "version": "15.4.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/yargs/-/yargs-15.4.1.tgz",
+      "directFrom": [],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/qrcode/node_modules/yargs"
+      ]
+    },
+    {
+      "name": "zod",
+      "version": "4.4.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/zod/-/zod-4.4.3.tgz",
+      "directFrom": [
+        "apps/bridge",
+        "packages/protocol",
+        "packages/review"
+      ],
+      "optional": false,
+      "lockPaths": [
+        "node_modules/zod"
+      ]
+    }
+  ]
+}

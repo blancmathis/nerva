@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Codex Pad">
+  <rect width="192" height="192" rx="36" fill="#161b1a"/>
+  <path d="M38 34h116v124H38z" fill="none" stroke="#53615c" stroke-width="4"/>
+  <g fill="#f1f0e7">
+    <rect x="57" y="55" width="22" height="22"/>
+    <rect x="113" y="55" width="22" height="22"/>
+    <rect x="57" y="115" width="22" height="22"/>
+    <rect x="113" y="115" width="22" height="22"/>
+  </g>
+  <g fill="#4d7cff">
+    <rect x="85" y="55" width="22" height="22"/>
+    <rect x="85" y="115" width="22" height="22"/>
+  </g>
+</svg>

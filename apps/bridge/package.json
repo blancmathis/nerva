@@ -1,0 +1,52 @@
+{
+  "name": "@codex-pad/bridge",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "bin": {
+    "codex-pad": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./pairing": {
+      "types": "./dist/pairing.d.ts",
+      "import": "./dist/pairing.js"
+    },
+    "./site-registry": {
+      "types": "./dist/site-registry.d.ts",
+      "import": "./dist/site-registry.js"
+    }
+  },
+  "scripts": {
+    "dev": "NODE_ENV=development tsx watch src/cli.ts start",
+    "build": "tsup src/server.ts src/auth.ts src/pairing.ts src/site-registry.ts src/cli.ts src/mac-setup.ts --format esm --clean --out-dir dist && tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run --root ../.. apps/bridge"
+  },
+  "dependencies": {
+    "@codex-pad/codex-desktop": "0.1.0",
+    "@codex-pad/protocol": "0.1.0",
+    "@codex-pad/site-review": "0.1.0",
+    "@fastify/static": "^10.1.0",
+    "@fastify/websocket": "^11.3.0",
+    "fastify": "^5.10.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.3",
+    "web-push": "^3.6.7",
+    "ws": "^8.21.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/web-push": "^3.6.4"
+  }
+}
