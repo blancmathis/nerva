@@ -52,6 +52,58 @@ beforeEach(async () => {
 });
 
 describe("DrawingStudio routing", () => {
+  it("keeps the Mac confirmation visible when parent callbacks change during Keep", async () => {
+    let resolveKeep: ((value: { ok: true; message: string }) => void) | undefined;
+    const onKeep = vi.fn(() => new Promise<{ ok: true; message: string }>((resolve) => {
+      resolveKeep = resolve;
+    }));
+    const view = render(
+      <DrawingStudio
+        open
+        target={firstTarget}
+        connected
+        onClose={vi.fn()}
+        onSend={vi.fn()}
+        onKeep={onKeep}
+        onReconcileDelivery={vi.fn()}
+      />,
+    );
+    await screen.findByText("Apple Pencil ready");
+    const canvas = screen.getByRole("img", { name: /Sketch canvas/ });
+    const down = new Event("pointerdown", { bubbles: true, cancelable: true });
+    Object.defineProperties(down, {
+      pointerId: { value: 51 }, pointerType: { value: "pen" }, clientX: { value: 180 },
+      clientY: { value: 180 }, pressure: { value: 0.6 }, tiltX: { value: 0 },
+      tiltY: { value: 0 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
+    });
+    fireEvent(canvas, down);
+    const up = new Event("pointerup", { bubbles: true, cancelable: true });
+    Object.defineProperties(up, {
+      pointerId: { value: 51 }, pointerType: { value: "pen" }, clientX: { value: 260 },
+      clientY: { value: 230 }, pressure: { value: 0.45 }, tiltX: { value: 0 },
+      tiltY: { value: 0 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
+    });
+    fireEvent(canvas, up);
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep in Saved Drawings" }));
+    await waitFor(() => expect(onKeep).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <DrawingStudio
+        open
+        target={firstTarget}
+        connected
+        onClose={vi.fn()}
+        onSend={vi.fn()}
+        onKeep={onKeep}
+        onReconcileDelivery={vi.fn()}
+      />,
+    );
+    resolveKeep?.({ ok: true, message: "Kept in Saved Drawings on the Mac" });
+
+    expect(await screen.findByText("Kept in Saved Drawings on the Mac")).toBeVisible();
+    expect(screen.queryByText("Loading saved page…")).not.toBeInTheDocument();
+  });
+
   it("does not restore cleared marks when a photo is imported", async () => {
     const bitmap = {
       width: 1,

@@ -521,6 +521,11 @@ export function DrawingStudio({
   const trackerRef = useRef<PencilPointerTracker | null>(null);
   const draftPersistenceBlockedRef = useRef(false);
   const draftMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const studioGenerationRef = useRef(0);
+  const onCloseRef = useRef(onClose);
+  const onReconcileDeliveryRef = useRef(onReconcileDelivery);
+  onCloseRef.current = onClose;
+  onReconcileDeliveryRef.current = onReconcileDelivery;
 
   const enqueueDraftMutation = useCallback((mutation: () => Promise<void>): Promise<void> => {
     const next = draftMutationQueueRef.current
@@ -683,40 +688,56 @@ export function DrawingStudio({
   const reconcileDelivery = useCallback(async (
     binding: PendingDrawingDeliveryBinding,
   ): Promise<"unknown" | "pending" | "succeeded" | "failed"> => {
-    if (!onReconcileDelivery) return "unknown";
+    const generation = studioGenerationRef.current;
+    const reconcile = onReconcileDeliveryRef.current;
+    if (!reconcile) return "unknown";
     setReconcilingDelivery(true);
     try {
-      const result = await onReconcileDelivery(binding.commandId);
+      const result = await reconcile(binding.commandId);
+      const isCurrentGeneration = generation === studioGenerationRef.current;
       if (!result || result.state === "unknown") {
-        setDraftMessage("Previous sketch outcome is unknown; retry will keep its delivery ID");
+        if (isCurrentGeneration) {
+          setDraftMessage("Previous sketch outcome is unknown; retry will keep its delivery ID");
+        }
         return "unknown";
       }
       if (result.state === "pending") {
-        setDraftMessage(result.message ?? "Previous sketch is still in flight and was not resent");
+        if (isCurrentGeneration) {
+          setDraftMessage(result.message ?? "Previous sketch is still in flight and was not resent");
+        }
         return "pending";
       }
 
       if (result.ok) {
         await discardDeliveredDraft(binding.threadId);
         clearDeliveryBinding(binding.threadId);
-        setDraftMessage(result.message ?? "Previous sketch delivery completed");
-        setExportPreview(null);
-        window.setTimeout(onClose, 360);
+        if (generation === studioGenerationRef.current) {
+          setDraftMessage(result.message ?? "Previous sketch delivery completed");
+          setExportPreview(null);
+          window.setTimeout(() => {
+            if (generation === studioGenerationRef.current) onCloseRef.current();
+          }, 360);
+        }
         return "succeeded";
       }
       clearDeliveryBinding(binding.threadId);
-      setDraftMessage(result.message ?? "Previous sketch was definitively rejected; a new delivery is now allowed");
+      if (isCurrentGeneration) {
+        setDraftMessage(result.message ?? "Previous sketch was definitively rejected; a new delivery is now allowed");
+      }
       return "failed";
     } catch {
-      setDraftMessage("Previous sketch status is unavailable; retry will keep its delivery ID");
+      if (generation === studioGenerationRef.current) {
+        setDraftMessage("Previous sketch status is unavailable; retry will keep its delivery ID");
+      }
       return "unknown";
     } finally {
-      setReconcilingDelivery(false);
+      if (generation === studioGenerationRef.current) setReconcilingDelivery(false);
     }
-  }, [clearDeliveryBinding, discardDeliveredDraft, onClose, onReconcileDelivery]);
+  }, [clearDeliveryBinding, discardDeliveredDraft]);
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
+      studioGenerationRef.current += 1;
       draftPersistenceBlockedRef.current = false;
       resetPointerState();
       dispatchHistory({ type: "reset", scene: freshHistory().present });
@@ -725,6 +746,7 @@ export function DrawingStudio({
       setView(INITIAL_VIEW);
       setDisplayedTarget(target ? { ...target } : null);
     } else if (!open && wasOpenRef.current) {
+      studioGenerationRef.current += 1;
       resetPointerState();
       dispatchHistory({ type: "reset", scene: freshHistory().present });
       setInstruction("");
@@ -747,7 +769,9 @@ export function DrawingStudio({
       setDraftReady(false);
       return;
     }
+    const generation = studioGenerationRef.current;
     let active = true;
+    const isCurrentGeneration = () => active && generation === studioGenerationRef.current;
     setDraftReady(false);
     setDraftMessage("Loading saved page…");
     setView(INITIAL_VIEW);
@@ -769,7 +793,7 @@ export function DrawingStudio({
       : loadDrawingDraft(displayedTarget.threadId).then((draft) => draft ? { ...draft, savedWorkingCopy: false } : null);
     void drawingSource
       .then(async (draft) => {
-        if (!active) return;
+        if (!isCurrentGeneration()) return;
         let restoredScene: Scene;
         let restoredInstruction: string;
         if (draft) {
@@ -791,12 +815,12 @@ export function DrawingStudio({
         }
 
         const binding = storedDelivery;
-        if (!binding || !active) return;
+        if (!binding || !isCurrentGeneration()) return;
         const identity = await createDrawingDeliveryIdentity(
           serializeScene(restoredScene),
           restoredInstruction,
         );
-        if (!active) return;
+        if (!isCurrentGeneration()) return;
         const matches = bindingMatchesDrawingDraft(binding, identity);
         setPendingDelivery(binding);
         setPendingDeliveryMatchesDraft(matches);
@@ -808,7 +832,7 @@ export function DrawingStudio({
         void reconcileDelivery(binding);
       })
       .catch(() => {
-        if (!active) return;
+        if (!isCurrentGeneration()) return;
         dispatchHistory({ type: "reset", scene: freshHistory().present });
         setInstruction("");
         setDraftMessage(storedDelivery
@@ -817,7 +841,7 @@ export function DrawingStudio({
         if (storedDelivery) void reconcileDelivery(storedDelivery);
       })
       .finally(() => {
-        if (active && !draftPersistenceBlockedRef.current) setDraftReady(true);
+        if (isCurrentGeneration() && !draftPersistenceBlockedRef.current) setDraftReady(true);
       });
     return () => {
       active = false;
@@ -870,7 +894,7 @@ export function DrawingStudio({
     if (!draftReady) return;
     const timer = window.setTimeout(() => void persistDraft(true), 550);
     return () => window.clearTimeout(timer);
-  }, [draftReady, persistDraft]);
+  }, [draftReady, persistDraft, scene]);
 
   useEffect(() => {
     if (!open) return;
@@ -1228,8 +1252,12 @@ export function DrawingStudio({
     setInstruction("");
     setExportPreview(null);
     setClearPending(false);
-    if (displayedTarget) void deleteDrawingDraft(displayedTarget.threadId);
-  }, [displayedTarget]);
+    setDraftMessage("New page");
+    if (displayedTarget) {
+      const threadId = displayedTarget.threadId;
+      void enqueueDraftMutation(() => deleteDrawingDraft(threadId));
+    }
+  }, [displayedTarget, enqueueDraftMutation]);
 
   const buildPreview = useCallback(async () => {
     if (!hasContent || previewBusy) return;
@@ -1380,7 +1408,10 @@ export function DrawingStudio({
       setDraftMessage("Sketch attached to the Mac composer");
       setExportPreview(null);
       setSendAfterBuild(false);
-      window.setTimeout(onClose, 360);
+      const generation = studioGenerationRef.current;
+      window.setTimeout(() => {
+        if (generation === studioGenerationRef.current) onCloseRef.current();
+      }, 360);
     } catch (error) {
       if (!mutationAttempted && !pendingDelivery) {
         setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
@@ -1400,7 +1431,6 @@ export function DrawingStudio({
     exportPreview,
     instruction,
     onSend,
-    onClose,
     pencilOnly,
     pendingDelivery,
     pendingDeliveryMatchesTarget,
@@ -1426,6 +1456,7 @@ export function DrawingStudio({
 
   const keepDrawing = useCallback(async () => {
     if (!onKeep || !displayedTarget || !hasContent || localKeeping) return;
+    const generation = studioGenerationRef.current;
     setLocalKeeping(true);
     setLocalError(null);
     setKeepMessage(null);
@@ -1448,14 +1479,20 @@ export function DrawingStudio({
         height: geometry.height,
       });
       if (!result.ok) {
-        setLocalError(result.message ?? "Drawing could not be kept on the Mac.");
+        if (generation === studioGenerationRef.current) {
+          setLocalError(result.message ?? "Drawing could not be kept on the Mac.");
+        }
         return;
       }
-      setKeepMessage(result.message ?? "Kept in Saved Drawings on the Mac");
+      if (generation === studioGenerationRef.current) {
+        setKeepMessage(result.message ?? "Kept in Saved Drawings on the Mac");
+      }
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Drawing could not be kept on the Mac.");
+      if (generation === studioGenerationRef.current) {
+        setLocalError(error instanceof Error ? error.message : "Drawing could not be kept on the Mac.");
+      }
     } finally {
-      setLocalKeeping(false);
+      if (generation === studioGenerationRef.current) setLocalKeeping(false);
     }
   }, [displayedTarget, hasContent, instruction, localKeeping, onKeep, scene]);
 
@@ -1468,8 +1505,8 @@ export function DrawingStudio({
   const targetChanged = Boolean(displayedTarget && !sameDrawingTarget(displayedTarget, target));
   const statusText = localError
     ?? (reconcilingDelivery ? "Checking the previous attachment with the Mac bridge…" : null)
-    ?? statusMessage
     ?? keepMessage
+    ?? statusMessage
     ?? (!sendGuard.allowed ? sendGuard.message : draftMessage);
 
   return (
