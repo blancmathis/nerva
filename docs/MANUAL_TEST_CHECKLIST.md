@@ -17,6 +17,22 @@ Tester:
 Evidence location:
 ```
 
+## Latest recorded automated run
+
+```text
+Date/time: 25 July 2026, Europe/Paris
+Nerva commit: b94e30a
+Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
+Codex Desktop / bundled Codex: 26.721.41059 build 5848 / codex-cli 0.146.0-alpha.3.1
+Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
+iPad / iPadOS / Pencil: not recorded in this run
+Evidence: checkout and clean local Git clone
+```
+
+Automated result: check, 889 unit tests, build, 381.70 KiB bundle ceiling, release audit, Context Room doctor, screenshots and both sequential/parallel E2E matrices passed. Each E2E matrix recorded 250 passes, eight explicit profile skips, zero failures and no retry. The critical Drawing scenarios passed 72/72 over three repetitions.
+
+Runtime result: **blocked/degraded**. Nerva doctor reports five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
+
 ## A. Mac setup and pairing
 
 - [ ] From a clean supported clone, with Tailscale already signed in, install the official standalone Codex CLI once if absent, then run `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
@@ -214,11 +230,15 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] `npm run check`
 - [ ] `npm test`
 - [ ] `npm run build`
+- [ ] `npm run check:bundle`
 - [ ] `npx playwright install chromium webkit`
+- [ ] `npm run test:e2e -- --workers=1`
 - [ ] `npm run test:e2e` in Chromium and WebKit iPad landscape, iPad portrait and iPhone projects
 - [ ] `npm run screenshots`
 - [ ] `npm run audit:release`
 - [ ] `npm run context-room:doctor`
+- [ ] `npm audit --omit=dev --audit-level=high`
+- [ ] `npm run doctor`
 - [ ] Optional `npm run test:integration`, with disposable thread confirmed deleted
 - [ ] Release inputs contain no credentials, personal paths, private thread content, extracted proprietary assets or generated OpenAI protocol source
 
@@ -232,5 +252,8 @@ Choose one and explain the limiting evidence:
 - [ ] **Blocked/degraded** — an exact compatibility or security invariant failed.
 
 ```text
-Verdict notes:
+Verdict notes (25 July 2026):
+Blocked/degraded. Automated and clean-clone gates are green, but doctor is red
+for the native app-server topology and the physical Mac/iPad/Pencil matrix is
+incomplete. Do not create v0.1.0.
 ```

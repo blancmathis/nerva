@@ -80,6 +80,8 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
+On the 25 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` exposes five independent stdio writers, the managed socket is absent and ownership cannot be attested. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; repeated restarts, hand-written attestations or killing unknown writers are not accepted workarounds.
+
 Expected path:
 
 ```text

@@ -11,27 +11,29 @@ It is a compatibility record for the current implementation, not the future prod
 
 ## Current observed baseline
 
-| Component | Observed version/state on 21 July 2026 | Proof level |
+| Component | Observed version/state on 25 July 2026 | Proof level |
 | --- | --- | --- |
 | Mac | macOS `26.5.1`, Apple Silicon `arm64` | Observed locally |
-| Codex Desktop application | `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, version `26.715.61943`, build `5628` | Observed locally on 21 July 2026 |
-| Desktop-bundled Codex | `0.145.0-alpha.27` | Observed locally on 21 July 2026 |
-| OpenAI-managed standalone CLI | `0.144.6` | Observed; required by the durable daemon manager, not used as the Desktop schema authority |
+| Codex Desktop application | `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, version `26.721.41059`, build `5848` | Observed locally by doctor on 25 July 2026 |
+| Desktop-bundled Codex | `0.146.0-alpha.3.1` | Observed locally; matching installed-version schema cache generated and verified |
+| OpenAI-managed standalone CLI | Daemon manager available only through an older standalone installation during this run | Version skew prevents treating the standalone daemon as current Desktop authority |
 | Native Micro renderer | Version-hashed modules with exactly six `AG00`–`AG05` slots and known native states | Static structural inspection only |
-| Native live slot values | Exact loopback CDP reads returned six fresh records and one unique selected slot. The canonical current sidebar row now owns navigation identity even outside those six; a stale composer marker cannot override it. Without a sidebar identity, matching composer/slot or the unique slot fallback is accepted, while an ambiguous disagreement fails closed. Joystick layout v1's `{ type: "command", commandId }` identity is revalidated; activity detail and native reasoning remain unavailable. | Live read-only proof against `26.715.61943`; navigation and native mutation authority remain deliberately separate, and mutation still requires its own final revalidation |
-| Native composer image attachment | The exact visible composer exposed one live React paste handler reachable from its unique `data-composer-navigation-target="add-context"` control. A generated PNG appeared as one removable attachment; no submit handler or app-server call was invoked, and the diagnostic attachment was removed afterward. | Live Mac proof against `26.715.61943`; physical iPad tap still pending |
-| Managed control socket | `~/.codex/app-server-control/app-server-control.sock`, provisioned by the Desktop-bundled manager and served by the OpenAI-managed standalone binary | Live daemon/socket plus direct WebSocket initialize proven; bounded probes returned 7 models, 54 cwd-scoped skills and 21 sessions without private contents, then held model/skill/latest-turn reads stable for 12 consecutive active-task cycles |
-| Desktop ownership attestation | Optional stronger co-presence proof; not required for a mutation already bound to one exact selected native thread | Exact-target operations use one-shot final-write authority; new/no-target task creation remains disabled without full ownership |
-| App-server initialize/resume/image turn | Green against a disposable isolated thread using the bundled binary | Isolated protocol proof |
-| Live same-Desktop app-server image routing | Desktop restart/shared daemon unavailable during the active task | Not proven for Review; Drawing/Photo no longer uses this route |
+| Native live slot values | CDP remains reachable on loopback, but the adapter is degraded under the installed renderer shape | Current doctor warning; commands fail closed |
+| Native composer image attachment | Historical diagnostic proof exists against `26.715.61943` | Not re-proven against the installed `26.721.41059`; physical iPad tap still pending |
+| App-server writers | Five independent stdio app-server writers observed | Current doctor red; process ownership is not inferred from PIDs |
+| Managed control socket | `~/.codex/app-server-control/app-server-control.sock` is absent | Current doctor red |
+| Desktop ownership attestation | No current reciprocal-peer ownership attestation | Current doctor red; app-server mutations remain disabled |
+| App-server initialize/resume/image turn | Historical disposable-thread proof only | Not current live Desktop proof |
+| Live same-Desktop app-server image routing | No safe current shared-daemon topology | Not proven for Review; Drawing/Photo uses the separate native composer path when that exact capability is live |
 | Live Codex Browser Site surface | Unified sanitized inventory, fresh opaque-target resolution, bounded JPEG frames and typed tap/scroll/text/key/history controls; no iframe, arbitrary URL, JavaScript or public CDP | Unit and responsive Playwright fixture proof; real Mac tab plus physical iPad/Pencil flow pending |
 | Legacy registered-site surface | Compatibility metadata only; not shown by the current Sites picker and grants no live-tab authority | Fixture-tested metadata projection |
 | Fresh registered-site capture | No compatible outer macOS exact-egress plus Chrome child-sandbox arrangement is proven | Current production gate returns `process-sandbox-unavailable` before launch; manual imports remain available |
-| Multi-frame/comparison surfaces | Local deck plus fail-closed private attestation loader and an explicit standalone probe | Probe not executed in this work; no live multi-image claim |
+| Multi-frame/comparison surfaces | Local deck plus fail-closed private attestation loader and an explicit standalone probe | `multiImageInputVerified=false`; no live multi-image claim |
 | Native Codex dictation | The owner observed an exact-task native dispatch reach `0:00` and immediately stop. This proved the old atomic press/release reached Codex Desktop and exposed the defect; the corrected paired press/release implementation is automated-test green, but sustained recording and transcription still require a physical retest. | Partial owner-observed proof; sustained capture not yet hardware-validated |
 | Home/Session PWA | Current visible navigation with 0–12 pins, manual sections/cases, temporary priority/status filters across pinned and unpinned sessions, Unpinned Sessions, exact Session controls, explicit `Following Mac` / `Staying here`, immediate follow realignment, Mac navigation outside the native six and Mac-backed Product State/Saved Drawings | Local automated browser proof at iPad landscape, iPad portrait and phone sizes; physical touch/Pencil gesture matrix incomplete |
 | Tailscale and pairing | Tailscale installed and authenticated on the owner's Mac and iPad; private origin, QR pairing, Home Screen installation and credential reuse worked manually | One owner-confirmed live path; no timed clean-device or cross-version matrix |
 | Apple Pencil | The physical iPad path is connected, but Pencil pressure/tilt, palm rejection and 60/120 Hz behavior have not been recorded | Not hardware-validated |
+| Automated checkout | 889 unit tests; 250 E2E passed and 8 profile-specific skips in both sequential and parallel runs; clean-clone reproduction passed | Local automated proof only |
 
 The isolated spike created a normal non-ephemeral test thread so it could be resumed, sent a 1×1 PNG using `localImage`, observed a completed reply, and deleted the test thread. It explicitly reported `liveDesktopCopresenceProven: false`.
 

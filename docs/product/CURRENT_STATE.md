@@ -4,25 +4,25 @@ context_room:
   scope: product
   status: current
   canonical_for: etat observe de l'implementation locale
-  last_verified: 2026-07-22
+  last_verified: 2026-07-25
   sources: [apps/web/src/App.tsx, apps/web/src/components, apps/web/src/styles, apps/bridge/src, packages/protocol, apps/web/e2e, playwright.config.ts]
 ---
 
 # Nerva — état actuel du dépôt
 
-> État observé localement le 22 juillet 2026. La cible produit validée reste dans [`FEATURES_target.md`](./FEATURES_target.md). Cette page distingue ce qui existe dans le code, ce que les fixtures prouvent et ce qui exige encore un vrai Mac/iPad.
+> État observé localement le 25 juillet 2026 sur la branche `mathis/nerva-release-readiness`. La cible produit validée reste dans [`FEATURES_target.md`](./FEATURES_target.md). Cette page distingue ce qui existe dans le code, ce que les fixtures prouvent et ce qui exige encore un vrai Mac/iPad.
 
 Le nom produit public validé est **Nerva**. L'interface visible, les métadonnées de la PWA et les textes de pairing utilisent ce nom. Les identifiants techniques existants (`codex-pad`, `CodexPad`, base IndexedDB, LaunchAgent, répertoires et commandes) restent volontairement inchangés afin de ne pas casser les appareils appairés ni l'état global.
 
 ## Résumé honnête
 
-Le build courant utilise un seul Home : `Home ↔ Capture Inbox` et `Home → Session → surfaces contextuelles`. Les sections, cases et cartes épinglées du layout manuel restent la seule organisation durable. L'ancien Automatic by Status et la page Mission Control sont remplacés par un bouton priorité et cinq filtres d'état temporaires dans Home, tous fondés sur le catalogue validé et les mêmes cartes. Capture Inbox reste une bibliothèque locale indépendante du Mac, mais chaque Session possède une entrée directe qui l'ouvre dans le contexte temporaire de ce `threadId` exact. Les anciennes implémentations Cockpit, Spatial et Library existent encore dans certains fichiers et tests unitaires de compatibilité, mais elles ne sont plus routées dans l'application visible.
+Le build courant utilise un seul Home : `Home ↔ Capture Inbox` et `Home → Session → surfaces contextuelles`. Les sections, cases et cartes épinglées du layout manuel restent la seule organisation durable. L'ancien Automatic by Status et la page Mission Control sont remplacés par un bouton priorité et cinq filtres d'état temporaires dans Home, tous fondés sur le catalogue validé et les mêmes cartes. Capture Inbox reste une bibliothèque locale indépendante du Mac, mais chaque Session possède une entrée directe qui l'ouvre dans le contexte temporaire de ce `threadId` exact. Les anciennes surfaces Cockpit, Spatial, Command Deck et Library ainsi que leur feuille CSS historique ont été retirées du build et des tests ; elles ne font plus partie de l'implémentation courante.
 
 Le parcours privé Tailscale et le pairing ont fonctionné manuellement sur le Mac et l'iPad du propriétaire, y compris l'installation sur l'écran d'accueil et la réouverture avec le credential persistant. Cette observation ne remplace pas encore un protocole physique chronométré, un test de remplacement d'iPad ou une matrice multi-version iPadOS.
 
-Le canal app-server local a été prouvé en direct sur une version antérieure, mais cette preuve n'est pas extrapolée à chaque mise à jour. Le build courant expose donc un **Capability Center** authentifié qui indique séparément la santé du bridge, le transport Codex, les contrôles natifs, l'attachement au composer, les catalogues Skills/Models, les approvals et les Sites, avec heure de dernière preuve et compatibilité du cache de schémas installé. Il ne publie ni titre, prompt, chemin local, token ni identifiant complet.
+Le canal app-server local a été prouvé en direct sur une version antérieure, mais cette preuve n'est pas extrapolée à la version installée aujourd'hui. Le 25 juillet 2026, `npm run doctor` est rouge : cinq writers app-server stdio indépendants sont observés, le socket géré est absent et l'ownership Desktop n'est pas attestée. Le cache de schémas correspond bien au Codex Desktop installé (`26.721.41059`, build `5848`, `codex-cli 0.146.0-alpha.3.1`), mais cette compatibilité de schéma n'établit pas une topologie live sûre. `/api/health` répond donc honnêtement `state: degraded`, `desktopOwnershipVerified: false` et `multiImageInputVerified: false`.
 
-Le dépôt entier reste non suivi dans Git. Les preuves sont donc locales au checkout présent.
+Le dépôt possède désormais un historique Git local et une branche de préparation de release. Aucun remote, push, déploiement ou tag n'a été créé. Les preuves restent locales : aucune exécution GitHub Actions n'est revendiquée.
 
 ## Surfaces réellement présentes
 
@@ -83,13 +83,15 @@ Le QR courant contient `/pair#pair=<nonce>`. Le fragment n'est pas envoyé dans 
 
 Le parcours visible est :
 
-1. `npm run setup:mac` prépare le checkout, invoque le gestionnaire durable du daemon app-server fourni par le Codex Desktop installé, installe le LaunchAgent du bridge, active l'opt-in local-daemon pour les prochains lancements GUI, configure la route Tailscale Serve privée, puis affiche le QR ;
+1. `npm run setup:mac` prépare le checkout, tente le parcours officiel du daemon app-server fourni par l'installation Codex, installe le LaunchAgent du bridge, active l'opt-in local-daemon pour les prochains lancements GUI, configure la route Tailscale Serve privée, puis affiche le QR ;
 2. Safari lit le fragment et montre les étapes `Add to Home Screen` sans consommer l'invitation ;
 3. la PWA installée utilise l'invitation si iPadOS la transmet, sinon son scanner interne relit le même QR ;
 4. un seul bouton `Connect` crée le credential avec un nom d'appareil automatique ;
 5. les ouvertures suivantes réutilisent IndexedDB et ne demandent ni QR quotidien ni reconnexion.
 
 La `start_url` du manifest est `/pair`, de sorte qu'une installation non appairée arrive directement sur le scanner. Le fallback historique `/pair?nonce=…` reste accepté pour compatibilité et tests, mais les QR générés par le Mac n'utilisent plus la query.
+
+Ce parcours de pairing peut rester utilisable lorsque les mutations app-server sont dégradées, car l'identité d'appareil, le bridge loopback et Tailscale sont des couches séparées. Sur la version Desktop actuelle, `setup:mac` ne constitue pas une preuve que Desktop a adopté le daemon géré : seul un doctor vert et l'attestation live correspondante pourraient l'établir.
 
 ## Ce qui reste intentionnellement fail-closed
 
@@ -102,7 +104,7 @@ La `start_url` du manifest est `/pair`, de sorte qu'une installation non appair�
 7. **Context Room et Nerva Cards :** l'adaptateur accepte uniquement une origine HTTP loopback explicite et lit `/api/health` sans credential. La carte est validée par un schéma fermé ; HTML, JavaScript, styles, URL et gestionnaires arbitraires sont refusés.
 8. **Focus Home :** priorité et filtres réutilisent uniquement les `ProductSession` déjà validées et exposées par `/api/sessions` ou le snapshot natif. Ils n'ajoutent aucun endpoint, contrat, cache ou état global spécialisé, n'exposent ni prompt, ni tour, ni output, et n'affichent pas les sous-agents internes d'une session.
 9. **Capture Inbox :** un store IndexedDB séparé conserve les bytes et métadonnées sans aucune destination. La Session exacte est un contexte d'écran temporaire, jamais une propriété de l'item. `Use in session` copie les éléments compatibles dans le Review local de ce thread sans commande distante. Le store ne contient aucun état d'envoi et la reconnexion ne le lit jamais.
-9. **Matériel :** Apple Pencil, paume, suspension longue et orientations réelles restent à vérifier physiquement.
+10. **Matériel :** Apple Pencil, paume, suspension longue et orientations réelles restent à vérifier physiquement.
 
 ## Preuves locales automatisées
 
@@ -119,7 +121,26 @@ Le checkout contient :
 - une vérification Playwright dédiée de Home avec 0, 1, 6 et 12 sessions épinglées dans le layout manuel et le focus priorité ;
 - des captures synthétiques régénérées pour Pairing, Home, Home Priority, Capture Inbox, Session, Sites, Site live, Site QA issue/Review, Drawing, Review images, Saved Drawings et Settings.
 
-Les nombres exacts du dernier passage complet doivent être repris depuis la sortie de `npm run validate`; ils ne sont pas figés dans cette page afin d'éviter une revendication obsolète après chaque ajout de test.
+## Validation datée du 25 juillet 2026
+
+Le checkout principal et un clone Git local propre du commit `b94e30a` ont passé :
+
+- `npm run check` ;
+- `npm test` : 112 fichiers passés, 2 ignorés ; 889 tests passés, 2 ignorés ; 11/11 tests de sûreté du probe ;
+- `npm run build` ;
+- `npm run check:bundle` : plus gros chunk JavaScript à 381,70 KiB, sous le budget brut de 500 KiB ;
+- `npm run test:e2e -- --workers=1` : 250 passés, 8 ignorés, zéro échec ;
+- `npm run test:e2e` : 250 passés, 8 ignorés, zéro échec ;
+- la répétition triple des scénarios Drawing critiques : 72/72 passés sans retry ;
+- `npm run screenshots` ;
+- `npm run audit:release` : 163 dépendances de production inventoriées ;
+- `npm run context-room:doctor` ;
+- `npm audit --omit=dev --audit-level=high` : zéro vulnérabilité ;
+- `npm audit --audit-level=high` : aucune vulnérabilité high/critical, une vulnérabilité low d'`esbuild` limitée au serveur de développement Windows.
+
+La matrice Playwright contient Chromium et WebKit sur iPad paysage, iPad portrait et téléphone. Les huit skips sont des exclusions explicites de profil, pas des retries cachés. Axe ne relève aucune violation serious/critical sur les surfaces rendues testées.
+
+Le gate global reste toutefois **bloqué/degraded** : `npm run doctor` est rouge pour la topologie app-server décrite plus haut, et la checklist physique n'est pas terminée. Aucun tag `v0.1.0` ne doit être créé tant que ces deux limites persistent.
 
 ## Preuves encore nécessaires avant “produit cible terminé”
 

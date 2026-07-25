@@ -1,6 +1,6 @@
 # Security
 
-Codex Pad is a remote control for a coding agent that can read files, edit code, and run commands. Treat access to it as access to the signed-in Mac user and their Codex sessions.
+Nerva is a remote control for a coding agent that can read files, edit code, and run commands. Treat access to it as access to the signed-in Mac user and their Codex sessions. Existing technical identifiers remain `codex-pad` / `CodexPad`.
 
 This document records the security boundary of the current `Home → Session` implementation. The remaining completion targets are defined in [`docs/product/FEATURES_target.md`](docs/product/FEATURES_target.md) and [`docs/product/PAIRING_target.md`](docs/product/PAIRING_target.md); they may not weaken the exact-session, authenticated-composer, loopback, media or fail-closed boundaries below.
 
@@ -33,7 +33,7 @@ Never use Tailscale Funnel for Codex Pad. Never bind CDP or the Codex app-server
 - **Desktop boundary:** CDP is loopback-only and implementation-owned. The managed app-server control socket is never served directly. Codex application files, databases, and rollout logs are not modified.
 - **Thread boundary:** native Micro commands are bound to an exact thread UUID from the authoritative six-slot snapshot. Home may display up to twelve pinned sessions, but a session outside the native six receives only operations backed by its own exact Mac-issued thread/composer authority. A missing, changed, stale or ambiguous target always fails closed.
 - **Media boundary:** imported photos, site frames, and drawings are untrusted sensitive inputs. They never grant URL, path, browser-tab, or thread authority.
-- **Registered-site boundary:** the current same-host/different-port topology is context-only. Live embed, top-level open, and capture are disabled. Ports do not isolate cookies, and an opaque iframe sandbox does not prevent an HTTP response from setting host-wide cookies; a registered site could therefore pollute or overflow cookie headers later sent to the bridge. The safe current path is explicit manual screenshot/photo import plus local annotation. Full site interaction needs a future verified distinct hostname/storage boundary.
+- **Live-site boundary:** the current Sites picker lists only HTTP(S) Codex Browser pages whose renderer conversation is proven for the exact selected task. The user explicitly chooses one opaque page ID; the bridge re-resolves its task ownership before every bounded frame or typed control. The PWA never receives CDP, debugger URLs, DOM, cookies, auth state, arbitrary JavaScript/selectors or a generic upstream fetch primitive. Legacy registered-site metadata grants no live-page authority.
 
 The Desktop renderer and app-server are compatibility dependencies, not trusted sources of arbitrary executable instructions. Responses and diagnostics are parsed as untrusted data and reduced to a minimal public snapshot.
 
@@ -54,7 +54,7 @@ IndexedDB is origin-isolated browser storage, not a hardware-backed secret store
 - Notification permission is requested only from the installed Home Screen PWA after the user taps `Enable`. Pairing does not silently grant or request it.
 - The public VAPID key may cross the authenticated API. The VAPID private key and per-device browser endpoint/`p256dh`/`auth` subscription material stay in atomically replaced mode-`0600` files under `~/Library/Application Support/CodexPad/security/`.
 - `PUT /api/push/subscription` requires the exact Origin, a valid paired-device bearer and mutation-rate admission. It accepts only HTTPS endpoints on known Apple, Google or Mozilla Push service hosts, with exact Web Push key sizes; it cannot be used as a general bridge-side URL fetch or SSRF primitive.
-- The Push message is encrypted with `aes128gcm`. Its bounded plaintext contains only fixed generic status copy, a badge count and either one canonical task UUID or Mission Control. It never contains a title, prompt, output, command/approval summary, cwd, local path, credential or arbitrary URL.
+- The Push message is encrypted with `aes128gcm`. Its bounded plaintext contains only fixed generic status copy, a badge count and either one canonical task UUID or Home's priority focus. It never contains a title, prompt, output, command/approval summary, cwd, local path, credential or arbitrary URL.
 - The service worker revalidates the event kind and destination. A notification tap can only focus/open Nerva at that safe destination. The notification defines no action buttons, so accepting or rejecting an approval from the Lock Screen is impossible.
 - The bridge sends only from a new reliable transition. It silently seeds the first post-start authoritative snapshot and ignores stale/reconnecting/offline state. An aggregate `degraded` state is eligible only while its independent native slot proof is at most five seconds old; unavailable mutation authority never becomes notification command authority. A pinned task is the current explicit importance signal for completion notifications.
 - Revocation removes the paired device subscription. Terminal `404`/`410` Push-service responses remove expired records. Removing local permission alone may not immediately inform a suspended Mac, so Settings `Turn off` removes the bridge record before unsubscribing the browser.
@@ -79,15 +79,15 @@ Any future containment-proven site capture, and every image-bearing command, als
 
 Before selection, control, approval, model/effort update, skill action, or sketch delivery, the bridge checks the expected slot and thread UUID against the latest non-stale native snapshot. Exact-target app-server writes receive a one-shot authority only after that guard is rerun at the final write boundary. Operations without a pre-existing exact target still require verified shared Desktop ownership. There is no fallback to the selected Desktop window, a recent thread, a host session, or a thread with a similar title.
 
-For sketches:
+For Drawing/Photo composer attachments:
 
-- The web client forces `instruction: ""`; transport assembly emits only one `localImage` item and no text input. Armed skills are not injected into or consumed by a Drawing send.
-- An authoritative idle thread may use `turn/start`.
-- An active thread may use `turn/steer` only when the exact active turn ID is known and the installed app-server version has passed the image-steering compatibility probe.
-- Otherwise production returns immediate typed `AGENT_BUSY`, keeps the draft, and releases request/media admission; it does not retain a hidden or offline queue.
-- Delivery never starts later on its own. After the agent becomes idle, the user must review the target and submit a new explicit command.
-- The setup-configured durable app-server daemon from the Desktop-bundled Codex binary is the only supported Codex Pad transport. An unrelated standalone or raw-listener app-server is never attached as a second writer against a live Desktop thread.
+- The web client forces `instruction: ""`; assembly produces one normalized PNG and no text. Armed skills are not injected into or consumed by a Drawing send.
+- The bridge revalidates the exact selected native task and unique live composer attachment control immediately before invoking the fixed paste primitive.
+- The primitive waits for the visible attachment-count postcondition and never calls `turn/start`, `turn/steer`, a submit handler or a keyboard shortcut.
+- A confirmed attachment removes the working draft. A rejected or unknown result preserves the draft and the same idempotency identity; delivery never starts later on its own.
 - A thread is never silently forked.
+
+Review delivery is a separate app-server operation. It remains subject to managed-transport authority, idle/busy routing and the optional installed-version multi-image attestation. An unrelated standalone or raw-listener app-server is never attached as a second writer against a live Desktop thread.
 
 Approval and rejection use `respondToApproval` with the current snapshot sequence and exact pending `requestId`/thread/turn/item/kind tuple. The bridge revalidates the selected native target, one-shot transport authority, and the still-actionable request immediately before `accept` or `decline`; any changed or resolved object fails closed. Generic `APPR`/`REJ` HID mappings, keystrokes, labels, or text matching are not approval mechanisms.
 

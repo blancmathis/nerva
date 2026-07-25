@@ -4,13 +4,19 @@ context_room:
   scope: runtime
   status: current
   canonical_for: preuve de capacites mises a jour PWA notifications et integrations bornees
-  last_verified: 2026-07-22
+  last_verified: 2026-07-25
   sources: [packages/protocol/src/runtime.ts, packages/protocol/src/nerva-card.ts, packages/protocol/src/integrations.ts, apps/bridge/src/server.ts, apps/bridge/src/push-notifications.ts, apps/bridge/src/context-room-adapter.ts, apps/web/src/components/CapabilityCenter.tsx, apps/web/src/lib/pwa-updates.ts, apps/web/src/lib/agent-notifications.ts, apps/web/src/lib/activity-timeline.ts, apps/web/src/sw-template.js]
 ---
 
 # Nerva runtime reliability
 
 This page describes the reliability features that are implemented now. It does not turn a browser fixture, an old compatibility probe or a visible control into proof that the current Mac/iPad path works.
+
+## Current runtime verdict
+
+As observed on 25 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports five independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
+
+This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
 
 ## Capability Center
 
