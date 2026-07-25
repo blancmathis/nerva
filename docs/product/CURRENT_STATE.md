@@ -130,19 +130,19 @@ Le checkout contient :
 
 ## Validation datée du 25 juillet 2026
 
-Le checkout de travail a passé :
+Le checkout de travail et un clone Git local propre du commit `383f5c4` ont passé :
 
 - `npm run validate` : check, 115 fichiers de tests passés et 2 ignorés, 902 tests passés et 2 ignorés, 11/11 tests de sûreté du probe, build, budget bundle, matrice E2E et audit release ;
 - `npm run check:bundle` : plus gros chunk JavaScript à 379,69 KiB, sous le budget brut de 500 KiB ;
 - `npm run test:e2e` : 275 passés, 13 exclusions explicites de profil, zéro échec et aucun retry ;
 - le scénario exact Codex → diagramme → édition tactile → encre Pencil → sync → Send passe sur les profils Chromium/WebKit ;
 - `npm run screenshots` : captures synthétiques Home, Settings, Session, Draw, diagrammes, Review, Sites et Capture Inbox régénérées ;
-- `npm run audit:release` : 427 fichiers de release inspectés et 163 dépendances de production inventoriées ;
+- `npm run audit:release` : 432 fichiers de release inspectés et 163 dépendances de production inventoriées ;
 - `npm run context-room:doctor` : vert ;
 - `npm audit --omit=dev --audit-level=high` : zéro vulnérabilité ;
 - `npm audit --audit-level=high` : aucune vulnérabilité high/critical, une vulnérabilité low transitive d'`esbuild` limitée au serveur de développement Windows.
 
-La matrice Playwright contient Chromium et WebKit sur iPad paysage, iPad portrait et téléphone. Les 13 skips sont des exclusions explicites de profil, pas des retries cachés. Axe ne relève aucune violation serious/critical sur les surfaces rendues testées. Le clone propre doit encore être rejoué sur le commit de publication ; aucune preuve GitHub Actions n'est revendiquée avant le premier push public.
+La matrice Playwright contient Chromium et WebKit sur iPad paysage, iPad portrait et téléphone. Les 13 skips sont des exclusions explicites de profil, pas des retries cachés. Axe ne relève aucune violation serious/critical sur les surfaces rendues testées. Le clone propre a aussi passé `npm ci`, l'installation Chromium/WebKit, `npm run validate`, Context Room doctor, les deux audits npm, la génération de captures et l'audit release. Aucune preuve GitHub Actions n'est revendiquée avant le premier push public.
 
 Le gate global reste toutefois **bloqué/degraded** : `npm run doctor` est rouge pour la topologie app-server décrite plus haut, et la checklist physique n'est pas terminée. Aucun tag `v0.1.0` ne doit être créé tant que ces deux limites persistent.
 
