@@ -32,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Check
         run: npm run check
@@ -49,6 +49,9 @@ jobs:
 
       - name: Audit release artifacts
         run: npm run audit:release
+
+      - name: Check Context Room
+        run: npm run context-room:doctor
 
       - name: Audit dependencies
         run: npm audit --audit-level=high

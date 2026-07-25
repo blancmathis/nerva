@@ -39,19 +39,19 @@
     "context-room:doctor": "context-room doctor --root . --strict"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@types/node": "^24.10.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/ws": "^8.18.1",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.0.4",
     "concurrently": "^9.2.1",
     "context-room": "^0.1.9",
     "fake-indexeddb": "^6.2.4",
     "jsdom": "^27.1.0",
-    "tsx": "^4.23.1",
     "tsup": "^8.5.1",
+    "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"

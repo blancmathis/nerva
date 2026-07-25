@@ -18,8 +18,8 @@
     "idb": "^8.0.3",
     "jsqr": "^1.4.0",
     "perfect-freehand": "1.2.3",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

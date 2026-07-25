@@ -25,15 +25,15 @@ Versions and SPDX expressions below are the exact resolutions in
 
 | Package | Version | SPDX license | Copyright and upstream | Use in Codex Pad |
 | --- | --- | --- | --- | --- |
-| `@fastify/static` | `10.1.0` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-static](https://github.com/fastify/fastify-static) | Serve the built local PWA. |
+| `@fastify/static` | `10.1.2` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-static](https://github.com/fastify/fastify-static) | Serve the built local PWA. |
 | `@fastify/websocket` | `11.3.0` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket) | Authenticated snapshot and event transport. |
 | `fastify` | `5.10.0` | `MIT` | Copyright 2016-present The Fastify team; [fastify/fastify](https://github.com/fastify/fastify) | Loopback HTTP bridge and API routing. |
 | `idb` | `8.0.3` | `ISC` | Copyright 2016 Jake Archibald; [jakearchibald/idb](https://github.com/jakearchibald/idb) | IndexedDB persistence in the PWA. |
 | `jsqr` | `1.4.0` | `Apache-2.0` | jsQR contributors; [cozmo/jsQR](https://github.com/cozmo/jsQR) | Decode the short-lived pairing QR inside an already installed PWA. |
 | `perfect-freehand` | `1.2.3` | `MIT` | Copyright 2021 Stephen Ruiz Ltd; [steveruizok/perfect-freehand](https://github.com/steveruizok/perfect-freehand) | Pressure-sensitive pen and highlighter stroke outlines. |
 | `qrcode` | `1.5.4` | `MIT` | Copyright 2012 Ryan Day; [soldair/node-qrcode](https://github.com/soldair/node-qrcode) | Short-lived local pairing QR codes. |
-| `react-dom` | `19.2.7` | `MIT` | Copyright Meta Platforms, Inc. and affiliates; [facebook/react](https://github.com/facebook/react) | Browser rendering. |
-| `react` | `19.2.7` | `MIT` | Copyright Meta Platforms, Inc. and affiliates; [facebook/react](https://github.com/facebook/react) | Browser component runtime. |
+| `react-dom` | `19.2.8` | `MIT` | Copyright Meta Platforms, Inc. and affiliates; [facebook/react](https://github.com/facebook/react) | Browser rendering. |
+| `react` | `19.2.8` | `MIT` | Copyright Meta Platforms, Inc. and affiliates; [facebook/react](https://github.com/facebook/react) | Browser component runtime. |
 | `sharp` | `0.35.3` | `Apache-2.0` | Copyright 2013 Lovell Fuller and others; [lovell/sharp](https://github.com/lovell/sharp) | Decode, normalize, resize, and safely re-encode inbound images. |
 | `web-push` | `3.6.7` | `MPL-2.0` | Copyright 2015 Marco Castelluccio; [web-push-libs/web-push](https://github.com/web-push-libs/web-push/tree/8d9ba1b33bfe0d73ccf3606c59ead4287f50e3b8) | Standards Web Push encryption, VAPID authentication and delivery. |
 | `ws` | `8.21.1` | `MIT` | Copyright 2011 Einar Otto Stangvik, 2013 Arnout Kazemier and contributors, 2016 Luigi Pinca and contributors; [websockets/ws](https://github.com/websockets/ws) | WebSocket client/server protocol transport. |
