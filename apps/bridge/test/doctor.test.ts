@@ -228,7 +228,8 @@ describe("doctorCodexPad", () => {
           capabilities: [
             { id: "sessions", state: "available", reason: "live" },
             { id: "models", state: "available", reason: "live" },
-            { id: "exactTaskMutations", state: "unverified", reason: "ownership missing" },
+            { id: "exactTaskMutations", state: "available", reason: "schema-compatible" },
+            { id: "taskCreation", state: "available", reason: "schema-compatible" },
           ],
         }),
       });
@@ -238,6 +239,14 @@ describe("doctorCodexPad", () => {
       });
       expect(report.versions?.userAgent).toBe("Codex Desktop/1");
       expect(report.capabilities?.find((capability) => capability.id === "sessions")?.state).toBe("available");
+      expect(report.capabilities?.find((capability) => capability.id === "exactTaskMutations")).toMatchObject({
+        state: "unverified",
+        reason: expect.stringContaining("ownership"),
+      });
+      expect(report.capabilities?.find((capability) => capability.id === "taskCreation")?.state).toBe("unverified");
+      expect(report.compatibility?.capabilities.find((capability) => capability.id === "exactTaskMutations")?.state)
+        .toBe("available");
+      expect(formatDoctorReport(report)).toContain("exactTaskMutations: unverified");
     } finally {
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
     }

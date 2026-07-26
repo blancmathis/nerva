@@ -739,6 +739,26 @@ function doctorState(
   return structuralReads && coreMutations && ownership.verified ? "ready" : "limited";
 }
 
+function effectiveDoctorCapabilities(
+  compatibility: RuntimeCompatibilityResult,
+  ownership: DesktopOwnershipInspection,
+): readonly RuntimeCapabilityResult[] {
+  return compatibility.capabilities.map((capability) => {
+    if (
+      ownership.verified
+      || capability.state !== "available"
+      || (capability.id !== "exactTaskMutations" && capability.id !== "taskCreation")
+    ) {
+      return capability;
+    }
+    return {
+      ...capability,
+      state: "unverified" as const,
+      reason: "The protocol is compatible, but Desktop ownership on the exact managed socket is not attested; app-server mutations are unavailable.",
+    };
+  });
+}
+
 export async function doctorCodexPad(
   dependencies: DoctorDependencies = {},
 ): Promise<DoctorReport> {
@@ -1262,6 +1282,7 @@ export async function doctorCodexPad(
       requiresExplicitUserAction: true,
     },
   ];
+  const capabilities = effectiveDoctorCapabilities(compatibility, ownership);
 
   return {
     generatedAt: now().toISOString(),
@@ -1277,7 +1298,7 @@ export async function doctorCodexPad(
       ...(compatibility.userAgent ? { userAgent: compatibility.userAgent } : {}),
     },
     compatibility,
-    capabilities: compatibility.capabilities,
+    capabilities,
     safeCommands,
     proofBoundaries: [
       "Doctor is read-only except for temporary process/HTTP activity; it never restarts Desktop or changes launchctl/global environment state.",
@@ -1302,6 +1323,12 @@ export function formatDoctorReport(report: DoctorReport): string {
     if (check.detail) lines.push(`  ${check.detail}`);
     lines.push(`  Proof: ${check.proofBoundary}`);
     for (const remediation of check.remediation ?? []) lines.push(`  Next: ${remediation}`);
+  }
+  if (report.capabilities?.length) {
+    lines.push("", "Capabilities:");
+    for (const capability of report.capabilities) {
+      lines.push(`- ${capability.id}: ${capability.state}`, `  ${capability.reason}`);
+    }
   }
   lines.push("", "Explicit commands (never run by doctor):");
   for (const command of report.safeCommands) {
