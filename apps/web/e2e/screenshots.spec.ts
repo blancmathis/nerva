@@ -66,6 +66,154 @@ function screenshotSuffix(projectName: string): string | null {
   return null;
 }
 
+async function makeScreenshotBrowserFrame(page: Page): Promise<{
+  readonly imageBase64: string;
+  readonly width: number;
+  readonly height: number;
+}> {
+  return page.evaluate(() => {
+    const width = 1_180;
+    const height = 760;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Screenshot fixture canvas is unavailable");
+
+    function panel(
+      x: number,
+      y: number,
+      panelWidth: number,
+      panelHeight: number,
+      radius: number,
+      fill: string,
+      stroke = "#e1e5ed",
+    ) {
+      context.beginPath();
+      context.roundRect(x, y, panelWidth, panelHeight, radius);
+      context.fillStyle = fill;
+      context.fill();
+      context.strokeStyle = stroke;
+      context.lineWidth = 1;
+      context.stroke();
+    }
+
+    function text(value: string, x: number, y: number, size: number, color: string, weight = 500) {
+      context.fillStyle = color;
+      context.font = `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`;
+      context.fillText(value, x, y);
+    }
+
+    context.fillStyle = "#f4f6fa";
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, 72);
+    context.strokeStyle = "#e3e7ef";
+    context.beginPath();
+    context.moveTo(0, 71.5);
+    context.lineTo(width, 71.5);
+    context.stroke();
+
+    const logoGradient = context.createLinearGradient(24, 18, 62, 56);
+    logoGradient.addColorStop(0, "#2668ff");
+    logoGradient.addColorStop(1, "#74a7ff");
+    panel(24, 17, 40, 40, 12, logoGradient, "#568aff");
+    context.fillStyle = "rgba(255,255,255,.94)";
+    context.fillRect(36, 29, 7, 7);
+    context.fillRect(47, 29, 7, 7);
+    context.fillRect(36, 40, 7, 7);
+    context.fillRect(47, 40, 7, 7);
+    text("Component Lab", 78, 43, 18, "#151b2b", 700);
+    text("Overview", 276, 42, 13, "#7a8292", 550);
+    text("Components", 370, 42, 13, "#2768f5", 650);
+    text("QA flows", 478, 42, 13, "#7a8292", 550);
+    panel(1_070, 18, 84, 38, 12, "#f1f4f9");
+    text("Preview", 1_088, 43, 12, "#394154", 650);
+
+    panel(24, 96, 220, 640, 20, "#ffffff");
+    text("WORKSPACE", 46, 128, 10, "#9aa2b2", 700);
+    const navigation = ["Dashboard", "Components", "Tokens", "Flows", "Accessibility"];
+    navigation.forEach((item, index) => {
+      const y = 150 + index * 54;
+      if (item === "Components") panel(38, y, 192, 42, 12, "#edf3ff", "#dbe7ff");
+      context.fillStyle = item === "Components" ? "#2768f5" : "#a6adba";
+      context.beginPath();
+      context.arc(56, y + 21, 5, 0, Math.PI * 2);
+      context.fill();
+      text(item, 72, y + 26, 13, item === "Components" ? "#1c54c8" : "#5f6879", item === "Components" ? 650 : 550);
+    });
+    panel(38, 638, 192, 76, 14, "#f7f9fc");
+    text("Viewport", 54, 663, 10, "#929aaa", 650);
+    text("1180 × 760", 54, 688, 15, "#293247", 700);
+
+    text("Checkout components", 276, 125, 28, "#151b2b", 730);
+    text("Review the responsive payment flow before publishing.", 276, 151, 13, "#7a8292", 500);
+    panel(986, 102, 168, 46, 14, "#2768f5", "#2768f5");
+    text("Publish preview", 1_010, 131, 13, "#ffffff", 700);
+
+    panel(276, 178, 550, 540, 20, "#ffffff");
+    text("Payment summary card", 300, 211, 17, "#1b2335", 700);
+    text("LIVE PREVIEW", 690, 209, 10, "#2f70f7", 700);
+    panel(300, 232, 502, 286, 18, "#eef2f8", "#e5e9f1");
+    const previewGradient = context.createLinearGradient(334, 262, 768, 468);
+    previewGradient.addColorStop(0, "#182237");
+    previewGradient.addColorStop(1, "#0e1422");
+    panel(334, 262, 434, 218, 22, previewGradient, "#26344e");
+    text("PRO WORKSPACE", 362, 298, 10, "#7da8ff", 700);
+    text("Ship the complete flow", 362, 334, 24, "#ffffff", 720);
+    text("Unlimited preview reviews and shared QA evidence.", 362, 360, 12, "#aeb9cc", 500);
+    text("€24", 362, 414, 30, "#ffffff", 730);
+    text("/ month", 424, 413, 12, "#8f9bb0", 550);
+    panel(598, 394, 142, 48, 14, "#3978ff", "#5b91ff");
+    text("Choose plan", 624, 424, 13, "#ffffff", 700);
+    text("Variants", 300, 554, 11, "#8b93a3", 650);
+    ["Default", "Compact", "Annual"].forEach((item, index) => {
+      const x = 300 + index * 158;
+      panel(x, 572, 142, 54, 14, index === 0 ? "#edf3ff" : "#f8f9fc", index === 0 ? "#bcd1ff" : "#e5e8ef");
+      text(item, x + 16, 604, 12, index === 0 ? "#245fd2" : "#626b7c", index === 0 ? 700 : 600);
+    });
+    panel(300, 650, 502, 44, 12, "#f8fafc");
+    context.fillStyle = "#38bd88";
+    context.beginPath();
+    context.arc(320, 672, 5, 0, Math.PI * 2);
+    context.fill();
+    text("Contrast and touch targets pass", 334, 677, 12, "#566074", 600);
+
+    panel(850, 178, 304, 344, 20, "#ffffff");
+    text("Inspector", 874, 211, 17, "#1b2335", 700);
+    text("CARD STYLE", 874, 247, 10, "#929aaa", 700);
+    text("Surface", 874, 278, 12, "#646d7e", 600);
+    panel(874, 290, 256, 46, 12, "#f6f8fb");
+    text("Midnight", 890, 319, 13, "#283146", 650);
+    text("Radius", 874, 370, 12, "#646d7e", 600);
+    context.fillStyle = "#dce2ec";
+    context.fillRect(874, 394, 256, 5);
+    context.fillStyle = "#3476ff";
+    context.fillRect(874, 394, 164, 5);
+    context.beginPath();
+    context.arc(1_038, 396.5, 9, 0, Math.PI * 2);
+    context.fill();
+    text("22 px", 1_086, 401, 11, "#70798a", 650);
+    text("Content", 874, 442, 12, "#646d7e", 600);
+    panel(874, 454, 256, 44, 12, "#f6f8fb");
+    text("Pro workspace", 890, 482, 12, "#283146", 600);
+
+    panel(850, 542, 304, 176, 20, "#edf4ff", "#cfe0ff");
+    context.fillStyle = "#3476ff";
+    context.beginPath();
+    context.arc(878, 574, 7, 0, Math.PI * 2);
+    context.fill();
+    text("Ready for review", 896, 580, 15, "#1c54c8", 700);
+    text("Open this page on iPad to inspect", 874, 615, 12, "#5d6f8e", 550);
+    text("the real responsive result and mark", 874, 638, 12, "#5d6f8e", 550);
+    text("any visual issue directly.", 874, 661, 12, "#5d6f8e", 550);
+    text("3 checks passed", 874, 692, 11, "#31715b", 650);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    return { imageBase64: dataUrl.slice(dataUrl.indexOf(",") + 1), width, height };
+  });
+}
+
 async function installScreenshotSite(page: Page): Promise<void> {
   const association = {
     associationId: "release_preview",
@@ -139,6 +287,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   const output = resolve(process.cwd(), "docs/screenshots");
   await mkdir(output, { recursive: true });
   const bridge = new MockBridge({ authorized: false, fixedNow: SCREENSHOT_NOW });
+  bridge.setBrowserFrameFixture(await makeScreenshotBrowserFrame(page));
   bridge.setDiagrams([SCREENSHOT_DIAGRAM]);
   await bridge.install(page);
   await installScreenshotSite(page);
@@ -231,7 +380,34 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await expect(sitesHub).toBeVisible();
   await page.screenshot({ path: resolve(output, `sites${suffix}.png`), scale: "css", animations: "disabled" });
   await sitesHub.getByRole("button", { name: "Open Component lab" }).click();
-  await expect(page.getByLabel("Browse current Mac site")).toBeVisible();
+  const siteCanvas = page.getByLabel("Browse current Mac site");
+  const siteFrame = page.locator(".cp-browser-site__frame");
+  await expect(siteCanvas).toBeVisible();
+  await expect(siteFrame).toBeVisible();
+  await expect.poll(() => siteFrame.evaluate((image: HTMLImageElement) => ({
+    complete: image.complete,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  }))).toEqual({ complete: true, width: 1_180, height: 760 });
+  await expect(page.locator(".cp-browser-site__busy")).toHaveCount(0);
+  const luminanceRange = await siteFrame.evaluate((image: HTMLImageElement) => {
+    const sample = document.createElement("canvas");
+    sample.width = 32;
+    sample.height = 20;
+    const context = sample.getContext("2d");
+    if (!context) return 0;
+    context.drawImage(image, 0, 0, sample.width, sample.height);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    let minimum = 255;
+    let maximum = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const luminance = pixels[index]! * 0.2126 + pixels[index + 1]! * 0.7152 + pixels[index + 2]! * 0.0722;
+      minimum = Math.min(minimum, luminance);
+      maximum = Math.max(maximum, luminance);
+    }
+    return maximum - minimum;
+  });
+  expect(luminanceRange).toBeGreaterThan(80);
   await page.screenshot({ path: resolve(output, `site${suffix}.png`), scale: "css", animations: "disabled" });
 
   if (testInfo.project.name === "iPad landscape") {

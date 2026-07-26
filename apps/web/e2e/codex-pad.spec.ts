@@ -334,6 +334,27 @@ test("opens one exact pinned session on both surfaces", async ({ page }) => {
   });
 });
 
+test("fills every session card with one continuous luminous key surface", async ({ page }) => {
+  await openAuthenticatedApp(page);
+
+  const geometries = await page.locator(".cp-session-card").evaluateAll((cards) => cards.map((card) => {
+    const open = card.querySelector<HTMLElement>(".cp-session-card__open");
+    if (!open) throw new Error("Session card is missing its primary button");
+    const cardBounds = card.getBoundingClientRect();
+    const openBounds = open.getBoundingClientRect();
+    return {
+      leftInset: openBounds.left - cardBounds.left,
+      widthDifference: cardBounds.width - openBounds.width,
+    };
+  }));
+
+  expect(geometries).toHaveLength(6);
+  for (const geometry of geometries) {
+    expect(geometry.leftInset).toBeLessThanOrEqual(1.1);
+    expect(Math.round(geometry.widthDifference)).toBeLessThanOrEqual(2);
+  }
+});
+
 test("filters every Codex session inside Home and routes the exact session", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: "Show priority sessions" }).click();

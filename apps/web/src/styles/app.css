@@ -1116,6 +1116,7 @@ button:disabled {
 .cp-status-section__sessions .cp-session-card__open {
   position: relative;
   display: flex;
+  width: 100%;
   min-height: 205px;
   padding: 19px 20px 20px;
   overflow: hidden;

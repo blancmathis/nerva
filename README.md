@@ -5,11 +5,11 @@
 <h1 align="center">Nerva</h1>
 
 <p align="center">
-  <strong>An iPad control surface and shared graph canvas for Codex on your Mac.</strong>
+  <strong>A touch-first iPad control surface for Codex on your Mac—with collaborative graphs, Pencil input, live-site review, and exact-task controls.</strong>
 </p>
 
 <p align="center">
-  See your active work, control the exact task, sketch with Apple Pencil, inspect live sites, and turn architecture discussions into revisioned diagrams that you and Codex can shape together.
+  Move across active tasks, work through multiple revisioned graphs, sketch with Apple Pencil, inspect sites, and return precise visual context to the right Codex task.
 </p>
 
 <p align="center">
@@ -31,16 +31,16 @@
 
 ![Nerva collaborative graph canvas](docs/screenshots/drawing-diagram-inspector.png)
 
-## The graph becomes part of the conversation
+## Work with graphs, not just prompts
 
-Most agent interfaces stop at prompts and responses. Nerva adds a shared spatial artifact.
+Architecture is rarely one final diagram. Nerva lets each exact task publish and evolve multiple structured graphs, reopen them as working boards, and combine them with freehand Pencil annotations.
 
-1. **Codex drafts the system.** It publishes a structured graph to the exact task you are viewing.
-2. **You reshape it on the iPad.** Move blocks, edit labels and links, reorganize the architecture, then annotate freely with Apple Pencil.
+1. **Codex publishes the graph you need.** Each exact task can keep multiple structured diagrams for different systems, flows, or decisions.
+2. **You choose and reshape it on the iPad.** Move blocks, edit labels and links, reorganize the architecture, then annotate freely with Apple Pencil.
 3. **Nerva syncs the exact revision.** Structured edits and freehand ink remain separate, so neither side silently overwrites the other.
 4. **Codex continues from your changes.** It can read the revisioned graph instead of reconstructing your intent from another paragraph.
 
-Nerva calls this **collaborative graph engineering**: using a shared, revisioned graph as a working interface between developer and agent—not merely exporting a screenshot at the end.
+Nerva calls this **collaborative graph engineering**: using revisioned graphs as shared working interfaces between developer and agent—not merely exporting a screenshot at the end.
 
 Large boards remain understandable when they leave the iPad. Nerva exports a map-first visual package with named regions, overlap, neighbor references and structural connection indexes. When native multi-image attachment is not proven for the installed Codex version, it produces one compatibility atlas instead. Nothing is submitted automatically.
 
@@ -74,7 +74,7 @@ Nerva is not a remote desktop and does not move code execution onto the iPad. Th
 <table>
   <tr>
     <td width="50%">
-      <img src="docs/screenshots/site.png" alt="Nerva live Site Review">
+      <img src="docs/screenshots/site.png" alt="Nerva Site Review browsing a synthetic component-lab page">
       <br><strong>Touch-first Site Review</strong>
     </td>
     <td width="50%">
@@ -83,6 +83,8 @@ Nerva is not a remote desktop and does not move code execution onto the iPad. Th
     </td>
   </tr>
 </table>
+
+<p align="center"><small>Product screenshots use deterministic synthetic sessions and site content.</small></p>
 
 ## Quick start
 

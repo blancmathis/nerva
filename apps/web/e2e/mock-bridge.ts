@@ -24,6 +24,12 @@ type PairRequest = {
   readonly deviceName: string;
 };
 
+interface BrowserFrameFixture {
+  readonly imageBase64: string;
+  readonly width: number;
+  readonly height: number;
+}
+
 const FIXTURE_BEARER = "f".repeat(43);
 const FIXTURE_BROWSER_TAB_ID = `tab_${"1".repeat(24)}`;
 const FIXTURE_RESEARCH_BROWSER_TAB_ID = `tab_${"2".repeat(24)}`;
@@ -110,6 +116,11 @@ export class MockBridge {
   };
   private savedDrawings: Array<Readonly<Record<string, unknown>>> = [];
   private diagrams: Array<Readonly<Record<string, unknown>>> = [];
+  private browserFrameFixture: BrowserFrameFixture = {
+    imageBase64: FIXTURE_BROWSER_JPEG,
+    width: 1_180,
+    height: 760,
+  };
   private readonly fixedNow: number | null;
   private readonly completedCommands = new Map<string, {
     readonly sequence: number;
@@ -190,6 +201,10 @@ export class MockBridge {
 
   setDiagrams(diagrams: readonly Readonly<Record<string, unknown>>[]): void {
     this.diagrams = [...diagrams];
+  }
+
+  setBrowserFrameFixture(fixture: BrowserFrameFixture): void {
+    this.browserFrameFixture = { ...fixture };
   }
 
   setCapabilitiesAvailable(available: boolean): void {
@@ -569,10 +584,10 @@ export class MockBridge {
           tabId: FIXTURE_BROWSER_TAB_ID,
           title: "Component lab",
           url: "http://127.0.0.1:8787/",
-          imageBase64: FIXTURE_BROWSER_JPEG,
+          imageBase64: this.browserFrameFixture.imageBase64,
           mimeType: "image/jpeg",
-          width: 1_180,
-          height: 760,
+          width: this.browserFrameFixture.width,
+          height: this.browserFrameFixture.height,
           deviceScaleFactor: 1,
           scrollX: 0,
           scrollY: 0,
@@ -589,10 +604,10 @@ export class MockBridge {
           tabId: FIXTURE_BROWSER_TAB_ID,
           title: "Component lab",
           url: "http://127.0.0.1:8787/",
-          imageBase64: FIXTURE_BROWSER_JPEG,
+          imageBase64: this.browserFrameFixture.imageBase64,
           mimeType: "image/jpeg",
-          width: 1_180,
-          height: 760,
+          width: this.browserFrameFixture.width,
+          height: this.browserFrameFixture.height,
           deviceScaleFactor: 1,
           scrollX: 0,
           scrollY: 120,
@@ -613,10 +628,10 @@ export class MockBridge {
             tabId: FIXTURE_BROWSER_TAB_ID,
             title: "Component lab",
             url: "http://127.0.0.1:8787/",
-            imageBase64: FIXTURE_BROWSER_JPEG,
+            imageBase64: this.browserFrameFixture.imageBase64,
             mimeType: "image/jpeg",
-            width: 1_180,
-            height: 760,
+            width: this.browserFrameFixture.width,
+            height: this.browserFrameFixture.height,
             deviceScaleFactor: 1,
             scrollX: 0,
             scrollY: action.type === "scroll" ? 120 : 0,
