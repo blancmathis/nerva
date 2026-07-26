@@ -32,10 +32,12 @@ import {
 } from "./image-input-capability.js";
 import {
   createMacPairing,
+  preflightMacSetup,
   setupMac,
   waitForPairingConsumption,
   type MacPairingResult,
   type MacSetupDependencies,
+  type MacSetupPreflight,
   type MacSetupResult,
 } from "./mac-setup.js";
 import { setupCodexPad, type SetupDependencies } from "./setup.js";
@@ -155,6 +157,7 @@ export interface CliDependencies {
   readonly loadDiagrams?: () => Promise<DiagramStoreModule>;
   readonly waitForShutdown?: (handle: BridgeHandle) => Promise<void>;
   readonly setupMac?: (dependencies?: MacSetupDependencies) => Promise<MacSetupResult>;
+  readonly preflightMacSetup?: (dependencies?: MacSetupDependencies) => Promise<MacSetupPreflight>;
   readonly createMacPairing?: (dependencies?: MacSetupDependencies) => Promise<MacPairingResult>;
   readonly waitForPairingConsumption?: (homeDirectory?: string, pollMs?: number) => Promise<"consumed" | "expired" | "missing">;
 }
@@ -346,6 +349,7 @@ function printJson(write: (message: string) => void, value: unknown): void {
 const HELP = `Codex Pad — local macOS bridge and iPad control surface
 
 Usage from a source checkout:
+  npm run setup:check [-- --json]
   npm run setup:mac [-- --no-wait]
   npm run pair [-- --no-wait]
   npm run setup -- [--generate-schemas] [--attest-desktop-ownership] [--pair-origin https://mac.tailnet.ts.net] [--device-name "iPad"] [--json]
@@ -371,9 +375,37 @@ Safety defaults:
   setup and doctor never restart Codex Desktop, mutate launchctl/global env,
   enable Funnel, reset Tailscale, or bootstrap the managed daemon.
   setup-mac is an explicit opt-in that configures Codex's durable managed
-  app-server, installs Codex Pad's bridge LaunchAgent, and sets the exact private
-  Serve route; it never resets Serve or Funnel or restarts Desktop.
+  app-server only after a safe preflight, installs Nerva's bridge LaunchAgent,
+  and sets the exact private Serve route; it never resets Serve or Funnel or
+  restarts Desktop. A degraded native preflight still installs the safe bridge
+  and pairing surface while native mutations remain unavailable.
   --unsafe-lan is development-only; authentication and Origin checks remain on.`;
+
+function formatMacSetupPreflight(preflight: MacSetupPreflight): string {
+  const heading = preflight.installationState === "ready"
+    ? "READY"
+    : preflight.installationState === "degraded"
+      ? "READY WITH LIMITED CODEX CONTROLS"
+      : "BLOCKED";
+  const lines = [`Nerva setup check: ${heading}`];
+  if (preflight.nativeIntegration.desktopCodexVersion) {
+    lines.push(`Codex Desktop CLI: ${preflight.nativeIntegration.desktopCodexVersion}`);
+  }
+  if (preflight.nativeIntegration.standaloneCodexVersion) {
+    lines.push(`Standalone Codex CLI: ${preflight.nativeIntegration.standaloneCodexVersion}`);
+  }
+  const issues = preflight.installationState === "blocked"
+    ? preflight.blockers
+    : preflight.nativeIntegration.reasons;
+  for (const issue of issues) {
+    lines.push(`- [${issue.code}] ${issue.detail}`);
+    for (const remediation of issue.remediation) lines.push(`  Next: ${remediation}`);
+  }
+  if (preflight.installationState === "degraded") {
+    lines.push("Nerva can install and pair, but app-server-backed controls will remain unavailable until doctor is green.");
+  }
+  return lines.join("\n");
+}
 
 async function defaultLoadServer(): Promise<ServerModule> {
   const modulePath = "./server.js";
@@ -528,20 +560,35 @@ export async function runCli(
       return 0;
     }
 
+    if (command === "setup-check") {
+      const result = await (dependencies.preflightMacSetup ?? preflightMacSetup)();
+      if (hasFlag(rest, "--json")) printJson(stdout, result);
+      else stdout(formatMacSetupPreflight(result));
+      return result.installationState === "blocked" ? 1 : 0;
+    }
+
     if (command === "setup-mac") {
       const result = await (dependencies.setupMac ?? setupMac)();
       if (hasFlag(rest, "--json")) {
         printJson(stdout, result);
         return 0;
       }
-      stdout("Codex Pad is installed as a background Mac user service.");
+      stdout("Nerva is installed as a background Mac user service.");
       stdout(result.serveChanged
         ? "Created the private Codex Pad Tailscale Serve route."
         : "Kept the existing exact Codex Pad Tailscale Serve route.");
       stdout(result.launchAgentChanged
         ? "Installed the Codex Pad LaunchAgent."
         : "The Codex Pad LaunchAgent was already up to date.");
-      stdout("Configured the Desktop-bundled managed app-server for remote control.");
+      if (result.managedDaemonConfigured) {
+        stdout("Configured the Desktop-bundled managed app-server for remote control.");
+      } else {
+        stdout("Installed with limited Codex controls. Native app-server configuration was left untouched.");
+        for (const issue of result.nativeIntegration.reasons) {
+          stdout(`- [${issue.code}] ${issue.detail}`);
+        }
+        stdout("Run `npm run doctor` for the strict native integration gate.");
+      }
       if (result.legacyAppServerLaunchAgentRemoved) {
         stdout("Removed Codex Pad's obsolete raw app-server LaunchAgent.");
       }

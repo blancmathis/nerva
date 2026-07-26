@@ -83,6 +83,56 @@ describe("runCli", () => {
     }
   });
 
+  it("prints a precise degraded setup check and keeps installation available", async () => {
+    const output = io();
+    const code = await runCli(["setup-check"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      preflightMacSetup: async () => ({
+        installationState: "degraded",
+        nativeIntegration: {
+          state: "degraded",
+          desktopCodexVersion: "0.146.0-alpha.3.1",
+          standaloneCodexVersion: "0.145.0",
+          reasons: [{
+            code: "codex-version-mismatch",
+            detail: "Codex Desktop and standalone versions differ.",
+            remediation: ["Run the official Codex installer."],
+          }],
+        },
+        blockers: [],
+      }),
+    });
+
+    expect(code).toBe(0);
+    expect(output.stdout.join("\n")).toContain("READY WITH LIMITED CODEX CONTROLS");
+    expect(output.stdout.join("\n")).toContain("0.146.0-alpha.3.1");
+    expect(output.stdout.join("\n")).toContain("app-server-backed controls will remain unavailable");
+  });
+
+  it("emits setup-check JSON and exits nonzero only when installation is blocked", async () => {
+    const output = io();
+    const code = await runCli(["setup-check", "--json"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      preflightMacSetup: async () => ({
+        installationState: "blocked",
+        nativeIntegration: { state: "degraded", reasons: [] },
+        blockers: [{
+          code: "funnel-not-disabled",
+          detail: "Funnel is active.",
+          remediation: ["Disable Funnel."],
+        }],
+      }),
+    });
+
+    expect(code).toBe(1);
+    expect(JSON.parse(output.stdout.join("\n"))).toMatchObject({
+      installationState: "blocked",
+      blockers: [{ code: "funnel-not-disabled" }],
+    });
+  });
+
   it("installs the background Mac bridge and prints one QR without a second terminal", async () => {
     const output = io();
     const pairing = {
@@ -116,10 +166,17 @@ describe("runCli", () => {
       tailscaleBinary: "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
       launchAgentPath: "/tmp/codex-pad-test-home/Library/LaunchAgents/com.codex-pad.bridge.plist",
       bridgeHealthy: true,
+      installationState: "ready" as const,
       serveChanged: true,
       launchAgentChanged: true,
       managedDaemonConfigured: true as const,
       legacyAppServerLaunchAgentRemoved: false,
+      nativeIntegration: {
+        state: "ready" as const,
+        desktopCodexVersion: "0.146.0-alpha.3.1",
+        standaloneCodexVersion: "0.146.0-alpha.3.1",
+        reasons: [],
+      },
     }));
 
     const code = await runCli(["setup-mac", "--no-wait"], {

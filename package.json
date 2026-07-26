@@ -15,6 +15,7 @@
     "dev": "npm run build:packages && concurrently -k -n bridge,web -c blue,green \"npm run dev --workspace @codex-pad/bridge\" \"npm run dev --workspace @codex-pad/web\"",
     "codex-pad": "npm run build:packages && npm run build --workspace @codex-pad/bridge && node apps/bridge/dist/cli.js",
     "setup": "npm run build:packages && tsx apps/bridge/src/cli.ts setup",
+    "setup:check": "npm run codex-pad -- setup-check",
     "setup:mac": "node scripts/setup-mac-bootstrap.mjs",
     "pair": "node apps/bridge/dist/cli.js pair",
     "doctor": "npm run build:packages && tsx apps/bridge/src/cli.ts doctor",

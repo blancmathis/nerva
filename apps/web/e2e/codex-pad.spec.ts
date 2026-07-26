@@ -312,6 +312,7 @@ test("Capture Inbox keeps a Pencil sketch without choosing a session", async ({ 
   const canvas = page.getByRole("img", { name: /Frame annotation canvas/ });
   await drawPenStroke(canvas);
   await page.getByRole("button", { name: "Keep in Inbox" }).click();
+  await expect(page.getByRole("dialog", { name: "Draw now. Use later." })).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText("Sketch saved locally.")).toBeVisible();
   await expect(page.locator(".cp-capture-card.kind-sketch")).toHaveCount(1);
   await expect(page.getByText("Available in every Session")).toBeVisible();

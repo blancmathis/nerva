@@ -5,12 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LAUNCH_AGENT_LABEL,
   createMacPairing,
+  preflightMacSetup,
   setupMac,
+  type MacSetupPreflight,
 } from "../src/mac-setup.js";
 import { defaultDataPaths } from "../src/paths.js";
 import { pairingNonceFromUrl } from "../src/pairing.js";
 import { codexPadPaths } from "../src/setup.js";
-import type { CommandResult } from "../src/doctor.js";
+import type { CommandResult, DoctorCheck, DoctorReport } from "../src/doctor.js";
 
 function commandResult(stdout = "", exitCode = 0, stderr = ""): CommandResult {
   return { stdout, exitCode, stderr };
@@ -45,7 +47,101 @@ function readyServeStatus() {
   });
 }
 
+const readyPreflight: MacSetupPreflight = {
+  installationState: "ready",
+  nativeIntegration: {
+    state: "ready",
+    desktopCodexVersion: "0.146.0-alpha.3.1",
+    standaloneCodexVersion: "0.146.0-alpha.3.1",
+    reasons: [],
+  },
+  blockers: [],
+};
+
+const inspectReadyPreflight = async () => readyPreflight;
+
+function doctorReport(checks: readonly DoctorCheck[]): DoctorReport {
+  return {
+    generatedAt: "2026-07-26T10:00:00.000Z",
+    overall: checks.some((check) => check.status === "red") ? "red" : "green",
+    checks,
+    safeCommands: [],
+    proofBoundaries: [],
+  };
+}
+
+function doctorCheck(id: string, status: DoctorCheck["status"], summary: string): DoctorCheck {
+  return {
+    id,
+    category: "transport",
+    status,
+    summary,
+    remediation: status === "green" ? [] : ["Repair the observed native integration state."],
+    proofBoundary: "Fixture evidence only.",
+  };
+}
+
 describe("macOS one-command setup", () => {
+  it("classifies the current version-skewed, multi-writer runtime as degraded", async () => {
+    const test = await fixture();
+    const standalone = join(test.home, ".codex", "packages", "standalone", "current", "codex");
+    await mkdir(join(standalone, ".."), { recursive: true });
+    await writeFile(standalone, "#!/bin/sh\nexit 0\n");
+    await chmod(standalone, 0o700);
+    const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
+      if (executable === test.tailscale && arguments_[0] === "status") {
+        return commandResult(JSON.stringify({ BackendState: "Running", Self: { Online: true, DNSName: "mac.example.ts.net." } }));
+      }
+      if (executable === test.tailscale && arguments_[0] === "funnel") return commandResult("{}");
+      if (executable === test.tailscale && arguments_[0] === "serve") return commandResult("null");
+      if (executable === test.codex && arguments_[0] === "--version") return commandResult("codex-cli 0.146.0-alpha.3.1\n");
+      if (executable === standalone && arguments_[0] === "--version") return commandResult("codex-cli 0.145.0\n");
+      return commandResult("", 1, "unexpected command");
+    });
+
+    const result = await preflightMacSetup({
+      platform: "darwin",
+      homeDirectory: test.home,
+      repositoryRoot: test.repository,
+      environment: { PATH: test.bin, CODEX_PAD_CODEX_BINARY: test.codex },
+      runCommand,
+      inspectDoctor: async () => doctorReport([
+        doctorCheck("app-server-writers", "red", "3 independent writers observed."),
+        doctorCheck("managed-app-server", "red", "Managed socket absent."),
+        doctorCheck("desktop-shared-ownership", "red", "Ownership is not attested."),
+        doctorCheck("cdp-loopback", "green", "CDP is ready."),
+        doctorCheck("micro-six-slots", "green", "Six slots are ready."),
+      ]),
+    });
+
+    expect(result.installationState).toBe("degraded");
+    expect(result.blockers).toEqual([]);
+    expect(result.nativeIntegration.desktopCodexVersion).toBe("0.146.0-alpha.3.1");
+    expect(result.nativeIntegration.standaloneCodexVersion).toBe("0.145.0");
+    expect(result.nativeIntegration.reasons.map((reason) => reason.code)).toEqual([
+      "codex-version-mismatch",
+      "app-server-writers",
+      "managed-app-server-unavailable",
+      "desktop-ownership-unverified",
+    ]);
+  });
+
+  it("blocks unsupported Node before touching Tailscale", async () => {
+    const test = await fixture();
+    const runCommand = vi.fn(async () => commandResult());
+    const result = await preflightMacSetup({
+      platform: "darwin",
+      nodeVersion: "20.19.0",
+      homeDirectory: test.home,
+      repositoryRoot: test.repository,
+      environment: { PATH: test.bin, CODEX_PAD_CODEX_BINARY: test.codex },
+      runCommand,
+    });
+    expect(result.installationState).toBe("blocked");
+    expect(result.blockers.map((blocker) => blocker.code)).toContain("unsupported-node");
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it("configures the durable managed daemon, exact private route, and bridge LaunchAgent idempotently", async () => {
     const test = await fixture();
     let serveReady = false;
@@ -87,12 +183,14 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch,
+      inspectPreflight: inspectReadyPreflight,
       now: () => new Date("2026-07-20T10:00:00.000Z"),
     });
 
     expect(first.serveChanged).toBe(true);
     expect(first.launchAgentChanged).toBe(true);
     expect(first.managedDaemonConfigured).toBe(true);
+    expect(first.installationState).toBe("ready");
     expect(first.legacyAppServerLaunchAgentRemoved).toBe(false);
     expect(first.publicOrigin).toBe("https://mac.example.ts.net");
     expect(new URL(first.pairing.qrPayload).origin).toBe(first.publicOrigin);
@@ -129,6 +227,7 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch,
+      inspectPreflight: inspectReadyPreflight,
       now: () => new Date("2026-07-20T10:01:00.000Z"),
     });
     expect(second.serveChanged).toBe(false);
@@ -187,6 +286,7 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch: async () => Response.json({ ok: true, data: { version: "0.1.0" } }),
+      inspectPreflight: inspectReadyPreflight,
     })).resolves.toMatchObject({ bridgeHealthy: true });
     expect(bridgeBootstrapAttempts).toBe(2);
   });
@@ -235,14 +335,26 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch: async () => Response.json({ ok: true, data: { version: "0.1.0" } }),
+      inspectPreflight: inspectReadyPreflight,
     });
 
     expect(result.legacyAppServerLaunchAgentRemoved).toBe(true);
     await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("refuses a managed daemon whose Codex version differs from Desktop before changing launchd", async () => {
+  it("installs the bridge in degraded mode without touching Codex when versions differ", async () => {
     const test = await fixture();
+    const launchAgents = join(test.home, "Library", "LaunchAgents");
+    await mkdir(launchAgents, { recursive: true });
+    const legacyPath = join(launchAgents, "com.codex-pad.app-server.plist");
+    const socketPath = join(test.home, ".codex", "app-server-control", "app-server-control.sock");
+    await writeFile(legacyPath, [
+      "<plist><dict>",
+      "<key>Label</key><string>com.codex-pad.app-server</string>",
+      `<array><string>${test.codex}</string><string>app-server</string><string>--listen</string>`,
+      `<string>unix://${socketPath}</string></array>`,
+      "</dict></plist>",
+    ].join(""));
     let serveReady = false;
     const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
       if (executable === test.tailscale && arguments_[0] === "status") {
@@ -270,7 +382,7 @@ describe("macOS one-command setup", () => {
       return commandResult("", 1, "unexpected command");
     });
 
-    await expect(setupMac({
+    const result = await setupMac({
       platform: "darwin",
       homeDirectory: test.home,
       repositoryRoot: test.repository,
@@ -279,11 +391,78 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch: async () => Response.json({ ok: true, data: { version: "0.1.0" } }),
-    })).rejects.toThrow("Managed app-server version mismatch");
+      inspectPreflight: async () => ({
+        ...readyPreflight,
+        installationState: "degraded",
+        nativeIntegration: {
+          state: "degraded",
+          desktopCodexVersion: "0.146.0-alpha.3.1",
+          standaloneCodexVersion: "0.145.0",
+          reasons: [{
+            code: "codex-version-mismatch",
+            detail: "Codex Desktop and standalone versions differ.",
+            remediation: ["Run the official Codex installer."],
+          }],
+        },
+      }),
+    });
 
+    expect(result.installationState).toBe("degraded");
+    expect(result.managedDaemonConfigured).toBe(false);
+    expect(result.bridgeHealthy).toBe(true);
+    expect(result.pairing.qrPayload).toContain("https://mac.example.ts.net/pair#pair=");
+    expect(await readFile(legacyPath, "utf8")).toContain("com.codex-pad.app-server");
     expect(runCommand.mock.calls.some(([executable, arguments_]) => (
       executable === "/bin/launchctl" && arguments_[0] === "setenv"
     ))).toBe(false);
+    expect(runCommand.mock.calls.some(([executable, arguments_]) => (
+      executable === test.codex && arguments_[0] === "app-server"
+    ))).toBe(false);
+  });
+
+  it("does not create a pairing code before the installed bridge is healthy", async () => {
+    const test = await fixture();
+    let serveReady = false;
+    const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
+      if (executable === test.tailscale && arguments_[0] === "status") {
+        return commandResult(JSON.stringify({ BackendState: "Running", Self: { Online: true, DNSName: "mac.example.ts.net." } }));
+      }
+      if (executable === test.tailscale && arguments_[0] === "funnel") return commandResult("{}");
+      if (executable === test.tailscale && arguments_[0] === "serve" && arguments_[1] === "status") {
+        return commandResult(serveReady ? readyServeStatus() : "null");
+      }
+      if (executable === test.tailscale && arguments_[0] === "serve") {
+        serveReady = true;
+        return commandResult();
+      }
+      if (executable === "/bin/launchctl") return commandResult();
+      return commandResult("", 1, "unexpected command");
+    });
+
+    await expect(setupMac({
+      platform: "darwin",
+      homeDirectory: test.home,
+      repositoryRoot: test.repository,
+      environment: { PATH: test.bin, CODEX_PAD_CODEX_BINARY: test.codex },
+      uid: 501,
+      runCommand,
+      inspectPreflight: async () => ({
+        ...readyPreflight,
+        installationState: "degraded",
+        nativeIntegration: {
+          state: "degraded",
+          reasons: [{
+            code: "standalone-unavailable",
+            detail: "Standalone Codex is unavailable.",
+            remediation: ["Run the official Codex installer."],
+          }],
+        },
+      }),
+      waitForBridgeHealth: async () => false,
+    })).rejects.toThrow("did not become healthy");
+
+    const pairingPath = defaultDataPaths(codexPadPaths(test.home).root).pairing;
+    await expect(readFile(pairingPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("refuses an existing HTTPS route without changing launchd or writing a pairing secret", async () => {
@@ -401,6 +580,7 @@ describe("macOS one-command setup", () => {
       uid: 501,
       runCommand,
       fetch: async () => Response.json({ ok: true, data: { version: "0.1.0" } }),
+      inspectPreflight: inspectReadyPreflight,
     };
     await setupMac(common);
     runCommand.mockClear();

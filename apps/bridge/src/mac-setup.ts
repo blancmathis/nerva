@@ -12,12 +12,14 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+  doctorCodexPad,
   findTailscaleBinary,
   inspectFunnelStatus,
   normalizeTailscaleDnsName,
   runCommand,
   type CommandResult,
   type CommandRunner,
+  type DoctorReport,
 } from "./doctor.js";
 import {
   rotatePairingCode,
@@ -54,6 +56,10 @@ export interface MacSetupDependencies {
   readonly runCommand?: CommandRunner;
   readonly fetch?: FetchLike;
   readonly now?: () => Date;
+  readonly nodeVersion?: string;
+  readonly inspectDoctor?: (dependencies?: MacSetupDependencies) => Promise<DoctorReport>;
+  readonly inspectPreflight?: (dependencies?: MacSetupDependencies) => Promise<MacSetupPreflight>;
+  readonly waitForBridgeHealth?: (fetchImplementation: FetchLike) => Promise<boolean>;
 }
 
 export interface MacPairingResult {
@@ -66,10 +72,48 @@ export interface MacPairingResult {
 
 export interface MacSetupResult extends MacPairingResult {
   readonly setup: SetupResult;
+  readonly installationState: "ready" | "degraded";
   readonly serveChanged: boolean;
   readonly launchAgentChanged: boolean;
-  readonly managedDaemonConfigured: true;
+  readonly managedDaemonConfigured: boolean;
   readonly legacyAppServerLaunchAgentRemoved: boolean;
+  readonly nativeIntegration: MacSetupNativeIntegration;
+}
+
+export type MacSetupIssueCode =
+  | "unsupported-platform"
+  | "unsupported-node"
+  | "unsafe-installation-path"
+  | "desktop-unavailable"
+  | "standalone-unavailable"
+  | "codex-version-mismatch"
+  | "app-server-writers"
+  | "managed-app-server-unavailable"
+  | "desktop-ownership-unverified"
+  | "cdp-unavailable"
+  | "micro-adapter-unavailable"
+  | "protocol-schema-unavailable"
+  | "tailscale-unavailable"
+  | "funnel-not-disabled"
+  | "serve-route-conflict";
+
+export interface MacSetupIssue {
+  readonly code: MacSetupIssueCode;
+  readonly detail: string;
+  readonly remediation: readonly string[];
+}
+
+export interface MacSetupNativeIntegration {
+  readonly state: "ready" | "degraded";
+  readonly desktopCodexVersion?: string;
+  readonly standaloneCodexVersion?: string;
+  readonly reasons: readonly MacSetupIssue[];
+}
+
+export interface MacSetupPreflight {
+  readonly installationState: "ready" | "degraded" | "blocked";
+  readonly nativeIntegration: MacSetupNativeIntegration;
+  readonly blockers: readonly MacSetupIssue[];
 }
 
 interface TailscaleIdentity {
@@ -528,6 +572,7 @@ function normalizedDependencies(dependencies: MacSetupDependencies): {
   readonly command: CommandRunner;
   readonly fetchImplementation: FetchLike;
   readonly now: () => Date;
+  readonly nodeVersion: string;
 } {
   return {
     platform: dependencies.platform ?? process.platform,
@@ -542,6 +587,7 @@ function normalizedDependencies(dependencies: MacSetupDependencies): {
     command: dependencies.runCommand ?? runCommand,
     fetchImplementation: dependencies.fetch ?? globalThis.fetch,
     now: dependencies.now ?? (() => new Date()),
+    nodeVersion: dependencies.nodeVersion ?? process.versions.node,
   };
 }
 
@@ -551,40 +597,196 @@ function assertMac(platform: NodeJS.Platform): void {
   }
 }
 
+function normalizedCodexVersion(value: string | undefined): string | undefined {
+  const normalized = value?.trim().replace(/^codex-cli\s+/u, "");
+  return normalized ? normalized : undefined;
+}
+
+function setupIssue(
+  code: MacSetupIssueCode,
+  detail: string,
+  remediation: readonly string[],
+): MacSetupIssue {
+  return { code, detail, remediation };
+}
+
+function issueFromDoctorCheck(
+  report: Awaited<ReturnType<typeof doctorCodexPad>>,
+  id: string,
+  code: MacSetupIssueCode,
+): MacSetupIssue | undefined {
+  const check = report.checks.find((candidate) => candidate.id === id);
+  if (check === undefined || check.status === "green") return undefined;
+  return setupIssue(code, check.summary, check.remediation ?? []);
+}
+
+function uniqueIssues(issues: readonly MacSetupIssue[]): readonly MacSetupIssue[] {
+  const seen = new Set<MacSetupIssueCode>();
+  return issues.filter((issue) => {
+    if (seen.has(issue.code)) return false;
+    seen.add(issue.code);
+    return true;
+  });
+}
+
+export async function preflightMacSetup(
+  dependencies: MacSetupDependencies = {},
+): Promise<MacSetupPreflight> {
+  const input = normalizedDependencies(dependencies);
+  const blockers: MacSetupIssue[] = [];
+  if (input.platform !== "darwin") {
+    blockers.push(setupIssue(
+      "unsupported-platform",
+      "Nerva's background bridge is supported only on macOS.",
+      ["Run setup on the Mac that hosts Codex Desktop."],
+    ));
+  }
+  const nodeMajor = Number.parseInt(input.nodeVersion.split(".")[0] ?? "", 10);
+  if (!Number.isInteger(nodeMajor) || nodeMajor < 22) {
+    blockers.push(setupIssue(
+      "unsupported-node",
+      `Nerva requires Node.js 22 or newer; found ${input.nodeVersion || "an unknown version"}.`,
+      ["Install Node.js 22 or newer, then rerun `npm run setup:check`."],
+    ));
+  }
+
+  if (blockers.length === 0) {
+    try {
+      await validateLaunchAgentDestination(input.homeDirectory, input.repositoryRoot);
+      await validateCodexBinary(input.codexBinaryPath);
+    } catch (error) {
+      blockers.push(setupIssue(
+        String(error).includes("Desktop-bundled Codex") ? "desktop-unavailable" : "unsafe-installation-path",
+        error instanceof Error ? error.message : String(error),
+        ["Repair the reported path and rerun `npm run setup:check` from the repository root."],
+      ));
+    }
+  }
+
+  let identity: TailscaleIdentity | undefined;
+  if (blockers.length === 0) {
+    try {
+      identity = await tailscaleIdentity(input.environment, input.command);
+      const targetRoute = `${identity.dnsName}:${SERVE_HTTPS_PORT}`;
+      const funnel = inspectFunnelStatus(
+        await input.command(identity.binary, ["funnel", "status", "--json"], 10_000),
+        targetRoute,
+      );
+      if (funnel.state !== "disabled") {
+        blockers.push(setupIssue(
+          "funnel-not-disabled",
+          `Funnel is not proven disabled for ${targetRoute}: ${funnel.detail}`,
+          ["Disable Funnel for the exact route, then rerun `npm run setup:check`."],
+        ));
+      }
+      const serve = inspectServeStatus(
+        await input.command(identity.binary, ["serve", "status", "--json"], 10_000),
+        identity.dnsName,
+      );
+      if (serve.state === "conflict" || serve.state === "ambiguous") {
+        blockers.push(setupIssue(
+          "serve-route-conflict",
+          serve.detail,
+          ["Review the existing Tailscale Serve configuration; Nerva will not overwrite or reset it."],
+        ));
+      }
+    } catch (error) {
+      blockers.push(setupIssue(
+        "tailscale-unavailable",
+        error instanceof Error ? error.message : String(error),
+        ["Install Tailscale on both devices, sign in to the same tailnet, and rerun `npm run setup:check`."],
+      ));
+    }
+  }
+
+  const desktopVersionResult = blockers.length === 0
+    ? await input.command(input.codexBinaryPath, ["--version"], 10_000)
+    : undefined;
+  const desktopCodexVersion = normalizedCodexVersion(
+    desktopVersionResult?.exitCode === 0 ? desktopVersionResult.stdout : undefined,
+  );
+  if (blockers.length === 0 && desktopCodexVersion === undefined) {
+    blockers.push(setupIssue(
+      "desktop-unavailable",
+      "Codex Desktop's bundled CLI did not return a readable version.",
+      ["Install or update Codex Desktop, then rerun `npm run setup:check`."],
+    ));
+  }
+  const codexHome = input.environment.CODEX_HOME?.trim() || join(input.homeDirectory, ".codex");
+  const standalonePath = join(codexHome, "packages", "standalone", "current", "codex");
+  const standaloneVersionResult = blockers.length === 0
+    ? await input.command(standalonePath, ["--version"], 10_000)
+    : undefined;
+  const standaloneCodexVersion = normalizedCodexVersion(
+    standaloneVersionResult?.exitCode === 0 ? standaloneVersionResult.stdout : undefined,
+  );
+
+  const doctor = blockers.length === 0
+    ? await (dependencies.inspectDoctor
+        ? dependencies.inspectDoctor(dependencies)
+        : doctorCodexPad({
+            homeDirectory: input.homeDirectory,
+            platform: input.platform,
+            environment: input.environment,
+            runCommand: input.command,
+            fetch: input.fetchImplementation,
+          }))
+    : undefined;
+  const nativeReasons = uniqueIssues([
+    ...(standaloneCodexVersion === undefined
+      ? [setupIssue(
+          "standalone-unavailable",
+          `The OpenAI-managed standalone Codex CLI is unavailable at ${standalonePath}.`,
+          ["Run the official Codex installer, then rerun `npm run setup:check`."],
+        )]
+      : []),
+    ...(desktopCodexVersion && standaloneCodexVersion && desktopCodexVersion !== standaloneCodexVersion
+      ? [setupIssue(
+          "codex-version-mismatch",
+          `Codex Desktop uses ${desktopCodexVersion}, while the standalone daemon package uses ${standaloneCodexVersion}.`,
+          [
+            "Run the official Codex installer to update the standalone package.",
+            "Do not restart Codex Desktop onto a version-skewed daemon.",
+          ],
+        )]
+      : []),
+    ...(doctor
+      ? [
+          issueFromDoctorCheck(doctor, "app-server-writers", "app-server-writers"),
+          issueFromDoctorCheck(doctor, "managed-app-server", "managed-app-server-unavailable"),
+          issueFromDoctorCheck(doctor, "desktop-shared-ownership", "desktop-ownership-unverified"),
+          issueFromDoctorCheck(doctor, "cdp-loopback", "cdp-unavailable"),
+          issueFromDoctorCheck(doctor, "micro-six-slots", "micro-adapter-unavailable"),
+          issueFromDoctorCheck(doctor, "protocol-schema", "protocol-schema-unavailable"),
+        ].filter((issue): issue is MacSetupIssue => issue !== undefined)
+      : []),
+  ]);
+  const nativeIntegration: MacSetupNativeIntegration = {
+    state: nativeReasons.length === 0 ? "ready" : "degraded",
+    ...(desktopCodexVersion ? { desktopCodexVersion } : {}),
+    ...(standaloneCodexVersion ? { standaloneCodexVersion } : {}),
+    reasons: nativeReasons,
+  };
+
+  return {
+    installationState: blockers.length > 0 ? "blocked" : nativeIntegration.state,
+    nativeIntegration,
+    blockers,
+  };
+}
+
 export async function setupMac(dependencies: MacSetupDependencies = {}): Promise<MacSetupResult> {
   const input = normalizedDependencies(dependencies);
   assertMac(input.platform);
+  const preflight = await (dependencies.inspectPreflight ?? preflightMacSetup)(dependencies);
+  if (preflight.installationState === "blocked") {
+    throw new Error(`Mac setup is blocked: ${preflight.blockers.map((issue) => issue.detail).join(" ")}`);
+  }
   const setup = await setupCodexPad({ homeDirectory: input.homeDirectory, platform: input.platform });
-  if (!setup.ok) throw new Error("Codex Pad local storage setup did not complete.");
+  if (!setup.ok) throw new Error("Nerva local storage setup did not complete.");
   await validateLaunchAgentDestination(input.homeDirectory, input.repositoryRoot);
-  // Fail before touching Tailscale or rotating a pairing secret when the
-  // installed Codex runtime cannot support the managed local daemon.
-  await validateCodexBinary(input.codexBinaryPath);
   const identity = await tailscaleIdentity(input.environment, input.command);
   const serveChanged = await ensurePrivateServe(identity, input.command);
-  const legacyAppServerLaunchAgentRemoved = await removeLegacyAppServerLaunchAgent({
-    homeDirectory: input.homeDirectory,
-    codexBinaryPath: input.codexBinaryPath,
-    uid: input.uid,
-    command: input.command,
-  });
-  await configureManagedDaemon({
-    codexBinaryPath: input.codexBinaryPath,
-    command: input.command,
-  });
-  const desktopDaemonFlag = await input.command(
-    "/bin/launchctl",
-    ["setenv", "CODEX_APP_SERVER_USE_LOCAL_DAEMON", "1"],
-    10_000,
-  );
-  if (desktopDaemonFlag.exitCode !== 0) {
-    throw new Error(`Could not configure Codex Desktop for the local app-server daemon: ${desktopDaemonFlag.stderr.trim() || desktopDaemonFlag.stdout.trim() || "command failed"}`);
-  }
-  const pairing = await rotatePairingCode({
-    paths: defaultDataPaths(codexPadPaths(input.homeDirectory).root),
-    publicOrigin: identity.publicOrigin,
-    now: input.now(),
-  });
   const launchAgent = await installLaunchAgent({
     homeDirectory: input.homeDirectory,
     repositoryRoot: input.repositoryRoot,
@@ -592,12 +794,55 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
     uid: input.uid,
     command: input.command,
   });
-  const healthy = await bridgeHealthy(input.fetchImplementation);
+  const healthy = await (dependencies.waitForBridgeHealth ?? bridgeHealthy)(input.fetchImplementation);
   if (!healthy) {
     throw new Error(`The background bridge did not become healthy. Inspect ${join(setup.paths.runtime, "bridge.stderr.log")}.`);
   }
+  let managedDaemonConfigured = false;
+  let legacyAppServerLaunchAgentRemoved = false;
+  const nativeReasons = [...preflight.nativeIntegration.reasons];
+  if (preflight.nativeIntegration.state === "ready") {
+    try {
+      legacyAppServerLaunchAgentRemoved = await removeLegacyAppServerLaunchAgent({
+        homeDirectory: input.homeDirectory,
+        codexBinaryPath: input.codexBinaryPath,
+        uid: input.uid,
+        command: input.command,
+      });
+      await configureManagedDaemon({
+        codexBinaryPath: input.codexBinaryPath,
+        command: input.command,
+      });
+      const desktopDaemonFlag = await input.command(
+        "/bin/launchctl",
+        ["setenv", "CODEX_APP_SERVER_USE_LOCAL_DAEMON", "1"],
+        10_000,
+      );
+      if (desktopDaemonFlag.exitCode !== 0) {
+        throw new Error(`Could not configure Codex Desktop for the local app-server daemon: ${desktopDaemonFlag.stderr.trim() || desktopDaemonFlag.stdout.trim() || "command failed"}`);
+      }
+      managedDaemonConfigured = true;
+    } catch (error) {
+      nativeReasons.push(setupIssue(
+        "managed-app-server-unavailable",
+        error instanceof Error ? error.message : String(error),
+        ["Run `npm run doctor` and resolve the reported native integration issue; the Nerva bridge remains installed."],
+      ));
+    }
+  }
+  const pairing = await rotatePairingCode({
+    paths: defaultDataPaths(codexPadPaths(input.homeDirectory).root),
+    publicOrigin: identity.publicOrigin,
+    now: input.now(),
+  });
+  const nativeIntegration: MacSetupNativeIntegration = {
+    ...preflight.nativeIntegration,
+    state: nativeReasons.length === 0 && managedDaemonConfigured ? "ready" : "degraded",
+    reasons: uniqueIssues(nativeReasons),
+  };
   return {
     setup,
+    installationState: nativeIntegration.state,
     publicOrigin: identity.publicOrigin,
     pairing,
     tailscaleBinary: identity.binary,
@@ -605,8 +850,9 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
     bridgeHealthy: healthy,
     serveChanged,
     launchAgentChanged: launchAgent.changed,
-    managedDaemonConfigured: true,
+    managedDaemonConfigured,
     legacyAppServerLaunchAgentRemoved,
+    nativeIntegration,
   };
 }
 
