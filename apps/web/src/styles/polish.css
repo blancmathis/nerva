@@ -89,10 +89,6 @@
   padding: 12px 14px;
 }
 
-.cp-activity-timeline {
-  margin-top: 12px;
-}
-
 .cp-primary-actions,
 .cp-session-controls,
 .cp-context-panel {
@@ -466,34 +462,6 @@
 
   .cp-session-hero__authority small {
     line-height: 1.3;
-  }
-
-  .cp-activity-timeline {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 5px;
-    margin-top: 9px;
-    padding: 10px 11px;
-    border-radius: 17px;
-  }
-
-  .cp-activity-timeline > div {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .cp-activity-timeline > div .cp-overline {
-    margin: 0;
-  }
-
-  .cp-activity-timeline h2 {
-    font-size: 14px;
-  }
-
-  .cp-activity-timeline li {
-    min-height: 40px;
-    padding-block: 3px;
   }
 
   .cp-primary-actions,

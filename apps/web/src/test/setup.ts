@@ -12,3 +12,12 @@ Object.defineProperty(globalThis, "crypto", {
   configurable: true,
   value: testCrypto,
 });
+
+Object.defineProperty(globalThis, "createImageBitmap", {
+  configurable: true,
+  value: async () => ({
+    width: 1_000,
+    height: 625,
+    close: () => undefined,
+  }),
+});

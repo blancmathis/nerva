@@ -74,11 +74,7 @@ import { createUuidV4 } from "./lib/uuid";
 import { useCaptureInboxSummary } from "./lib/capture-inbox-store";
 import type { OpenBrowserTab } from "./lib/bridge-client";
 import type { SiteQaSendPayload } from "./lib/site-qa-types";
-import {
-  activityEventForSession,
-  appendSessionActivity,
-  type SessionActivityEvent,
-} from "./lib/activity-timeline";
+import { activityEventForSession } from "./lib/activity-timeline";
 import {
   disableIntelligentPush,
   enableIntelligentPush,
@@ -313,7 +309,6 @@ function App() {
   const [savedDrawingBusyId, setSavedDrawingBusyId] = useState<string | null>(null);
   const [savedDrawingDeleteId, setSavedDrawingDeleteId] = useState<string | null>(null);
   const [pinReplacementThreadId, setPinReplacementThreadId] = useState<string | null>(null);
-  const [activityByThread, setActivityByThread] = useState<Readonly<Record<string, readonly SessionActivityEvent[]>>>({});
   const previousSessionStatusRef = useRef<ReadonlyMap<string, ProductSession["status"]>>(new Map());
 
   const slots = bridge.snapshot?.slots ?? Array.from({ length: 6 }, (_, index) => emptySlot(index));
@@ -335,6 +330,7 @@ function App() {
     currentReasoningMode: null,
     skills: [],
     drawing: false,
+    composerAttachmentMaxImages: 1,
     review: false,
     reviewMaxImages: 0,
     siteCapture: { available: false, reason: null },
@@ -479,13 +475,6 @@ function App() {
         bridge.pushStatus?.subscribed === true,
       );
     }
-    setActivityByThread((current) => {
-      const next = { ...current };
-      for (const event of events) {
-        next[event.threadId] = appendSessionActivity(next[event.threadId] ?? [], event);
-      }
-      return next;
-    });
   }, [bridge.pushStatus?.subscribed, homeLayout?.pinnedThreadIds, preferences.notifications, productSessions]);
 
   useEffect(() => {
@@ -494,6 +483,19 @@ function App() {
   const viewedSession = sessionThreadId
     ? productSessions.find((session) => session.threadId === sessionThreadId) ?? null
     : null;
+
+  const drawingWorkspaceTarget = useMemo<DrawingTarget | null>(() => {
+    if (!viewedSession || !bridge.snapshot) return null;
+    if (drawingTarget?.threadId === viewedSession.threadId) return drawingTarget;
+    return {
+      bridgeInstanceId: bridge.snapshot.bridgeInstanceId,
+      slotId: viewedSession.nativeSlot?.slotId ?? `local:${viewedSession.threadId}`,
+      threadId: viewedSession.threadId,
+      threadKey: viewedSession.threadKey,
+      title: viewedSession.title,
+      snapshotSeq: bridge.snapshot.seq,
+    };
+  }, [bridge.snapshot, drawingTarget, viewedSession]);
 
   useEffect(() => {
     if (!savedDrawingsOpen || bridge.phase !== "online") return;
@@ -1052,6 +1054,20 @@ function App() {
         // the composer or injects text; the user remains in control of Send.
         instruction: "",
         png: payload.png,
+        ...(payload.boardId && payload.checkpointId && payload.scope && payload.images && payload.manifest
+          ? {
+              boardId: payload.boardId,
+              checkpointId: payload.checkpointId,
+              scope: payload.scope,
+              images: payload.images.map((image) => ({
+                fileName: image.fileName,
+                blob: image.blob,
+                kind: image.kind,
+                tileNumber: image.tileNumber,
+              })),
+              manifest: payload.manifest,
+            }
+          : {}),
       });
       if (!ack.ok) {
         setDrawingStatus("error");
@@ -1431,7 +1447,7 @@ function App() {
             pendingApprovals={pendingApprovals}
             approvalEnabled={supportsSelectedTargetCommand(mutationGate, "respondToApproval", selected)}
             busyAction={busyAction}
-            activityEvents={activityByThread[viewedSession.threadId] ?? []}
+            drawingAvailable={drawingWorkspaceTarget !== null}
             captureInboxCount={captureInbox.summary.count}
             onTogglePin={() => {
               if (!homeLayout) return;
@@ -1686,10 +1702,11 @@ function App() {
           <DrawingStudio
             key={savedDrawingWorkingCopy?.id ?? "draft"}
             open
-            target={drawingTarget}
+            target={drawingWorkspaceTarget}
             importOnOpen={drawingImportOnOpen}
             initialSavedDrawing={savedDrawingWorkingCopy}
             connected={supportsSelectedTargetCommand(mutationGate, "sendSketch", selected) && capabilities.drawing}
+            composerAttachmentMaxImages={capabilities.composerAttachmentMaxImages ?? 1}
             sending={drawingSending}
             sendStatus={drawingStatus}
             statusMessage={drawingMessage}

@@ -38,13 +38,3 @@ export function activityEventForSession(
     detail: previousStatus === null ? `Current state observed. ${detail}` : detail,
   };
 }
-
-export function appendSessionActivity(
-  current: readonly SessionActivityEvent[],
-  event: SessionActivityEvent,
-  maximum = 8,
-): readonly SessionActivityEvent[] {
-  return [event, ...current.filter((candidate) => candidate.id !== event.id)]
-    .sort((left, right) => right.at - left.at)
-    .slice(0, maximum);
-}

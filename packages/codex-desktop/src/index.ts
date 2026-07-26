@@ -42,6 +42,7 @@ export type {
   MicroSnapshot,
   MicroStatus,
   NativeComposerImageAttachment,
+  NativeComposerImageBatch,
   NativeActionAssignment,
   NativeActionLayout,
   NativeActionSlot,

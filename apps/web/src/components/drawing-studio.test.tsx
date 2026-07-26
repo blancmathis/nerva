@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { deserializeScene } from "@codex-pad/drawing";
 import { DiagramDocumentSchema } from "@codex-pad/protocol";
-import { deleteDrawingDraft, loadDrawingDraft } from "../lib/draft-store";
+import { deleteDrawingDraft, loadDrawingDraft, loadPendingDrawingBoardExport } from "../lib/draft-store";
 import { loadPendingDrawingDelivery } from "../lib/drawing-delivery-store";
 import { DrawingStudio, type DrawingTarget } from "./DrawingStudio";
 
@@ -51,6 +51,11 @@ beforeEach(async () => {
   localStorage.clear();
   await deleteDrawingDraft(firstTarget.threadId);
 });
+
+function sendWholeBoard(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare & Send" }));
+}
 
 describe("DrawingStudio routing", () => {
   it("opens an exact-task agent diagram, syncs structural edits, and sends one combined annotated PNG", async () => {
@@ -143,7 +148,7 @@ describe("DrawingStudio routing", () => {
     });
     fireEvent(canvas, up);
 
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    sendWholeBoard();
     await waitFor(() => expect(onUpdateDiagram).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onUpdateDiagram).toHaveBeenCalledWith(
@@ -156,6 +161,13 @@ describe("DrawingStudio routing", () => {
         ]),
       }),
     );
+    expect(onUpdateDiagram.mock.invocationCallOrder[0]).toBeLessThan(onSend.mock.invocationCallOrder[0]!);
+    expect(onSend.mock.calls[0]?.[0]).toMatchObject({
+      instruction: "",
+      images: [expect.objectContaining({ kind: "overview", tileNumber: 1 })],
+      manifest: expect.objectContaining({ version: 1 }),
+    });
+    expect(onSend.mock.calls[0]?.[0].images?.[0]?.fileName).toMatch(/01-map\.png$/u);
     const sentScene = onSend.mock.calls[0]?.[0].scene as {
       elements: readonly { id: string; kind: string }[];
     };
@@ -179,7 +191,7 @@ describe("DrawingStudio routing", () => {
         onReconcileDelivery={vi.fn()}
       />,
     );
-    await screen.findByText("Apple Pencil ready");
+    await screen.findByText("Apple Pencil ready", {}, { timeout: 3_000 });
     const canvas = screen.getByRole("img", { name: /Sketch canvas/ });
     const down = new Event("pointerdown", { bubbles: true, cancelable: true });
     Object.defineProperties(down, {
@@ -216,6 +228,13 @@ describe("DrawingStudio routing", () => {
   });
 
   it("does not restore cleared marks when a photo is imported", async () => {
+    const photoTarget: DrawingTarget = {
+      ...firstTarget,
+      slotId: "AG05",
+      threadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba5",
+      title: "Photo replacement task",
+    };
+    await deleteDrawingDraft(photoTarget.threadId);
     const bitmap = {
       width: 1,
       height: 1,
@@ -225,7 +244,7 @@ describe("DrawingStudio routing", () => {
     const firstView = render(
       <DrawingStudio
         open
-        target={firstTarget}
+        target={photoTarget}
         connected
         onClose={vi.fn()}
         onSend={vi.fn()}
@@ -251,14 +270,14 @@ describe("DrawingStudio routing", () => {
 
     firstView.unmount();
     await waitFor(async () => {
-      const draft = await loadDrawingDraft(firstTarget.threadId);
+      const draft = await loadDrawingDraft(photoTarget.threadId);
       expect(deserializeScene(draft?.scene ?? "").elements).toHaveLength(1);
     });
 
     const view = render(
       <DrawingStudio
         open
-        target={firstTarget}
+        target={photoTarget}
         connected
         onClose={vi.fn()}
         onSend={vi.fn()}
@@ -268,7 +287,7 @@ describe("DrawingStudio routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear page…" }));
     fireEvent.click(screen.getByRole("button", { name: "Clear page" }));
-    await screen.findByText("Apple Pencil ready");
+    await screen.findByText("Apple Pencil ready", {}, { timeout: 3_000 });
 
     const png = Uint8Array.from(
       atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
@@ -282,7 +301,7 @@ describe("DrawingStudio routing", () => {
 
     view.unmount();
     await waitFor(async () => {
-      const draft = await loadDrawingDraft(firstTarget.threadId);
+      const draft = await loadDrawingDraft(photoTarget.threadId);
       const restored = deserializeScene(draft?.scene ?? "");
       expect(restored.elements).toHaveLength(1);
       expect(restored.elements[0]?.kind).toBe("image");
@@ -463,8 +482,7 @@ describe("DrawingStudio routing", () => {
       getCoalescedEvents: { value: () => [] },
     });
     fireEvent(canvas, up);
-    const sendButton = screen.getByRole("button", { name: "Send" });
-    fireEvent.click(sendButton);
+    sendWholeBoard();
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
     expect(send.mock.calls[0]?.[0].instruction).toBe("");
     const retryButton = await screen.findByRole("button", { name: "Retry Send" });
@@ -509,7 +527,7 @@ describe("DrawingStudio routing", () => {
       tiltY: { value: 0 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
     });
     fireEvent(canvas, up);
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    sendWholeBoard();
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     await waitFor(async () => expect(await loadDrawingDraft(deliveredTarget.threadId)).toBeNull());
@@ -568,12 +586,13 @@ describe("DrawingStudio routing", () => {
       tiltY: { value: 0 }, button: { value: 0 }, getCoalescedEvents: { value: () => [] },
     });
     fireEvent(canvas, up);
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    sendWholeBoard();
     await waitFor(() => expect(firstSend).toHaveBeenCalledTimes(1));
 
     const firstCommandId = firstSend.mock.calls[0]?.[0].commandId as string;
     expect(loadPendingDrawingDelivery(reloadTarget.threadId)?.commandId).toBe(firstCommandId);
     firstRender.unmount();
+    await expect(loadPendingDrawingBoardExport(reloadTarget.threadId)).resolves.toMatchObject({ commandId: firstCommandId });
 
     const retry = vi.fn().mockResolvedValue({ ok: true, message: "Completed" });
     const reconcile = vi.fn().mockResolvedValue({

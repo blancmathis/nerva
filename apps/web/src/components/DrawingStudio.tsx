@@ -9,10 +9,12 @@ import {
   createStrokeElement,
   createTextElement,
   deserializeScene,
+  getSceneBounds,
   historyReducer,
   pointerSamples,
   serializeScene,
   type BackgroundMode,
+  type Bounds,
   type Scene,
   type SceneElement,
   type ScenePoint,
@@ -37,9 +39,17 @@ import {
   type RefObject,
 } from "react";
 import {
+  checkpointAndFinishDrawingBoard,
+  deletePendingDrawingBoardExport,
   deleteDrawingDraft,
+  listDrawingBoards,
   loadDrawingDraft,
+  loadPendingDrawingBoardExport,
+  resumeDrawingBoard,
+  saveDrawingBoardCamera,
   saveDrawingDraft,
+  savePendingDrawingBoardExport,
+  type StoredDrawingBoard,
 } from "../lib/draft-store";
 import { createUuidV4 } from "../lib/uuid";
 import {
@@ -57,6 +67,13 @@ import {
 } from "./drawing-delivery";
 import { exportSceneToBoundedPng } from "./drawing-export";
 import {
+  describeDrawingBoardExport,
+  exportDrawingBoard,
+  type DrawingBoardExportManifest,
+  type DrawingBoardExportPackage,
+  type DrawingExportScope,
+} from "./drawing-board-export";
+import {
   createGestureAnchor,
   solvePinchView,
   type GestureAnchor,
@@ -68,6 +85,7 @@ import {
 } from "./drawing-image";
 import {
   renderDrawingCanvas,
+  measureCanvas,
   screenTransform,
   type CanvasView,
   type DrawingPreview,
@@ -112,6 +130,11 @@ export interface DrawingSendPayload {
   instruction: string;
   png: Blob;
   pngBase64: string;
+  boardId?: string;
+  checkpointId?: string;
+  scope?: DrawingExportScope;
+  images?: DrawingBoardExportPackage["images"];
+  manifest?: DrawingBoardExportManifest;
   scene: unknown;
   background: BackgroundMode;
 }
@@ -150,6 +173,7 @@ export interface DrawingStudioProps {
   /** Opens a Mac-kept drawing as an independent local working copy. */
   initialSavedDrawing?: SavedDrawingWorkingCopy | null;
   connected?: boolean;
+  composerAttachmentMaxImages?: 1 | 12;
   readOnly?: boolean;
   sending?: boolean;
   sendStatus?: DrawingSendStatus;
@@ -198,16 +222,18 @@ interface ExportPreview {
   commandId: string;
   targetSnapshotSeq: number;
   lockedInstruction: string | null;
-  blob: Blob;
-  pngBase64: string;
+  boardId: string;
+  checkpointId: string;
+  package: DrawingBoardExportPackage;
 }
 
 const CANVAS_WIDTH = 1_440;
 const CANVAS_HEIGHT = 900;
 const DARK_BACKGROUND = "#151b20";
-const INITIAL_VIEW: CanvasView = { zoom: 1, panX: 0, panY: 0 };
-const MIN_ZOOM = 0.55;
-const MAX_ZOOM = 4;
+const INITIAL_VIEW: CanvasView = { zoom: 1, centerX: CANVAS_WIDTH / 2, centerY: CANVAS_HEIGHT / 2 };
+const MIN_ZOOM = 0.08;
+const MAX_ZOOM = 12;
+const WORLD_LIMIT = 1_000_000;
 
 const DIALOG_FOCUSABLE = [
   "button:not([disabled])",
@@ -504,12 +530,134 @@ function toolIcon(tool: Tool): DrawingIconName {
   }
 }
 
+function DrawingMinimap({
+  contentBounds,
+  viewportBounds,
+  onRecenter,
+}: {
+  contentBounds: Bounds;
+  viewportBounds: Bounds;
+  onRecenter: (x: number, y: number) => void;
+}) {
+  const padding = Math.max(contentBounds.width, contentBounds.height, 200) * 0.08;
+  const minX = Math.min(contentBounds.minX, viewportBounds.minX) - padding;
+  const minY = Math.min(contentBounds.minY, viewportBounds.minY) - padding;
+  const maxX = Math.max(contentBounds.maxX, viewportBounds.maxX) + padding;
+  const maxY = Math.max(contentBounds.maxY, viewportBounds.maxY) + padding;
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const recenter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    onRecenter(
+      minX + ((event.clientX - rect.left) / rect.width) * width,
+      minY + ((event.clientY - rect.top) / rect.height) * height,
+    );
+  };
+  return (
+    <div
+      className="drawing-minimap"
+      aria-label="Board minimap. Drag to recenter."
+      role="application"
+      onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); recenter(event); }}
+      onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) recenter(event); }}
+    >
+      <span
+        className="drawing-minimap__content"
+        style={{
+          left: `${((contentBounds.minX - minX) / width) * 100}%`,
+          top: `${((contentBounds.minY - minY) / height) * 100}%`,
+          width: `${Math.max(2, (contentBounds.width / width) * 100)}%`,
+          height: `${Math.max(2, (contentBounds.height / height) * 100)}%`,
+        }}
+      />
+      <span
+        className="drawing-minimap__viewport"
+        style={{
+          left: `${((viewportBounds.minX - minX) / width) * 100}%`,
+          top: `${((viewportBounds.minY - minY) / height) * 100}%`,
+          width: `${Math.min(100, Math.max(5, (viewportBounds.width / width) * 100))}%`,
+          height: `${Math.min(100, Math.max(5, (viewportBounds.height / height) * 100))}%`,
+        }}
+      />
+    </div>
+  );
+}
+
+function AreaSelectionOverlay({
+  canvasRef,
+  scene,
+  view,
+  bounds,
+  onChange,
+}: {
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  scene: Scene;
+  view: CanvasView;
+  bounds: Bounds;
+  onChange: (bounds: Bounds) => void;
+}) {
+  const canvas = canvasRef.current;
+  if (!canvas) return null;
+  const metrics = measureCanvas(canvas, scene);
+  const scale = metrics.fitScale * view.zoom;
+  const left = metrics.width / 2 + (bounds.minX - view.centerX) * scale;
+  const top = metrics.height / 2 + (bounds.minY - view.centerY) * scale;
+  const width = Math.max(44, bounds.width * scale);
+  const height = Math.max(44, bounds.height * scale);
+  const begin = (event: ReactPointerEvent<HTMLElement>, mode: "move" | "resize") => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = bounds;
+    const move = (next: PointerEvent) => {
+      const deltaX = (next.clientX - startX) / scale;
+      const deltaY = (next.clientY - startY) / scale;
+      if (mode === "move") {
+        onChange({
+          minX: start.minX + deltaX,
+          minY: start.minY + deltaY,
+          maxX: start.maxX + deltaX,
+          maxY: start.maxY + deltaY,
+          width: start.width,
+          height: start.height,
+        });
+      } else {
+        const nextWidth = Math.max(80 / scale, start.width + deltaX);
+        const nextHeight = Math.max(80 / scale, start.height + deltaY);
+        onChange({ ...start, maxX: start.minX + nextWidth, maxY: start.minY + nextHeight, width: nextWidth, height: nextHeight });
+      }
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end, { once: true });
+    window.addEventListener("pointercancel", end, { once: true });
+  };
+  return (
+    <div
+      className="drawing-area-selection"
+      style={{ left, top, width, height }}
+      onPointerDown={(event) => begin(event, "move")}
+      aria-label="Selected export area. Drag to move."
+    >
+      <span>Selected area</span>
+      <button type="button" aria-label="Resize selected area" onPointerDown={(event) => begin(event, "resize")} />
+    </div>
+  );
+}
+
 export function DrawingStudio({
   open,
   target,
   importOnOpen = false,
   initialSavedDrawing = null,
   connected = true,
+  composerAttachmentMaxImages = 1,
   readOnly = false,
   sending = false,
   sendStatus = "idle",
@@ -545,6 +693,14 @@ export function DrawingStudio({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [sendAfterBuild, setSendAfterBuild] = useState(false);
   const [exportPreview, setExportPreview] = useState<ExportPreview | null>(null);
+  const [sendSheetOpen, setSendSheetOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<DrawingExportScope>("board");
+  const [selectedExportBounds, setSelectedExportBounds] = useState<Bounds | null>(null);
+  const [boardId, setBoardId] = useState(() => createUuidV4());
+  const [savedBoards, setSavedBoards] = useState<readonly StoredDrawingBoard[]>([]);
+  const [boardsOpen, setBoardsOpen] = useState(false);
+  const [minimapVisible, setMinimapVisible] = useState(false);
+  const minimapTimerRef = useRef<number | null>(null);
   const [clearPending, setClearPending] = useState(false);
   const [importSourceOpen, setImportSourceOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -656,8 +812,26 @@ export function DrawingStudio({
     () => mergeDiagramIntoScene(scene, diagram),
     [diagram, scene],
   );
+  const exportDescription = useMemo(() => sendSheetOpen
+    ? describeDrawingBoardExport(
+        renderedScene,
+        exportScope,
+        selectedExportBounds,
+        composerAttachmentMaxImages,
+        diagram,
+      )
+    : null, [
+      composerAttachmentMaxImages,
+      diagram,
+      exportScope,
+      renderedScene,
+      selectedExportBounds,
+      sendSheetOpen,
+    ]);
   const sceneRef = useRef(scene);
   const diagramRef = useRef(diagram);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const unmountDraftRef = useRef({
     displayedTarget,
     draftReady,
@@ -667,6 +841,8 @@ export function DrawingStudio({
     color,
     size,
     diagram,
+    view,
+    boardId,
   });
   unmountDraftRef.current = {
     displayedTarget,
@@ -677,6 +853,8 @@ export function DrawingStudio({
     color,
     size,
     diagram,
+    view,
+    boardId,
   };
 
   useEffect(() => () => {
@@ -702,6 +880,8 @@ export function DrawingStudio({
         background: sceneToSave.background.mode,
         pencilOnly: latest.pencilOnly,
         diagramJson: latest.diagram ? JSON.stringify(latest.diagram) : null,
+        camera: latest.view,
+        boardId: latest.boardId,
       });
     });
   }, [enqueueDraftMutation]);
@@ -749,16 +929,37 @@ export function DrawingStudio({
   }, []);
 
   const clearDeliveryBinding = useCallback((threadId: string) => {
+    const current = loadPendingDrawingDelivery(threadId);
     deletePendingDrawingDelivery(threadId);
+    void deletePendingDrawingBoardExport(threadId, current?.commandId);
     setPendingDelivery((current) => current?.threadId === threadId ? null : current);
     setPendingDeliveryMatchesDraft(false);
   }, []);
 
-  const discardDeliveredDraft = useCallback(async (threadId: string) => {
+  const discardDeliveredDraft = useCallback(async (
+    threadId: string,
+    checkpoint?: { checkpointId: string; scope: DrawingExportScope; imageNames: readonly string[] },
+  ) => {
     draftPersistenceBlockedRef.current = true;
     setDraftReady(false);
     resetPointerState();
-    await enqueueDraftMutation(() => deleteDrawingDraft(threadId));
+    await enqueueDraftMutation(async () => {
+      const retained = checkpoint ? null : await loadPendingDrawingBoardExport(threadId);
+      const resolvedCheckpoint = checkpoint ?? (retained ? {
+        checkpointId: retained.checkpointId,
+        scope: retained.scope,
+        imageNames: retained.images.map((image) => image.fileName),
+      } : null);
+      await (resolvedCheckpoint
+        ? checkpointAndFinishDrawingBoard(threadId, {
+          checkpointId: resolvedCheckpoint.checkpointId,
+          createdAt: new Date().toISOString(),
+          status: "sent",
+          scope: resolvedCheckpoint.scope,
+          imageNames: resolvedCheckpoint.imageNames,
+        })
+        : deleteDrawingDraft(threadId));
+    });
   }, [enqueueDraftMutation, resetPointerState]);
 
   const reconcileDelivery = useCallback(async (
@@ -821,6 +1022,12 @@ export function DrawingStudio({
       setInstruction("");
       setDraftReady(false);
       setView(INITIAL_VIEW);
+      setBoardId(createUuidV4());
+      setSavedBoards([]);
+      setBoardsOpen(false);
+      setSendSheetOpen(false);
+      setExportScope("board");
+      setSelectedExportBounds(null);
       setDisplayedTarget(target ? { ...target } : null);
       setAvailableDiagrams([]);
       setIncomingDiagram(null);
@@ -914,6 +1121,8 @@ export function DrawingStudio({
           dispatchHistory({ type: "reset", scene: restoredScene });
           setInstruction(restoredInstruction);
           setPencilOnly(draft.pencilOnly);
+          if ("boardId" in draft && typeof draft.boardId === "string") setBoardId(draft.boardId);
+          if ("camera" in draft && draft.camera) setView(draft.camera);
           setDraftMessage(draft.savedWorkingCopy
             ? "Saved Drawing opened as an independent local working copy"
             : "Draft restored on this iPad");
@@ -923,6 +1132,7 @@ export function DrawingStudio({
           dispatchHistory({ type: "reset", scene: restoredScene });
           setInstruction(restoredInstruction);
           setPencilOnly(true);
+          setBoardId(createUuidV4());
           setDraftMessage("New page");
         }
 
@@ -986,7 +1196,12 @@ export function DrawingStudio({
         if (storedDelivery) void reconcileDelivery(storedDelivery);
       })
       .finally(() => {
-        if (isCurrentGeneration() && !draftPersistenceBlockedRef.current) setDraftReady(true);
+        if (isCurrentGeneration() && !draftPersistenceBlockedRef.current) {
+          setDraftReady(true);
+          void listDrawingBoards(displayedTarget.threadId).then((boards) => {
+            if (isCurrentGeneration()) setSavedBoards(boards);
+          });
+        }
       });
     return () => {
       active = false;
@@ -1172,6 +1387,8 @@ export function DrawingStudio({
             background: sceneToSave.background.mode,
             pencilOnly,
             diagramJson: diagram ? JSON.stringify(diagram) : null,
+            camera: viewRef.current,
+            boardId,
           });
         });
         if (announce) setDraftMessage("Saved on this iPad");
@@ -1179,7 +1396,7 @@ export function DrawingStudio({
         if (announce) setDraftMessage("Draft could not be saved");
       }
     },
-    [diagram, displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
+    [boardId, diagram, displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
   );
 
   useEffect(() => {
@@ -1187,6 +1404,14 @@ export function DrawingStudio({
     const timer = window.setTimeout(() => void persistDraft(true), 550);
     return () => window.clearTimeout(timer);
   }, [diagram, draftReady, persistDraft, scene]);
+
+  useEffect(() => {
+    if (!draftReady || !displayedTarget || !isExactDrawingTarget(displayedTarget)) return;
+    const timer = window.setTimeout(() => {
+      void enqueueDraftMutation(() => saveDrawingBoardCamera(displayedTarget.threadId, view));
+    }, 240);
+    return () => window.clearTimeout(timer);
+  }, [displayedTarget, draftReady, enqueueDraftMutation, view]);
 
   useEffect(() => {
     if (!open) return;
@@ -1292,8 +1517,8 @@ export function DrawingStudio({
     if (points.length === 1) {
       setView((current) => ({
         ...current,
-        panX: start.panX + next.centerX - start.centerX,
-        panY: start.panY + next.centerY - start.centerY,
+        centerX: start.cameraCenterX - (next.centerX - start.gestureCenterX) / (start.fitScale * start.zoom),
+        centerY: start.cameraCenterY - (next.centerY - start.gestureCenterY) / (start.fitScale * start.zoom),
       }));
       return;
     }
@@ -1583,15 +1808,32 @@ export function DrawingStudio({
         );
         return;
       }
-      const options = {
-        background: "scene" as const,
-        padding: 36,
-        maxWidth: 2_560,
-        maxHeight: 2_560,
-        pixelRatio: 2,
-      };
-      const { blob } = await exportSceneToBoundedPng(renderedScene, options);
-      const pngBase64 = await blobToBase64(blob);
+      const retained = pendingDelivery
+        ? await loadPendingDrawingBoardExport(displayedTarget?.threadId ?? "")
+        : null;
+      if (pendingDelivery && retained?.commandId !== pendingDelivery.commandId) {
+        throw new Error("The exact retained image batch is unavailable; its unresolved transfer cannot be rebuilt or replayed.");
+      }
+      let exportDiagram = diagramRef.current;
+      if (!retained && exportDiagram && diagramDirty) {
+        const synced = await syncDiagram();
+        if (!synced) return;
+        exportDiagram = synced;
+      }
+      const checkpointId = retained?.checkpointId ?? createUuidV4();
+      const exported = retained ? {
+        scope: retained.scope,
+        images: retained.images,
+        manifest: retained.manifest,
+      } satisfies DrawingBoardExportPackage : await exportDrawingBoard({
+        scene: mergeDiagramIntoScene(sceneRef.current, exportDiagram),
+        scope: exportScope,
+        selectedBounds: selectedExportBounds,
+        composerAttachmentMaxImages,
+        boardId,
+        checkpointId,
+        diagram: exportDiagram,
+      });
       const next: ExportPreview = {
         commandId: pendingDelivery?.commandId ?? commandId(),
         targetSnapshotSeq: pendingDelivery?.expectedSnapshotSeq
@@ -1599,8 +1841,9 @@ export function DrawingStudio({
             ? (target?.snapshotSeq ?? displayedTarget?.snapshotSeq ?? 0)
             : (displayedTarget?.snapshotSeq ?? 0)),
         lockedInstruction: pendingDelivery ? instruction : null,
-        blob,
-        pngBase64,
+        boardId: retained?.boardId ?? boardId,
+        checkpointId,
+        package: exported,
       };
       setPreviewBusy(false);
       setExportPreview(next);
@@ -1612,12 +1855,17 @@ export function DrawingStudio({
     }
   }, [
     displayedTarget,
+    boardId,
+    composerAttachmentMaxImages,
+    diagramDirty,
+    exportScope,
     hasContent,
     instruction,
     pendingDelivery,
     pendingDeliveryRetryable,
     previewBusy,
-    renderedScene,
+    selectedExportBounds,
+    syncDiagram,
     target,
   ]);
 
@@ -1632,8 +1880,9 @@ export function DrawingStudio({
     setLocalError(null);
     try {
       if (diagramRef.current && diagramDirty) {
-        const synced = await syncDiagram();
-        if (!synced) return;
+        setLocalError("The diagram changed after this package was prepared. Prepare the linked images again before sending.");
+        setExportPreview(null);
+        return;
       }
       let binding = pendingDelivery;
       if (binding) {
@@ -1672,6 +1921,8 @@ export function DrawingStudio({
           background: scene.background.mode,
           pencilOnly,
           diagramJson: diagramRef.current ? JSON.stringify(diagramRef.current) : null,
+          camera: view,
+          boardId: exportPreview.boardId,
         });
         setInstruction(deliveryInstruction);
         binding = {
@@ -1683,7 +1934,19 @@ export function DrawingStudio({
           expectedSnapshotSeq: exportPreview.targetSnapshotSeq,
           ...identity,
         };
+        await savePendingDrawingBoardExport({
+          commandId: binding.commandId,
+          threadId: binding.threadId,
+          boardId: exportPreview.boardId,
+          checkpointId: exportPreview.checkpointId,
+          targetSnapshotSeq: exportPreview.targetSnapshotSeq,
+          scope: exportPreview.package.scope,
+          images: exportPreview.package.images,
+          manifest: exportPreview.package.manifest,
+          createdAt: new Date().toISOString(),
+        });
         if (!savePendingDrawingDelivery(binding)) {
+          await deletePendingDrawingBoardExport(binding.threadId, binding.commandId);
           setLocalError("The attachment identity could not be saved on this iPad, so nothing was added to the composer.");
           setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
           return;
@@ -1702,8 +1965,13 @@ export function DrawingStudio({
         snapshotSeq: binding.expectedSnapshotSeq,
         expectedSnapshotSeq: binding.expectedSnapshotSeq,
         instruction: deliveryInstruction,
-        png: exportPreview.blob,
-        pngBase64: exportPreview.pngBase64,
+        png: exportPreview.package.images[0]!.blob,
+        pngBase64: await blobToBase64(exportPreview.package.images[0]!.blob),
+        boardId: exportPreview.boardId,
+        checkpointId: exportPreview.checkpointId,
+        scope: exportPreview.package.scope,
+        images: exportPreview.package.images,
+        manifest: exportPreview.package.manifest,
         scene: JSON.parse(serializedScene) as unknown,
         background: scene.background.mode,
       });
@@ -1716,6 +1984,7 @@ export function DrawingStudio({
         return;
       }
       if (result && !result.ok) {
+        await deletePendingDrawingBoardExport(binding.threadId, binding.commandId);
         clearDeliveryBinding(binding.threadId);
         setLocalError(result.message ?? "The bridge rejected this sketch.");
         setExportPreview((current) => current
@@ -1723,7 +1992,11 @@ export function DrawingStudio({
           : current);
         return;
       }
-      await discardDeliveredDraft(binding.threadId);
+      await discardDeliveredDraft(binding.threadId, {
+        checkpointId: exportPreview.checkpointId,
+        scope: exportPreview.package.scope,
+        imageNames: exportPreview.package.images.map((image) => image.fileName),
+      });
       clearDeliveryBinding(binding.threadId);
       setDraftMessage("Sketch attached to the Mac composer");
       setExportPreview(null);
@@ -1739,7 +2012,7 @@ export function DrawingStudio({
       setLocalError(
         error instanceof Error
           ? `${error.message} Retry keeps the same transfer ID.`
-          : "Attachment outcome is unknown. Retry keeps the same transfer ID.",
+          : `${String(error)} Retry keeps the same transfer ID.`,
       );
     } finally {
       setLocalSending(false);
@@ -1758,7 +2031,7 @@ export function DrawingStudio({
     reconcileDelivery,
     scene,
     sendGuard.allowed,
-    syncDiagram,
+    view,
   ]);
 
   useEffect(() => {
@@ -1775,6 +2048,37 @@ export function DrawingStudio({
     setSendAfterBuild(true);
     void buildPreview();
   }, [buildPreview, exportPreview, sendPreview]);
+
+  const currentViewportBounds = useCallback((): Bounds => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return { minX: 0, minY: 0, maxX: CANVAS_WIDTH, maxY: CANVAS_HEIGHT, width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
+    }
+    const rect = canvas.getBoundingClientRect();
+    const transform = screenTransform(canvas, sceneRef.current, view);
+    const minX = (rect.left - transform.panX) / transform.zoom;
+    const minY = (rect.top - transform.panY) / transform.zoom;
+    const maxX = (rect.right - transform.panX) / transform.zoom;
+    const maxY = (rect.bottom - transform.panY) / transform.zoom;
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+  }, [view]);
+
+  const openSendSheet = useCallback(() => {
+    if (pendingDeliveryRetryable) {
+      requestSend();
+      return;
+    }
+    setExportPreview(null);
+    setExportScope("board");
+    setSelectedExportBounds(currentViewportBounds());
+    setSendSheetOpen(true);
+  }, [currentViewportBounds, pendingDeliveryRetryable, requestSend]);
+
+  const confirmSendSheet = useCallback(() => {
+    setSendSheetOpen(false);
+    setSendAfterBuild(true);
+    void buildPreview();
+  }, [buildPreview]);
 
   const keepDrawing = useCallback(async () => {
     if (!onKeep || !displayedTarget || !hasContent || localKeeping) return;
@@ -1823,9 +2127,71 @@ export function DrawingStudio({
     }
   }, [diagramDirty, displayedTarget, hasContent, instruction, localKeeping, onKeep, scene, syncDiagram]);
 
+  const openSavedBoard = useCallback(async (savedBoard: StoredDrawingBoard) => {
+    if (!displayedTarget || editorLocked) return;
+    setLocalError(null);
+    try {
+      await persistDraft(false);
+      await resumeDrawingBoard(displayedTarget.threadId, savedBoard.boardId);
+      const restored = await loadDrawingDraft(displayedTarget.threadId);
+      if (!restored) throw new Error("The selected board could not be restored.");
+      const restoredScene = deserializeScene(restored.scene);
+      dispatchHistory({ type: "reset", scene: restoredScene });
+      sceneRef.current = restoredScene;
+      setBoardId(savedBoard.boardId);
+      setView(restored.camera ?? INITIAL_VIEW);
+      setInstruction(restored.instruction);
+      setPencilOnly(restored.pencilOnly);
+      if (restored.diagramJson) {
+        const parsed = DiagramDocumentSchema.safeParse(JSON.parse(restored.diagramJson));
+        dispatchDiagramHistory({ type: "reset", diagram: parsed.success ? parsed.data : null });
+      } else {
+        dispatchDiagramHistory({ type: "reset", diagram: null });
+      }
+      setBoardsOpen(false);
+      setDraftMessage("Sent board reopened for a new revision");
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "The board could not be opened.");
+    }
+  }, [displayedTarget, editorLocked, persistDraft]);
+
   const zoomBy = useCallback((factor: number) => {
     setView((current) => ({ ...current, zoom: clamp(current.zoom * factor, MIN_ZOOM, MAX_ZOOM) }));
   }, []);
+
+  useEffect(() => {
+    if (!open || !draftReady) return;
+    setMinimapVisible(true);
+    if (minimapTimerRef.current !== null) window.clearTimeout(minimapTimerRef.current);
+    minimapTimerRef.current = window.setTimeout(() => setMinimapVisible(false), 1_500);
+    return () => {
+      if (minimapTimerRef.current !== null) window.clearTimeout(minimapTimerRef.current);
+    };
+  }, [draftReady, open, view]);
+
+  useEffect(() => {
+    const centerX = clamp(view.centerX, -WORLD_LIMIT, WORLD_LIMIT);
+    const centerY = clamp(view.centerY, -WORLD_LIMIT, WORLD_LIMIT);
+    if (centerX !== view.centerX || centerY !== view.centerY) {
+      setView((current) => ({ ...current, centerX, centerY }));
+    }
+  }, [view.centerX, view.centerY]);
+
+  const fitBoard = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const bounds = getSceneBounds(renderedScene);
+    const metrics = measureCanvas(canvas, renderedScene);
+    const desiredScale = Math.min(
+      (metrics.width * 0.84) / Math.max(1, bounds.width),
+      (metrics.height * 0.84) / Math.max(1, bounds.height),
+    );
+    setView({
+      centerX: (bounds.minX + bounds.maxX) / 2,
+      centerY: (bounds.minY + bounds.maxY) / 2,
+      zoom: clamp(desiredScale / metrics.fitScale, MIN_ZOOM, MAX_ZOOM),
+    });
+  }, [renderedScene]);
 
   if (!open) return null;
 
@@ -1839,6 +2205,8 @@ export function DrawingStudio({
   const connectedDiagramEdges = diagram?.edges.filter(
     (edge) => edge.from === selectedDiagramNodeId || edge.to === selectedDiagramNodeId,
   ) ?? [];
+  const boardBounds = getSceneBounds(renderedScene);
+  const visibleWorldBounds = currentViewportBounds();
   const statusText = localError
     ?? (reconcilingDelivery ? "Checking the previous attachment with the Mac bridge…" : null)
     ?? keepMessage
@@ -2078,11 +2446,17 @@ export function DrawingStudio({
               />
               <span>Pencil only</span>
             </label>
+            <button
+              className="drawing-boards-button"
+              type="button"
+              onClick={() => setBoardsOpen(true)}
+              disabled={savedBoards.length === 0 || editorLocked}
+            >Boards{savedBoards.length > 0 ? ` ${savedBoards.length}` : ""}</button>
             <div className="drawing-zoom" aria-label="Canvas zoom">
               <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">
                 <DrawingIcon name="zoom-out" />
               </button>
-              <button type="button" onClick={() => setView(INITIAL_VIEW)} aria-label="Fit drawing">
+              <button type="button" onClick={fitBoard} aria-label="Fit board">
                 {Math.round(view.zoom * 100)}%
               </button>
               <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">
@@ -2127,6 +2501,22 @@ export function DrawingStudio({
                 onCommit={recordDiagramChange}
               />
             )}
+            {minimapVisible && (
+              <DrawingMinimap
+                contentBounds={boardBounds}
+                viewportBounds={visibleWorldBounds}
+                onRecenter={(centerX, centerY) => setView((current) => ({ ...current, centerX, centerY }))}
+              />
+            )}
+            {sendSheetOpen && exportScope === "area" && selectedExportBounds && (
+              <AreaSelectionOverlay
+                canvasRef={canvasRef}
+                scene={renderedScene}
+                view={view}
+                bounds={selectedExportBounds}
+                onChange={setSelectedExportBounds}
+              />
+            )}
             {incomingDiagram && (
               <button
                 className="drawing-diagram-update"
@@ -2161,7 +2551,7 @@ export function DrawingStudio({
                     <button
                       type="button"
                       aria-label="Add diagram block"
-                      disabled={diagram.nodes.length >= 64 || editorLocked}
+                      disabled={diagram.nodes.length >= 256 || editorLocked}
                       onClick={() => {
                         const nodeId = `node_${createUuidV4().replaceAll("-", "").slice(0, 12)}`;
                         const next = addDiagramNode(diagram, nodeId);
@@ -2452,7 +2842,7 @@ export function DrawingStudio({
               <button
                 className="drawing-review-button"
                 type="button"
-                onClick={requestSend}
+                onClick={pendingDeliveryRetryable ? requestSend : openSendSheet}
                 disabled={!sendGuard.allowed || previewBusy || currentSending || readOnly || reconcilingDelivery}
               >
                 {currentSending
@@ -2467,6 +2857,84 @@ export function DrawingStudio({
           )}
         </div>
       </footer>
+
+      {sendSheetOpen && (
+        <section className="drawing-send-sheet" role="dialog" aria-modal="false" aria-labelledby="drawing-send-title">
+          <header>
+            <span>
+              <small>BOARD EXPORT</small>
+              <strong id="drawing-send-title">What should Codex see?</strong>
+            </span>
+            <button type="button" onClick={() => setSendSheetOpen(false)} aria-label="Close send options"><DrawingIcon name="close" /></button>
+          </header>
+          <div className="drawing-send-sheet__choices" role="radiogroup" aria-label="Export scope">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={exportScope === "board"}
+              className={exportScope === "board" ? "is-active" : ""}
+              onClick={() => setExportScope("board")}
+            ><strong>Whole board</strong><small>Overview plus readable details when needed</small></button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={exportScope === "area"}
+              className={exportScope === "area" ? "is-active" : ""}
+              onClick={() => {
+                setExportScope("area");
+                setSelectedExportBounds((current) => current ?? currentViewportBounds());
+              }}
+            ><strong>Select area</strong><small>Drag and resize the frame on the board</small></button>
+          </div>
+          <div className="drawing-send-sheet__footer">
+            <div className="drawing-send-sheet__package">
+              <span>{exportDescription?.summary
+                ?? (composerAttachmentMaxImages === 12 ? "Up to 12 ordered images" : "Compatible single atlas when tiling is needed")}</span>
+              {exportDescription && exportDescription.detailCount > 0 && (
+                <details>
+                  <summary>Inspect package</summary>
+                  <div className="drawing-send-sheet__regions">
+                    {exportDescription.hasStructureIndex && <strong>Structure index included</strong>}
+                    {exportDescription.regions.map((region) => (
+                      <span key={region.regionId}>
+                        <b>{region.regionId}</b>
+                        <small>{region.neighbors.join(" · ") || "Complete region"}</small>
+                        {region.alignmentMarkers.length > 0 && (
+                          <small>Align {region.alignmentMarkers.join(" · ")}</small>
+                        )}
+                        {region.continuations.length > 0 && (
+                          <small>{region.continuations.join(" · ")}</small>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+            <button type="button" onClick={confirmSendSheet} disabled={exportScope === "area" && !selectedExportBounds}>Prepare &amp; Send</button>
+          </div>
+        </section>
+      )}
+
+      {boardsOpen && (
+        <div className="drawing-overlay" role="presentation">
+          <section className="drawing-boards-sheet" role="dialog" aria-modal="true" aria-labelledby="drawing-boards-title">
+            <header>
+              <span><small>COLLABORATIVE HISTORY</small><h3 id="drawing-boards-title">Boards</h3></span>
+              <button type="button" onClick={() => setBoardsOpen(false)} aria-label="Close boards"><DrawingIcon name="close" /></button>
+            </header>
+            <p>Sent boards stay available here. Reopen one to continue from its latest checkpoint.</p>
+            <div className="drawing-boards-sheet__list">
+              {savedBoards.map((savedBoard) => (
+                <button key={savedBoard.boardId} type="button" onClick={() => void openSavedBoard(savedBoard)}>
+                  <span><strong>{savedBoard.title}</strong><small>{savedBoard.checkpoints.length} sent checkpoint{savedBoard.checkpoints.length === 1 ? "" : "s"}</small></span>
+                  <time>{new Date(savedBoard.updatedAt).toLocaleDateString()}</time>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       {clearPending && (
         <div className="drawing-overlay" role="presentation">
@@ -2640,8 +3108,8 @@ export function DrawingCanvasEditor({
     if (points.length === 1) {
       setView((current) => ({
         ...current,
-        panX: start.panX + metrics.centerX - start.centerX,
-        panY: start.panY + metrics.centerY - start.centerY,
+        centerX: start.cameraCenterX - (metrics.centerX - start.gestureCenterX) / (start.fitScale * start.zoom),
+        centerY: start.cameraCenterY - (metrics.centerY - start.gestureCenterY) / (start.fitScale * start.zoom),
       }));
     } else {
       setView(solvePinchView(start, metrics, MIN_ZOOM, MAX_ZOOM));

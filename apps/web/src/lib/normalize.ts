@@ -200,6 +200,7 @@ function normalizeCapabilities(root: JsonRecord): BridgeCapabilities {
       review,
       bool(source.multiImageInputVerified) ?? false,
     ),
+    composerAttachmentMaxImages: source.composerAttachmentMaxImages === 12 ? 12 : 1,
     siteCapture: { available: false, reason: null },
     libraries: [],
   };
@@ -271,6 +272,7 @@ function fromProtocol(snapshot: MicroSnapshot): BridgeSnapshot {
       drawing: false,
       review: false,
       reviewMaxImages: 0,
+      composerAttachmentMaxImages: 1,
       siteCapture: { available: false, reason: null },
       libraries: [],
     },
@@ -308,6 +310,7 @@ export function normalizeSecondaryCapabilities(input: unknown): Omit<BridgeCapab
       review,
       bool(root.multiImageInputVerified) ?? false,
     ),
+    composerAttachmentMaxImages: root.composerAttachmentMaxImages === 12 ? 12 : 1,
     siteCapture: {
       available: bool(record(root.siteCapture).available) ?? false,
       reason: text(record(root.siteCapture).reason),

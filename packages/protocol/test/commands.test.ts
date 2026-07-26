@@ -73,6 +73,70 @@ describe("CommandSchema", () => {
     expect(CommandSchema.safeParse({ ...commands[0], commandId: "not-unique" }).success).toBe(false);
   });
 
+  it("accepts an ordered v2 board batch and rejects duplicate filenames", () => {
+    const tiled = {
+      ...metadata,
+      type: "sendSketch",
+      version: 2,
+      targetThreadId: THREAD_ID,
+      instruction: "",
+      boardId: "3d35b974-62cc-4db8-9b4e-5a8dc8a4d813",
+      checkpointId: "4d35b974-62cc-4db8-9b4e-5a8dc8a4d814",
+      scope: "board",
+      images: [
+        { fileName: "Nerva Board 01-overview.png", png: PNG_1X1, kind: "overview", tileNumber: 1 },
+        { fileName: "Nerva Board 02-detail.png", png: PNG_1X1, kind: "detail", tileNumber: 2 },
+      ],
+      manifest: {
+        version: 1,
+        quality: "good",
+        overlap: 0.1,
+        tiles: [
+          { tileNumber: 1, kind: "overview", minX: -100, minY: -50, maxX: 3_000, maxY: 2_000 },
+          { tileNumber: 2, kind: "detail", minX: -100, minY: -50, maxX: 1_500, maxY: 1_100 },
+        ],
+      },
+    } as const;
+    expect(CommandSchema.safeParse(tiled).success).toBe(true);
+    expect(CommandSchema.safeParse({
+      ...tiled,
+      images: [tiled.images[0], { ...tiled.images[1], fileName: tiled.images[0].fileName }],
+    }).success).toBe(false);
+  });
+
+  it.each([1, 2, 6, 12])("accepts an ordered v2 export containing %i image(s)", (count) => {
+    const images = Array.from({ length: count }, (_, index) => ({
+      fileName: `Nerva Board ${String(index + 1).padStart(2, "0")}-${index === 0 && count > 1 ? "overview" : "detail"}.png`,
+      png: PNG_1X1,
+      kind: index === 0 && count > 1 ? "overview" as const : "detail" as const,
+      tileNumber: index + 1,
+    }));
+    expect(CommandSchema.safeParse({
+      ...metadata,
+      type: "sendSketch",
+      version: 2,
+      targetThreadId: THREAD_ID,
+      instruction: "",
+      boardId: "3d35b974-62cc-4db8-9b4e-5a8dc8a4d813",
+      checkpointId: "4d35b974-62cc-4db8-9b4e-5a8dc8a4d814",
+      scope: "board",
+      images,
+      manifest: {
+        version: 1,
+        quality: "good",
+        overlap: 0.1,
+        tiles: images.map((image) => ({
+          tileNumber: image.tileNumber,
+          kind: image.kind,
+          minX: image.tileNumber * -100,
+          minY: -50,
+          maxX: image.tileNumber * 1_000,
+          maxY: 2_000,
+        })),
+      },
+    }).success).toBe(true);
+  });
+
   it("requires expected sequence and expected thread context", () => {
     const { expectedSequence: _sequence, ...missingSequence } = commands[0]!;
     expect(CommandSchema.safeParse(missingSequence).success).toBe(false);

@@ -342,6 +342,42 @@ export class ProtocolCommandExecutor {
       }
       case "sendSketch": {
         const target = this.state.assertExactTarget(command.expectedSequence, command.targetThreadId, true);
+        if ("images" in command) {
+          const normalized: Awaited<ReturnType<typeof this.normalizeSketch>>[] = [];
+          try {
+            for (const image of command.images) {
+              normalized.push(await this.normalizeSketch({
+                commandId: command.commandId,
+                snapshotSeq: command.expectedSequence,
+                targetThreadId: command.targetThreadId,
+                instruction: "",
+                pngBase64: image.png,
+              }, this.paths));
+            }
+            // Exact target is checked again by the state mutation immediately
+            // before the one native paste event.
+            if (normalized.length === 1) {
+              await this.state.attachImageToComposer(
+                command.targetThreadId,
+                target.slot,
+                normalized[0]!.pngBase64,
+                command.images[0]!.fileName as `Nerva Board ${string}.png`,
+              );
+            } else {
+              await this.state.attachImagesToComposer(
+                command.targetThreadId,
+                target.slot,
+                normalized.map((image, index) => ({
+                  fileName: command.images[index]!.fileName as `Nerva Board ${string}.png`,
+                  pngBase64: image.pngBase64,
+                })),
+              );
+            }
+          } finally {
+            for (const image of normalized) await this.cleanupUpload("sketch", image.cleanup);
+          }
+          return result(this.state.current().sequence, command.targetThreadId, `${normalized.length} board image${normalized.length === 1 ? "" : "s"} attached to the exact Codex composer`);
+        }
         const image = await this.normalizeSketch({
           commandId: command.commandId,
           snapshotSeq: command.expectedSequence,

@@ -98,6 +98,7 @@ export interface BridgeCapabilities {
   readonly review: boolean;
   /** Exact atomic image count accepted by Review delivery: 0, 1, or 12. */
   readonly reviewMaxImages: 0 | 1 | 12;
+  readonly composerAttachmentMaxImages?: 1 | 12;
   readonly siteCapture: { readonly available: boolean; readonly reason: string | null };
   readonly libraries: readonly LibraryCapability[];
 }
@@ -140,6 +141,28 @@ export interface SketchRequest {
   readonly threadKey: string;
   readonly instruction: string;
   readonly png: Blob;
+  readonly boardId?: string;
+  readonly checkpointId?: string;
+  readonly scope?: "board" | "area";
+  readonly images?: readonly {
+    readonly fileName: `Nerva Board ${string}.png`;
+    readonly blob: Blob;
+    readonly kind: "overview" | "detail" | "atlas";
+    readonly tileNumber: number;
+  }[];
+  readonly manifest?: {
+    readonly version: 1;
+    readonly quality: "good" | "reduced" | "overview-detail";
+    readonly overlap: number;
+    readonly tiles: readonly {
+      readonly tileNumber: number;
+      readonly kind: "overview" | "detail" | "atlas";
+      readonly minX: number;
+      readonly minY: number;
+      readonly maxX: number;
+      readonly maxY: number;
+    }[];
+  };
   readonly scene?: unknown;
 }
 

@@ -393,7 +393,10 @@ export class BridgeClient {
   private readonly supersededBridgeInstanceIds = new Set<string>();
   private socketTrusted = false;
 
-  constructor(private readonly callbacks: BridgeClientCallbacks) {}
+  constructor(
+    private readonly callbacks: BridgeClientCallbacks,
+    private readonly commandResponseTimeoutMs = 8_000,
+  ) {}
 
   async start(): Promise<boolean> {
     if (!this.stopped) return this.bearerToken !== null;
@@ -946,19 +949,26 @@ export class BridgeClient {
         "A current bridge snapshot has not been attested on this connection. Nothing was sent.",
       );
     }
-    const response = await this.authorizedFetch("/api/command", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "X-Codex-Pad-Command-Id": command.commandId,
-      },
-      body: JSON.stringify({ command }),
-    });
-    const body = await responseJson(response);
-    const parsed = CommandAckApiResponseSchema.safeParse(body);
-    if (parsed.success && parsed.data.ok) return commandAckFromProtocol(parsed.data.data);
-    return failedAck(command.commandId, body, response.ok ? "Bridge returned an invalid acknowledgement" : "Command failed");
+    const controller = new AbortController();
+    const timeout = globalThis.setTimeout(() => controller.abort(), this.commandResponseTimeoutMs);
+    try {
+      const response = await this.authorizedFetch("/api/command", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Codex-Pad-Command-Id": command.commandId,
+        },
+        body: JSON.stringify({ command }),
+        signal: controller.signal,
+      });
+      const body = await responseJson(response);
+      const parsed = CommandAckApiResponseSchema.safeParse(body);
+      if (parsed.success && parsed.data.ok) return commandAckFromProtocol(parsed.data.data);
+      return failedAck(command.commandId, body, response.ok ? "Bridge returned an invalid acknowledgement" : "Command failed");
+    } finally {
+      globalThis.clearTimeout(timeout);
+    }
   }
 
   async commandStatus(commandId: string): Promise<CommandStatusResult | null> {
@@ -980,16 +990,40 @@ export class BridgeClient {
   async sketch(request: SketchRequest): Promise<CommandAck> {
     const threadId = request.threadKey.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)?.[0]?.toLowerCase();
     if (!threadId) return failedAck(request.commandId, {}, "Exact target thread is unavailable");
-    const command: SendSketchCommand = {
-      type: "sendSketch",
-      commandId: request.commandId,
-      expectedBridgeInstanceId: request.expectedBridgeInstanceId,
-      expectedSequence: request.expectedSnapshotSeq,
-      expectedThreadId: threadId,
-      targetThreadId: threadId,
-      instruction: request.instruction,
-      png: await blobToBase64(request.png),
-    };
+    const command: SendSketchCommand = request.images && request.manifest && request.boardId && request.checkpointId && request.scope
+      ? {
+          type: "sendSketch",
+          version: 2,
+          commandId: request.commandId,
+          expectedBridgeInstanceId: request.expectedBridgeInstanceId,
+          expectedSequence: request.expectedSnapshotSeq,
+          expectedThreadId: threadId,
+          targetThreadId: threadId,
+          instruction: "",
+          boardId: request.boardId,
+          checkpointId: request.checkpointId,
+          scope: request.scope,
+          images: await Promise.all(request.images.map(async (image) => ({
+            fileName: image.fileName,
+            png: await blobToBase64(image.blob),
+            kind: image.kind,
+            tileNumber: image.tileNumber,
+          }))),
+          manifest: {
+            ...request.manifest,
+            tiles: request.manifest.tiles.map((tile) => ({ ...tile })),
+          },
+        }
+      : {
+          type: "sendSketch",
+          commandId: request.commandId,
+          expectedBridgeInstanceId: request.expectedBridgeInstanceId,
+          expectedSequence: request.expectedSnapshotSeq,
+          expectedThreadId: threadId,
+          targetThreadId: threadId,
+          instruction: request.instruction,
+          png: await blobToBase64(request.png),
+        };
     return this.command(command);
   }
 

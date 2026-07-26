@@ -150,17 +150,24 @@ export interface Bounds {
 }
 
 export type SceneOperation =
-  | { readonly type: "add"; readonly element: SceneElement }
+  | { readonly type: "add"; readonly element: SceneElement; readonly index?: number }
   | { readonly type: "remove"; readonly elementId: string }
   | { readonly type: "replaceElement"; readonly element: SceneElement }
   | { readonly type: "clear" }
+  | { readonly type: "restoreElements"; readonly elements: readonly SceneElement[] }
   | { readonly type: "setView"; readonly view: ViewTransform }
   | { readonly type: "setBackground"; readonly background: SceneBackground };
 
+export interface DrawingHistoryEntry {
+  readonly undo: SceneOperation;
+  readonly redo: SceneOperation;
+}
+
 export interface DrawingHistory {
-  readonly past: readonly Scene[];
+  /** Bounded reversible operations. The scene itself is not copied per edit. */
+  readonly past: readonly DrawingHistoryEntry[];
   readonly present: Scene;
-  readonly future: readonly Scene[];
+  readonly future: readonly DrawingHistoryEntry[];
 }
 
 export type HistoryAction =

@@ -3,6 +3,7 @@ import { discoverCodexCdpTarget, isLoopbackUrl } from "./cdp-discovery.js";
 import { CodexDesktopAdapterError } from "./errors.js";
 import {
   buildFixedComposerAttachmentExpression,
+  buildFixedComposerBatchAttachmentExpression,
   buildFixedDispatchExpression,
   FIXED_NATIVE_SNAPSHOT_EXPRESSION,
 } from "./renderer-expression.js";
@@ -10,6 +11,7 @@ import type {
   CdpDiscoveryOptions,
   DesktopProcessIdentity,
   NativeComposerImageAttachment,
+  NativeComposerImageBatch,
   NativeDispatch,
   NativeMicroRuntime,
 } from "./types.js";
@@ -35,6 +37,8 @@ interface PendingEvaluation {
 }
 
 const DELIVERY_UNKNOWN_MARKER = "CODEX_PAD_DELIVERY_UNKNOWN:";
+const BATCH_NONE_MARKER = "CODEX_PAD_BATCH_NONE:";
+const BATCH_PARTIAL_MARKER = "CODEX_PAD_BATCH_PARTIAL:";
 
 function evaluationFailure(pending: PendingEvaluation, error: CodexDesktopAdapterError): CodexDesktopAdapterError {
   if (pending.kind !== "snapshot" && pending.dispatchStarted) {
@@ -103,6 +107,10 @@ export class CdpNativeMicroRuntime implements NativeMicroRuntime {
 
   async attachImageToComposer(attachment: NativeComposerImageAttachment): Promise<void> {
     await this.evaluate(buildFixedComposerAttachmentExpression(attachment), "attachment");
+  }
+
+  async attachImagesToComposer(batch: NativeComposerImageBatch): Promise<void> {
+    await this.evaluate(buildFixedComposerBatchAttachmentExpression(batch), "attachment");
   }
 
   close(): void {
@@ -190,6 +198,20 @@ export class CdpNativeMicroRuntime implements NativeMicroRuntime {
         pending.reject(new CodexDesktopAdapterError(
           "delivery-unknown",
           "Codex Desktop may have accepted part or all of the native control sequence, but its completion could not be verified.",
+        ));
+        return;
+      }
+      if (pending.kind === "attachment" && description.includes(BATCH_PARTIAL_MARKER)) {
+        pending.reject(new CodexDesktopAdapterError(
+          "delivery-unknown",
+          "Only part of the image batch is visible in the exact composer. Resolve the attachments on the Mac before retrying; Nerva will not complete the batch automatically.",
+        ));
+        return;
+      }
+      if (pending.kind === "attachment" && description.includes(BATCH_NONE_MARKER)) {
+        pending.reject(new CodexDesktopAdapterError(
+          "delivery-unknown",
+          "No named image from the batch is visible yet. The exact retained batch can be retried manually after reconciliation confirms no attachment.",
         ));
         return;
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFixedComposerAttachmentExpression,
+  buildFixedComposerBatchAttachmentExpression,
   buildFixedDispatchExpression,
   FIXED_NATIVE_SNAPSHOT_EXPRESSION,
 } from "../src/renderer-expression.js";
@@ -65,6 +66,22 @@ function liveReactRoot(
 }
 
 describe("fixed renderer expressions", () => {
+  it("builds one bounded batch paste without any composer submission primitive", () => {
+    const expression = buildFixedComposerBatchAttachmentExpression({
+      expectedThreadId: EXPECTED_THREAD_ID,
+      images: [1, 2].map((index) => ({
+        expectedThreadId: EXPECTED_THREAD_ID,
+        fileName: `Nerva Board ${String(index).padStart(2, "0")}-detail.png` as const,
+        pngBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      })),
+    });
+    expect(expression).toContain("transfer.items.add");
+    expect(expression).toContain("new ClipboardEvent('paste'");
+    expect(expression).toContain("CODEX_PAD_BATCH_NONE:");
+    expect(expression).toContain("CODEX_PAD_BATCH_PARTIAL:");
+    expect(expression).not.toMatch(/requestSubmit|\.submit\(|keydown|turn\/start/u);
+  });
+
   it("appends one image through the exact composer paste handler without submitting", async () => {
     const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
     const originalFile = Object.getOwnPropertyDescriptor(globalThis, "File");

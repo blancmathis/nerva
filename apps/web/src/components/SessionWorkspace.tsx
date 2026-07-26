@@ -11,7 +11,6 @@ import type { ModelReasoningPreset } from "../lib/storage";
 import { resolveModelReasoningPresets } from "../lib/model-presets";
 import { groupSkills } from "../lib/skill-groups";
 import type { ProductSession } from "../lib/session-presentation";
-import type { SessionActivityEvent } from "../lib/activity-timeline";
 import { relativeSessionActivity, sessionStatusLabel } from "../lib/session-presentation";
 import {
   BoltIcon,
@@ -38,6 +37,7 @@ interface SessionWorkspaceProps {
   readonly pinned: boolean;
   readonly followMac: boolean;
   readonly targetReady: boolean;
+  readonly drawingAvailable: boolean;
   readonly macUnavailable: boolean;
   readonly skills: readonly SkillCapability[];
   readonly selectedSkillIds: readonly string[];
@@ -54,7 +54,6 @@ interface SessionWorkspaceProps {
   readonly pendingApprovals: readonly PendingApproval[];
   readonly approvalEnabled: boolean;
   readonly busyAction: string | null;
-  readonly activityEvents: readonly SessionActivityEvent[];
   readonly captureInboxCount: number;
   readonly onTogglePin: () => void;
   readonly onToggleFollow: () => void;
@@ -83,6 +82,7 @@ export function SessionWorkspace({
   pinned,
   followMac,
   targetReady,
+  drawingAvailable,
   macUnavailable,
   skills,
   selectedSkillIds,
@@ -99,7 +99,6 @@ export function SessionWorkspace({
   pendingApprovals,
   approvalEnabled,
   busyAction,
-  activityEvents,
   captureInboxCount,
   onTogglePin,
   onToggleFollow,
@@ -203,7 +202,7 @@ export function SessionWorkspace({
       commitPresetIndex(index);
     }, 180);
   };
-  const controlsDisabled = macUnavailable || !targetReady || busyAction !== null;
+  const nativeControlsDisabled = macUnavailable || !targetReady || busyAction !== null;
   const status = sessionStatusLabel(session.status);
 
   return (
@@ -238,26 +237,12 @@ export function SessionWorkspace({
         </div>
         <div className="cp-session-hero__authority">
           <span>{targetReady ? "Exact target verified" : macUnavailable ? "Mac unavailable" : "Display only"}</span>
-          <small>{targetReady ? "Native actions are bound to this thread." : "No action will be queued or replayed."}</small>
+          <small>{targetReady
+            ? "Native actions are bound to this thread."
+            : macUnavailable
+              ? "Local drawing remains available. Nothing will send until the Mac reconnects."
+              : "Native Mac controls are not verified for this task. Local drawing remains available."}</small>
         </div>
-      </section>
-
-      <section className="cp-activity-timeline cp-enter cp-enter--3" aria-labelledby="activity-timeline-title">
-        <div>
-          <p className="cp-overline">Structured events</p>
-          <h2 id="activity-timeline-title">Recent activity</h2>
-        </div>
-        {activityEvents.length > 0 ? (
-          <ol>
-            {activityEvents.slice(0, 4).map((event) => (
-              <li key={event.id} data-status={event.status}>
-                <span aria-hidden="true" />
-                <div><strong>{event.title}</strong><small>{event.detail}</small></div>
-                <time dateTime={new Date(event.at).toISOString()}>{new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(event.at)}</time>
-              </li>
-            ))}
-          </ol>
-        ) : <p>Nerva is waiting for the first verified state transition.</p>}
       </section>
 
       <section className="cp-primary-actions cp-enter cp-enter--3" aria-labelledby="primary-actions-title">
@@ -267,7 +252,7 @@ export function SessionWorkspace({
             <button
               type="button"
               className="cp-send-prompt"
-              disabled={controlsDisabled || sendAction === null}
+              disabled={nativeControlsDisabled || sendAction === null}
               title={dictationActive ? "Finish Dictation and submit the Mac composer" : "Submit the current Mac composer"}
               onClick={onSendPrompt}
             ><ArrowUpIcon />Send prompt</button>
@@ -280,19 +265,19 @@ export function SessionWorkspace({
             type="button"
             className="tone-coral"
             aria-pressed={dictationActive}
-            disabled={controlsDisabled || dictationAction === null}
+            disabled={nativeControlsDisabled || dictationAction === null}
             onClick={onToggleDictation}
           >
             <span className="cp-action-icon"><MicIcon /></span>
             <span><strong>{dictationActive ? "Stop Dictation" : "Dictation"}</strong><small>{dictationActive ? "Tap to finish on the Mac" : "Tap to start on the Mac"}</small></span>
             <i aria-hidden="true" />
           </button>
-          <button type="button" className="tone-cobalt" disabled={!session.nativeSlot || controlsDisabled} onClick={() => onOpenDrawing(false)}>
+          <button type="button" className="tone-cobalt" disabled={!drawingAvailable} onClick={() => onOpenDrawing(false)}>
             <span className="cp-action-icon"><PencilIcon /></span>
             <span><strong>Draw</strong><small>Start a local canvas</small></span>
             <i aria-hidden="true" />
           </button>
-          <button type="button" className="tone-sage" disabled={!session.nativeSlot || controlsDisabled} onClick={() => onOpenDrawing(true)}>
+          <button type="button" className="tone-sage" disabled={!drawingAvailable} onClick={() => onOpenDrawing(true)}>
             <span className="cp-action-icon"><CameraIcon /></span>
             <span><strong>Photo</strong><small>Camera, Library, or Files</small></span>
             <i aria-hidden="true" />
@@ -405,7 +390,7 @@ export function SessionWorkspace({
                 min={0}
                 max={Math.max(0, modelPresets.length - 1)}
                 value={presetIndex}
-                disabled={controlsDisabled || !modelReasoningEnabled || modelPresets.length < 2}
+                disabled={nativeControlsDisabled || !modelReasoningEnabled || modelPresets.length < 2}
                 aria-label="Model and reasoning preset"
                 onChange={(event) => {
                   previewPreset(Number(event.target.value));
@@ -429,7 +414,7 @@ export function SessionWorkspace({
                 : "Waiting for the live Codex model catalog."}</p>
           </div>
 
-          <button type="button" className={`cp-fast-control${fastAction ? "" : " is-disabled"}`} disabled={controlsDisabled || fastAction === null} onClick={() => fastAction && onRunAction(fastAction)}>
+          <button type="button" className={`cp-fast-control${fastAction ? "" : " is-disabled"}`} disabled={nativeControlsDisabled || fastAction === null} onClick={() => fastAction && onRunAction(fastAction)}>
             <span><BoltIcon /></span><span><strong>Fast</strong><small>{fastAction ? "Toggle the native Codex mode" : "Unavailable for this session"}</small></span>
           </button>
         </div>
@@ -447,7 +432,7 @@ export function SessionWorkspace({
                 <button type="button" onClick={() => setApprovalDetail(approval)}>View command</button>
                 <button type="button" className="is-approve" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "accept")}><CheckIcon />Approve</button>
                 <button type="button" className="is-reject" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "decline")}><XIcon />Reject</button>
-                <button type="button" disabled={controlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
+                <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
               </div>
             </article>
           ))}
@@ -459,7 +444,7 @@ export function SessionWorkspace({
           <div><p className="cp-overline">Agent error</p><h2>The session needs attention on the Mac.</h2></div>
           <div className="cp-context-panel__actions">
             <button type="button" disabled={macUnavailable} onClick={onOpenOnMac}><MacIcon />Open on Mac</button>
-            <button type="button" disabled={controlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
+            <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
           </div>
         </section>
       )}

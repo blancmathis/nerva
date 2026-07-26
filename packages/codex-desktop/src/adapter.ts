@@ -13,6 +13,7 @@ import {
   type MicroSnapshot,
   type NativeActionSlot,
   type NativeComposerImageAttachment,
+  type NativeComposerImageBatch,
   type NativeControlIdentifier,
   type NativeControlTarget,
   type NativeDispatch,
@@ -351,6 +352,40 @@ export class CodexDesktopAdapter {
       }
       consumeDispatchAuthority(assertDispatchAuthority);
       await runtime.attachImageToComposer(attachment);
+      return await this.refresh(expectedDesktopIdentity);
+    } catch (error) {
+      const adapterError = asAdapterError(error);
+      this.degrade(adapterError, false);
+      throw adapterError;
+    }
+  }
+
+  async attachImagesToComposer(
+    batch: NativeComposerImageBatch,
+    assertDispatchAuthority?: NativeDispatchAuthorityGuard,
+    expectedDesktopIdentity?: DesktopProcessIdentity,
+  ): Promise<AdapterState> {
+    const live = await this.refresh(expectedDesktopIdentity);
+    const expected = extractExactCanonicalThreadId(batch.expectedThreadId);
+    if (
+      expected === null
+      || live.snapshot === null
+      || live.stale
+      || !live.snapshot.capabilities.activeThread
+      || !live.snapshot.capabilities.composerAttachment
+      || live.snapshot.activeThreadId !== expected
+      || !live.snapshot.slots.some((slot) => slot.selected && slot.threadId === expected)
+    ) throw new CodexDesktopAdapterError("thread-changed", "The exact selected Codex composer is unavailable for image attachment.");
+    try {
+      const runtime = await this.ensureRuntime();
+      if (expectedDesktopIdentity !== undefined && !sameDesktopIdentity(runtime.desktopIdentity, expectedDesktopIdentity)) {
+        throw new CodexDesktopAdapterError("cdp-unavailable", "The composer renderer no longer matches the attested Desktop process.");
+      }
+      if (runtime.attachImagesToComposer === undefined) {
+        throw new CodexDesktopAdapterError("control-not-configured", "The connected Codex renderer does not expose batch composer attachment.");
+      }
+      consumeDispatchAuthority(assertDispatchAuthority);
+      await runtime.attachImagesToComposer(batch);
       return await this.refresh(expectedDesktopIdentity);
     } catch (error) {
       const adapterError = asAdapterError(error);

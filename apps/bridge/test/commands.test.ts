@@ -1,5 +1,5 @@
 import type { DesktopProcessIdentity } from "@codex-pad/codex-desktop";
-import type { Command } from "@codex-pad/protocol";
+import { CommandSchema, type Command, type SendSketchCommand } from "@codex-pad/protocol";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,6 +47,7 @@ function fixture(overrides: {
   revalidateExactTarget?: BridgeStateService["revalidateExactTarget"];
   invokeActionSlot?: BridgeStateService["invokeActionSlot"];
   attachImageToComposer?: BridgeStateService["attachImageToComposer"];
+  attachImagesToComposer?: BridgeStateService["attachImagesToComposer"];
   assertSnapshotIdentity?: BridgeStateService["assertSnapshotIdentity"];
   current?: BridgeStateService["current"];
   normalizeSketch?: ProtocolCommandExecutorOptions["normalizeSketch"];
@@ -66,6 +67,7 @@ function fixture(overrides: {
     refresh: overrides.refresh ?? vi.fn(async () => ({ sequence: 13 })),
     invokeActionSlot: overrides.invokeActionSlot ?? vi.fn(async () => ({ sequence: 13 })),
     attachImageToComposer: overrides.attachImageToComposer ?? vi.fn(async () => ({ sequence: 13 })),
+    attachImagesToComposer: overrides.attachImagesToComposer ?? vi.fn(async () => ({ sequence: 13 })),
   } as unknown as BridgeStateService;
   const transport = {
     selectThread: overrides.selectThread ?? vi.fn(async () => undefined),
@@ -106,7 +108,7 @@ function fixture(overrides: {
   return { cleanup, executor, state, transport, warn };
 }
 
-function sketchCommand(): Extract<Command, { type: "sendSketch" }> {
+function sketchCommand(): Extract<SendSketchCommand, { png: string }> {
   return {
     type: "sendSketch",
     commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bb0",
@@ -425,6 +427,45 @@ describe("ProtocolCommandExecutor outcome preservation", () => {
     expect(transport.sendSketch).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("startup scavenging"));
     expect(JSON.stringify(warn.mock.calls)).not.toMatch(/private|sensitive|sketch\.png/u);
+  });
+
+  it("normalizes an entire v2 board batch before one native composer mutation", async () => {
+    const attachImagesToComposer = vi.fn<BridgeStateService["attachImagesToComposer"]>(async () => ({ sequence: 13 }) as never);
+    const normalizeSketch = vi.fn(async () => ({
+      path: "/private/runtime/sketch.png",
+      pngBase64: sketchCommand().png,
+      width: 1,
+      height: 1,
+      bytes: 24,
+      cleanup: async () => undefined,
+    }));
+    const { executor } = fixture({ attachImagesToComposer, normalizeSketch });
+    const { png: _legacyPng, ...legacyMetadata } = sketchCommand();
+    const command = CommandSchema.parse({
+      ...legacyMetadata,
+      version: 2,
+      instruction: "",
+      boardId: "3d35b974-62cc-4db8-9b4e-5a8dc8a4d813",
+      checkpointId: "4d35b974-62cc-4db8-9b4e-5a8dc8a4d814",
+      scope: "board",
+      images: [
+        { fileName: "Nerva Board 01-overview.png", png: sketchCommand().png, kind: "overview", tileNumber: 1 },
+        { fileName: "Nerva Board 02-detail.png", png: sketchCommand().png, kind: "detail", tileNumber: 2 },
+      ],
+      manifest: {
+        version: 1,
+        quality: "good",
+        overlap: 0.1,
+        tiles: [
+          { tileNumber: 1, kind: "overview", minX: 0, minY: 0, maxX: 4_000, maxY: 2_000 },
+          { tileNumber: 2, kind: "detail", minX: 0, minY: 0, maxX: 2_100, maxY: 1_100 },
+        ],
+      },
+    });
+    await executor.execute(command);
+    expect(normalizeSketch).toHaveBeenCalledTimes(2);
+    expect(attachImagesToComposer).toHaveBeenCalledOnce();
+    expect(attachImagesToComposer.mock.calls[0]?.[2]).toHaveLength(2);
   });
 
   it("keeps DELIVERY_UNKNOWN authoritative when PNG cleanup also fails", async () => {

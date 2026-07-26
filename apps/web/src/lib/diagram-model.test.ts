@@ -67,8 +67,8 @@ describe("diagram model", () => {
 
   it("keeps edits bounded and removes dangling edges", () => {
     const moved = updateDiagramNode(diagram(), "ipad", { x: 1_400, y: -20 });
-    expect(moved.nodes[1]?.x).toBe(1_180);
-    expect(moved.nodes[1]?.y).toBe(0);
+    expect(moved.nodes[1]?.x).toBe(1_400);
+    expect(moved.nodes[1]?.y).toBe(-20);
     expect(removeDiagramNode(moved, "ipad").edges).toEqual([]);
   });
 

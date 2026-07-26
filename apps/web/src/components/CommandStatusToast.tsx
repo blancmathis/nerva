@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { CommandAck } from "../lib/model";
 import { CloseIcon } from "./Icons";
 
@@ -7,6 +8,12 @@ interface CommandStatusToastProps {
 }
 
 export function CommandStatusToast({ ack, onDismiss }: CommandStatusToastProps) {
+  useEffect(() => {
+    if (!ack.ok || ack.pending) return undefined;
+    const timeout = window.setTimeout(onDismiss, 3_000);
+    return () => window.clearTimeout(timeout);
+  }, [ack.commandId, ack.ok, ack.pending, onDismiss]);
+
   const title = ack.pending
     ? "Command in progress"
     : ack.ok

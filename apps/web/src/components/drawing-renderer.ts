@@ -1,4 +1,11 @@
-import { getStrokePolygon, type Scene, type SceneElement, type ShapeElement } from "@codex-pad/drawing";
+import {
+  ElementSpatialIndex,
+  getStrokePolygon,
+  type Bounds,
+  type Scene,
+  type SceneElement,
+  type ShapeElement,
+} from "@codex-pad/drawing";
 
 export interface CanvasMetrics {
   width: number;
@@ -11,8 +18,8 @@ export interface CanvasMetrics {
 
 export interface CanvasView {
   zoom: number;
-  panX: number;
-  panY: number;
+  centerX: number;
+  centerY: number;
 }
 
 export interface ShapePreview {
@@ -38,6 +45,28 @@ export type DrawingPreview = ShapePreview | StrokePreview | null;
 const MAX_DECODED_IMAGES = 2;
 const imageCache = new Map<string, HTMLImageElement>();
 const imagesLoading = new Set<string>();
+const spatialIndexCache = new WeakMap<object, ElementSpatialIndex>();
+
+function visibleElements(scene: Scene, metrics: CanvasMetrics, view: CanvasView): readonly SceneElement[] {
+  let index = spatialIndexCache.get(scene.elements as object);
+  if (!index) {
+    index = new ElementSpatialIndex(scene.elements);
+    spatialIndexCache.set(scene.elements as object, index);
+  }
+  const scale = metrics.fitScale * view.zoom;
+  const margin = 96 / Math.max(scale, 0.0001);
+  const width = metrics.width / scale;
+  const height = metrics.height / scale;
+  const bounds: Bounds = {
+    minX: view.centerX - width / 2 - margin,
+    minY: view.centerY - height / 2 - margin,
+    maxX: view.centerX + width / 2 + margin,
+    maxY: view.centerY + height / 2 + margin,
+    width: width + margin * 2,
+    height: height + margin * 2,
+  };
+  return index.query(bounds);
+}
 
 function cacheImage(source: string, image: HTMLImageElement): void {
   imageCache.delete(source);
@@ -85,9 +114,41 @@ export function screenTransform(
   const metrics = measureCanvas(canvas, scene);
   return {
     zoom: metrics.fitScale * view.zoom,
-    panX: bounds.left + metrics.offsetX + view.panX,
-    panY: bounds.top + metrics.offsetY + view.panY,
+    panX: bounds.left + metrics.width / 2 - view.centerX * metrics.fitScale * view.zoom,
+    panY: bounds.top + metrics.height / 2 - view.centerY * metrics.fitScale * view.zoom,
   };
+}
+
+function drawWorldGrid(
+  context: CanvasRenderingContext2D,
+  metrics: CanvasMetrics,
+  view: CanvasView,
+): void {
+  const scale = metrics.fitScale * view.zoom;
+  const targetSpacing = 48;
+  const exponent = Math.floor(Math.log10(targetSpacing / Math.max(scale, 0.0001)));
+  const candidates = [1, 2, 5, 10];
+  const base = 10 ** exponent;
+  const spacing = candidates.map((value) => value * base)
+    .find((value) => value * scale >= targetSpacing) ?? 10 * base;
+  const left = view.centerX - metrics.width / (2 * scale);
+  const top = view.centerY - metrics.height / (2 * scale);
+  const right = view.centerX + metrics.width / (2 * scale);
+  const bottom = view.centerY + metrics.height / (2 * scale);
+  context.save();
+  context.strokeStyle = "rgba(91, 107, 119, 0.12)";
+  context.lineWidth = 1 / scale;
+  context.beginPath();
+  for (let x = Math.floor(left / spacing) * spacing; x <= right; x += spacing) {
+    context.moveTo(x, top);
+    context.lineTo(x, bottom);
+  }
+  for (let y = Math.floor(top / spacing) * spacing; y <= bottom; y += spacing) {
+    context.moveTo(left, y);
+    context.lineTo(right, y);
+  }
+  context.stroke();
+  context.restore();
 }
 
 function backgroundColor(scene: Scene): string | null {
@@ -273,12 +334,17 @@ export function renderDrawingCanvas(
     context.fillRect(0, 0, metrics.width, metrics.height);
   }
   context.save();
-  context.translate(metrics.offsetX + view.panX, metrics.offsetY + view.panY);
+  context.translate(
+    metrics.width / 2 - view.centerX * metrics.fitScale * view.zoom,
+    metrics.height / 2 - view.centerY * metrics.fitScale * view.zoom,
+  );
   context.scale(metrics.fitScale * view.zoom, metrics.fitScale * view.zoom);
+  drawWorldGrid(context, metrics, view);
 
+  const visible = visibleElements(scene, metrics, view);
   const orderedElements = [
-    ...scene.elements.filter((element) => element.kind === "image" && element.isBackground),
-    ...scene.elements.filter((element) => element.kind !== "image" || !element.isBackground),
+    ...visible.filter((element) => element.kind === "image" && element.isBackground),
+    ...visible.filter((element) => element.kind !== "image" || !element.isBackground),
   ];
   for (const element of orderedElements) {
     if (element.kind === "stroke" || element.kind === "eraser") {

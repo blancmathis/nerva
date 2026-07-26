@@ -4,6 +4,7 @@ import { extractThreadId } from "./snapshot.js";
 import {
   NATIVE_CONTROL_IDENTIFIERS,
   type NativeComposerImageAttachment,
+  type NativeComposerImageBatch,
   type NativeDispatch,
 } from "./types.js";
 
@@ -571,6 +572,7 @@ export function buildFixedDispatchExpression(event: NativeDispatch): string {
 }
 
 const MAX_COMPOSER_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_COMPOSER_BATCH_BYTES = 24 * 1024 * 1024;
 
 /**
  * Builds the only native composer mutation Codex Pad supports: append one
@@ -652,6 +654,77 @@ export function buildFixedComposerAttachmentExpression(
   })()`;
 }
 
+/** One paste event containing an already validated, ordered image batch. */
+export function buildFixedComposerBatchAttachmentExpression(batch: NativeComposerImageBatch): string {
+  validateComposerBatch(batch);
+  return String.raw`(async () => {
+    let codexPadAttachmentMayHaveFired = false;
+    try {
+      const expectedThreadId = ${JSON.stringify(batch.expectedThreadId)};
+      const images = ${JSON.stringify(batch.images)};
+      const canonicalThreadId = (value) => typeof value === 'string'
+        ? value.match(/(?:^|[^0-9a-f])([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?=$|[^0-9a-f])/i)?.[1]?.toLowerCase() ?? null
+        : null;
+      const assertExpectedComposer = () => {
+        const sidebarValue = document.querySelector('[data-app-action-sidebar-thread-id][aria-current="page"]')?.getAttribute('data-app-action-sidebar-thread-id') ?? null;
+        const composerValue = document.querySelector('[data-above-composer-conversation-id]')?.getAttribute('data-above-composer-conversation-id') ?? null;
+        const current = canonicalThreadId(sidebarValue) ?? canonicalThreadId(composerValue);
+        if (current !== expectedThreadId) throw new Error('The exact Codex composer changed before image attachment.');
+      };
+      assertExpectedComposer();
+      const controls = [...document.querySelectorAll('button[data-composer-navigation-target="add-context"]')];
+      if (controls.length !== 1) throw new Error('The exact Codex composer attachment control is unavailable.');
+      let pasteTarget = controls[0].parentElement;
+      while (pasteTarget) {
+        const propsKey = Object.getOwnPropertyNames(pasteTarget).find((name) => name.startsWith('__reactProps$'));
+        if (propsKey && typeof pasteTarget[propsKey]?.onPaste === 'function') break;
+        pasteTarget = pasteTarget.parentElement;
+      }
+      if (!pasteTarget || typeof File !== 'function' || typeof DataTransfer !== 'function' || typeof ClipboardEvent !== 'function') {
+        throw new Error('The live Codex image paste handler is unavailable.');
+      }
+      const counts = new Map(images.map((image) => {
+        const label = 'Remove ' + image.fileName;
+        return [label, [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length];
+      }));
+      const transfer = new DataTransfer();
+      for (const image of images) {
+        const raw = atob(image.pngBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+        transfer.items.add(new File([bytes], image.fileName, { type: 'image/png', lastModified: Date.now() }));
+      }
+      const event = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+      codexPadAttachmentMayHaveFired = true;
+      pasteTarget.dispatchEvent(event);
+      if (!event.defaultPrevented) throw new Error('The live Codex composer did not accept the image batch.');
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        assertExpectedComposer();
+        const confirmed = [...counts].every(([label, before]) =>
+          [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length > before,
+        );
+        if (confirmed) return true;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      const confirmedNames = [...counts]
+        .filter(([label, before]) => [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length > before)
+        .map(([label]) => label.slice('Remove '.length));
+      if (confirmedNames.length === 0) {
+        throw new Error('CODEX_PAD_BATCH_NONE: No named image from the batch is visible in the exact composer.');
+      }
+      throw new Error('CODEX_PAD_BATCH_PARTIAL: ' + confirmedNames.join(', '));
+    } catch (error) {
+      if (codexPadAttachmentMayHaveFired) {
+        const message = error instanceof Error ? error.message : 'Native composer batch failed after it may have fired.';
+        if (message.startsWith('CODEX_PAD_BATCH_NONE:') || message.startsWith('CODEX_PAD_BATCH_PARTIAL:')) throw error;
+        throw new Error('CODEX_PAD_DELIVERY_UNKNOWN: ' + message);
+      }
+      throw error;
+    }
+  })()`;
+}
+
 function validateComposerAttachment(attachment: NativeComposerImageAttachment): void {
   const threadId = extractThreadId(attachment.expectedThreadId);
   if (threadId === null || threadId !== attachment.expectedThreadId) {
@@ -660,7 +733,7 @@ function validateComposerAttachment(attachment: NativeComposerImageAttachment): 
       "Refusing native composer attachment without a canonical expected thread UUID.",
     );
   }
-  if (attachment.fileName !== "Codex Pad Drawing.png") {
+  if (attachment.fileName !== "Codex Pad Drawing.png" && !/^Nerva Board [A-Za-z0-9._ -]+\.png$/u.test(attachment.fileName)) {
     throw new CodexDesktopAdapterError(
       "control-not-configured",
       "Refusing native composer attachment with an unexpected filename.",
@@ -681,6 +754,26 @@ function validateComposerAttachment(attachment: NativeComposerImageAttachment): 
     || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   ) {
     throw new CodexDesktopAdapterError("control-not-configured", "Refusing an invalid native composer PNG.");
+  }
+}
+
+function validateComposerBatch(batch: NativeComposerImageBatch): void {
+  const threadId = extractThreadId(batch.expectedThreadId);
+  if (threadId === null || threadId !== batch.expectedThreadId || batch.images.length < 1 || batch.images.length > 12) {
+    throw new CodexDesktopAdapterError("invalid-thread-key", "Refusing an invalid native composer image batch.");
+  }
+  const names = new Set<string>();
+  let total = 0;
+  for (const image of batch.images) {
+    if (image.expectedThreadId !== batch.expectedThreadId || names.has(image.fileName)) {
+      throw new CodexDesktopAdapterError("control-not-configured", "Refusing a mismatched or duplicate image batch.");
+    }
+    validateComposerAttachment(image);
+    names.add(image.fileName);
+    total += Buffer.from(image.pngBase64, "base64").length;
+  }
+  if (total > MAX_COMPOSER_BATCH_BYTES) {
+    throw new CodexDesktopAdapterError("control-not-configured", "Refusing a native composer image batch above 24 MiB.");
   }
 }
 

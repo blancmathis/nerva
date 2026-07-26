@@ -29,7 +29,7 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/cli.ts start",
-    "build": "tsup src/server.ts src/auth.ts src/pairing.ts src/site-registry.ts src/cli.ts src/mac-setup.ts --format esm --clean --out-dir dist && tsc -p tsconfig.build.json",
+    "build": "tsup src/server.ts src/auth.ts src/pairing.ts src/site-registry.ts src/diagram-store.ts src/cli.ts src/mac-setup.ts --format esm --clean --out-dir dist && tsc -p tsconfig.build.json && node --input-type=module --eval \"await import('./dist/diagram-store.js')\"",
     "check": "tsc --noEmit",
     "test": "vitest run --root ../.. apps/bridge"
   },

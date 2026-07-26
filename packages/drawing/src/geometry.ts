@@ -33,6 +33,8 @@ export interface CropOptions {
   readonly maxHeight?: number;
   readonly pixelRatio?: number;
   readonly includeErasersInBounds?: boolean;
+  /** Exact world-space crop. Used by infinite-board area and tiled exports. */
+  readonly bounds?: Bounds;
 }
 
 export interface ExportGeometry {
@@ -328,7 +330,15 @@ export function createExportGeometry(scene: Scene, options: CropOptions = {}): E
   const maxWidth = clamp(Math.floor(requestedMaxWidth), 1, HARD_MAX_EXPORT_DIMENSION);
   const maxHeight = clamp(Math.floor(requestedMaxHeight), 1, HARD_MAX_EXPORT_DIMENSION);
   const pixelRatio = clamp(requestedPixelRatio, 0.25, 4);
-  const bounds = getSceneBounds(scene, { includeErasers: options.includeErasersInBounds ?? false });
+  const bounds = options.bounds ?? getSceneBounds(scene, { includeErasers: options.includeErasersInBounds ?? false });
+  if (
+    !Number.isFinite(bounds.minX)
+    || !Number.isFinite(bounds.minY)
+    || !Number.isFinite(bounds.maxX)
+    || !Number.isFinite(bounds.maxY)
+    || bounds.maxX < bounds.minX
+    || bounds.maxY < bounds.minY
+  ) throw new TypeError("bounds must describe a finite non-negative rectangle");
   const rawWidth = Math.max(1, bounds.width + padding * 2);
   const rawHeight = Math.max(1, bounds.height + padding * 2);
   const maxScaleByPixels = Math.sqrt(HARD_MAX_EXPORT_PIXELS / (rawWidth * rawHeight));

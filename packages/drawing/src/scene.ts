@@ -30,7 +30,7 @@ export const HISTORY_LIMIT = 100;
 
 const DEFAULT_WIDTH = 1_024;
 const DEFAULT_HEIGHT = 768;
-const MAX_COORDINATE = 10_000_000;
+const MAX_COORDINATE = 1_000_000;
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 
 type UnknownRecord = Record<string, unknown>;
@@ -509,6 +509,11 @@ export function applySceneOperation(scene: Scene, operation: SceneOperation): Sc
       }
       assertElement(operation.element);
       const element = cloneElement(operation.element);
+      if (operation.index !== undefined) {
+        const elements = [...scene.elements];
+        elements.splice(Math.max(0, Math.min(elements.length, operation.index)), 0, element);
+        return { ...scene, elements };
+      }
       if (element.kind === "image" && element.isBackground) {
         const firstForeground = scene.elements.findIndex(
           (candidate) => candidate.kind !== "image" || !candidate.isBackground,
@@ -536,6 +541,10 @@ export function applySceneOperation(scene: Scene, operation: SceneOperation): Sc
     }
     case "clear":
       return scene.elements.length === 0 ? scene : { ...scene, elements: [] };
+    case "restoreElements":
+      return operation.elements.length === 0
+        ? scene
+        : { ...scene, elements: operation.elements.map(cloneElement) };
     case "setView":
       assertView(operation.view, "view");
       return { ...scene, view: { ...operation.view } };
@@ -550,40 +559,83 @@ export function createHistory(scene: Scene): DrawingHistory {
   return { past: [], present: cloneScene(scene), future: [] };
 }
 
-function commitHistory(history: DrawingHistory, next: Scene): DrawingHistory {
+function inverseOperation(scene: Scene, operation: SceneOperation): SceneOperation | null {
+  switch (operation.type) {
+    case "add":
+      return { type: "remove", elementId: operation.element.id };
+    case "remove": {
+      const index = scene.elements.findIndex((element) => element.id === operation.elementId);
+      const element = scene.elements[index];
+      return element ? { type: "add", element, index } : null;
+    }
+    case "replaceElement": {
+      const element = scene.elements.find((candidate) => candidate.id === operation.element.id);
+      return element ? { type: "replaceElement", element } : null;
+    }
+    case "clear":
+      return scene.elements.length > 0 ? { type: "restoreElements", elements: scene.elements } : null;
+    case "restoreElements":
+      return { type: "clear" };
+    case "setView":
+      return { type: "setView", view: scene.view };
+    case "setBackground":
+      return { type: "setBackground", background: scene.background };
+  }
+}
+
+function commitHistory(
+  history: DrawingHistory,
+  next: Scene,
+  entry: DrawingHistory["past"][number],
+): DrawingHistory {
   if (next === history.present) {
     return history;
   }
-  const past = [...history.past, history.present].slice(-HISTORY_LIMIT);
+  const past = [...history.past, entry].slice(-HISTORY_LIMIT);
   return { past, present: next, future: [] };
 }
 
 export function historyReducer(history: DrawingHistory, action: HistoryAction): DrawingHistory {
   switch (action.type) {
     case "commit":
-      return commitHistory(history, applySceneOperation(history.present, action.operation));
+    {
+      const undo = inverseOperation(history.present, action.operation);
+      if (!undo) return history;
+      return commitHistory(
+        history,
+        applySceneOperation(history.present, action.operation),
+        { undo, redo: action.operation },
+      );
+    }
     case "replace":
       assertScene(action.scene);
-      return commitHistory(history, cloneScene(action.scene));
+      return commitHistory(
+        history,
+        cloneScene(action.scene),
+        {
+          undo: { type: "restoreElements", elements: history.present.elements },
+          redo: { type: "restoreElements", elements: action.scene.elements },
+        },
+      );
     case "undo": {
-      const previous = history.past.at(-1);
-      if (previous === undefined) {
+      const entry = history.past.at(-1);
+      if (entry === undefined) {
         return history;
       }
       return {
         past: history.past.slice(0, -1),
-        present: previous,
-        future: [history.present, ...history.future].slice(0, HISTORY_LIMIT),
+        present: applySceneOperation(history.present, entry.undo),
+        future: [entry, ...history.future].slice(0, HISTORY_LIMIT),
       };
     }
     case "redo": {
-      const next = history.future[0];
-      if (next === undefined) {
+      const entry = history.future[0];
+      if (entry === undefined) {
         return history;
       }
       return {
-        past: [...history.past, history.present].slice(-HISTORY_LIMIT),
-        present: next,
+        past: [...history.past, entry].slice(-HISTORY_LIMIT),
+        present: applySceneOperation(history.present, entry.redo),
         future: history.future.slice(1),
       };
     }

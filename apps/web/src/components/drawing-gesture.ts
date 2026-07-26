@@ -6,12 +6,15 @@ export interface GestureMetrics {
   distance: number;
 }
 
-export interface GestureAnchor extends GestureMetrics {
+export interface GestureAnchor {
+  gestureCenterX: number;
+  gestureCenterY: number;
+  distance: number;
   zoom: number;
-  panX: number;
-  panY: number;
-  baseX: number;
-  baseY: number;
+  cameraCenterX: number;
+  cameraCenterY: number;
+  viewportCenterX: number;
+  viewportCenterY: number;
   fitScale: number;
   sceneX: number;
   sceneY: number;
@@ -24,10 +27,14 @@ export function createGestureAnchor(
 ): GestureAnchor {
   const fitScale = transform.zoom / view.zoom;
   return {
-    ...metrics,
-    ...view,
-    baseX: transform.panX - view.panX,
-    baseY: transform.panY - view.panY,
+    gestureCenterX: metrics.centerX,
+    gestureCenterY: metrics.centerY,
+    distance: metrics.distance,
+    zoom: view.zoom,
+    cameraCenterX: view.centerX,
+    cameraCenterY: view.centerY,
+    viewportCenterX: transform.panX + view.centerX * transform.zoom,
+    viewportCenterY: transform.panY + view.centerY * transform.zoom,
     fitScale,
     sceneX: (metrics.centerX - transform.panX) / transform.zoom,
     sceneY: (metrics.centerY - transform.panY) / transform.zoom,
@@ -46,8 +53,7 @@ export function solvePinchView(
   );
   return {
     zoom,
-    panX: metrics.centerX - anchor.baseX - anchor.sceneX * anchor.fitScale * zoom,
-    panY: metrics.centerY - anchor.baseY - anchor.sceneY * anchor.fitScale * zoom,
+    centerX: anchor.sceneX - (metrics.centerX - anchor.viewportCenterX) / (anchor.fitScale * zoom),
+    centerY: anchor.sceneY - (metrics.centerY - anchor.viewportCenterY) / (anchor.fitScale * zoom),
   };
 }
-

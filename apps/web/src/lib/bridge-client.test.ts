@@ -237,6 +237,65 @@ describe("BridgeClient site capture", () => {
 });
 
 describe("BridgeClient command reconciliation", () => {
+  it("aborts an unacknowledged command response so the UI can leave its busy state", async () => {
+    const bearerToken = "t".repeat(43);
+    const ticket = "u".repeat(43);
+    const snapshot = fixtureSnapshot({
+      bridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+      sequence: 1,
+      selectedIndex: 0,
+    });
+    let commandAborted = false;
+    await saveBridgeBearer(bearerToken);
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (String(input) === "/api/snapshot") return Promise.resolve(Response.json({ ok: true, data: snapshot }));
+      if (String(input) === "/api/ws-ticket") {
+        return Promise.resolve(Response.json({
+          ok: true,
+          data: { ticket, protocol: `codex-pad.ticket.${ticket}`, expiresAt: 1 },
+        }));
+      }
+      if (String(input) === "/api/command") {
+        const commandSignal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          commandSignal?.addEventListener(
+            "abort",
+            () => {
+              commandAborted = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      }
+      return Promise.resolve(Response.json({ ok: false }, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", ControlledWebSocket);
+    const client = new BridgeClient({
+      onSnapshot: vi.fn(),
+      onConnection: vi.fn(),
+      onUnauthorized: vi.fn(),
+    }, 20);
+
+    await expect(client.start()).resolves.toBe(true);
+    await vi.waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1));
+    const socket = ControlledWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: "snapshot", snapshot });
+
+    await expect(client.command({
+      type: "selectAgent",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bb4",
+      expectedBridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+      expectedSequence: 1,
+      expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      slot: 0,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(commandAborted).toBe(true);
+    client.stop();
+  });
+
   it("sends no mutation before socket attestation, then includes the pre-body admission header", async () => {
     const bearerToken = "h".repeat(43);
     const ticket = "i".repeat(43);

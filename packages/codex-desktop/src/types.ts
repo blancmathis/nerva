@@ -260,8 +260,13 @@ export type NativeDispatch =
 
 export interface NativeComposerImageAttachment {
   readonly expectedThreadId: string;
-  readonly fileName: "Codex Pad Drawing.png";
+  readonly fileName: "Codex Pad Drawing.png" | `Nerva Board ${string}.png`;
   readonly pngBase64: string;
+}
+
+export interface NativeComposerImageBatch {
+  readonly expectedThreadId: string;
+  readonly images: readonly NativeComposerImageAttachment[];
 }
 
 /** A semantic seam for tests; it intentionally exposes no arbitrary Runtime.evaluate API. */
@@ -270,6 +275,7 @@ export interface NativeMicroRuntime {
   readSnapshot(): Promise<unknown>;
   dispatch(event: NativeDispatch): Promise<void>;
   attachImageToComposer?(attachment: NativeComposerImageAttachment): Promise<void>;
+  attachImagesToComposer?(batch: NativeComposerImageBatch): Promise<void>;
   close(): void;
 }
 

@@ -4,8 +4,9 @@ import { UuidSchema } from "./primitives.js";
 
 export const DIAGRAM_CANVAS_WIDTH = 1_440;
 export const DIAGRAM_CANVAS_HEIGHT = 900;
-export const MAX_DIAGRAM_NODES = 64;
-export const MAX_DIAGRAM_EDGES = 128;
+export const DIAGRAM_WORLD_LIMIT = 1_000_000;
+export const MAX_DIAGRAM_NODES = 256;
+export const MAX_DIAGRAM_EDGES = 512;
 
 const DiagramElementIdSchema = z
   .string()
@@ -28,8 +29,8 @@ export const DiagramNodeSchema = z
   .object({
     id: DiagramElementIdSchema,
     label: z.string().trim().min(1).max(240),
-    x: z.number().finite().min(0).max(DIAGRAM_CANVAS_WIDTH),
-    y: z.number().finite().min(0).max(DIAGRAM_CANVAS_HEIGHT),
+    x: z.number().finite().min(-DIAGRAM_WORLD_LIMIT).max(DIAGRAM_WORLD_LIMIT),
+    y: z.number().finite().min(-DIAGRAM_WORLD_LIMIT).max(DIAGRAM_WORLD_LIMIT),
     width: z.number().finite().min(120).max(520),
     height: z.number().finite().min(64).max(260),
     shape: DiagramNodeShapeSchema,
@@ -68,18 +69,18 @@ function validateGeometry(
       });
     }
     nodeIds.add(node.id);
-    if (node.x + node.width > DIAGRAM_CANVAS_WIDTH) {
+    if (node.x + node.width > DIAGRAM_WORLD_LIMIT) {
       context.addIssue({
         code: "custom",
         path: ["nodes", index, "width"],
-        message: "Diagram nodes must remain inside the canvas width",
+        message: "Diagram nodes must remain inside the virtual world",
       });
     }
-    if (node.y + node.height > DIAGRAM_CANVAS_HEIGHT) {
+    if (node.y + node.height > DIAGRAM_WORLD_LIMIT) {
       context.addIssue({
         code: "custom",
         path: ["nodes", index, "height"],
-        message: "Diagram nodes must remain inside the canvas height",
+        message: "Diagram nodes must remain inside the virtual world",
       });
     }
   }
@@ -158,8 +159,8 @@ export const DiagramUpdateRequestSchema = DiagramEditableFieldsObjectSchema.exte
   expectedRevision: z.number().int().nonnegative(),
 }).strict().superRefine(validateEditableGeometry);
 
-export const DiagramDocumentSchema = DiagramEditableFieldsObjectSchema.extend({
-  version: z.literal(1),
+const DiagramDocumentObjectSchema = DiagramEditableFieldsObjectSchema.extend({
+  version: z.union([z.literal(1), z.literal(2)]),
   diagramId: UuidSchema,
   threadId: UuidSchema,
   revision: z.number().int().nonnegative(),
@@ -169,6 +170,12 @@ export const DiagramDocumentSchema = DiagramEditableFieldsObjectSchema.extend({
   lastEditedBy: z.enum(["codex", "ipad"]),
   sourceLabel: z.string().trim().min(1).max(120).nullable(),
 }).strict().superRefine(validateEditableGeometry);
+
+/** Parsing a legacy v1 document upgrades its envelope without moving content. */
+export const DiagramDocumentSchema = DiagramDocumentObjectSchema.transform((document) => ({
+  ...document,
+  version: 2 as const,
+}));
 
 export const DiagramListSchema = z
   .object({

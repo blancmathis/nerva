@@ -54,8 +54,8 @@ function canvasMetrics(
   const scale = metrics.fitScale * view.zoom;
   return {
     scale,
-    offsetX: metrics.offsetX + view.panX,
-    offsetY: metrics.offsetY + view.panY,
+    offsetX: metrics.width / 2 - view.centerX * scale,
+    offsetY: metrics.height / 2 - view.centerY * scale,
   };
 }
 

@@ -158,7 +158,7 @@ export const CreateTaskCommandSchema = z
   })
   .strict();
 
-export const SendSketchCommandSchema = z
+const LegacySendSketchCommandSchema = z
   .object({
     ...CommandMetadataShape,
     type: z.literal("sendSketch"),
@@ -177,6 +177,57 @@ export const SendSketchCommandSchema = z
       });
     }
   });
+
+export const SketchExportScopeSchema = z.enum(["board", "area"]);
+export const SketchExportQualitySchema = z.enum(["good", "reduced", "overview-detail"]);
+export const SketchImageSchema = z.object({
+  fileName: z.string().min(1).max(120).regex(/^Nerva Board [A-Za-z0-9._ -]+\.png$/u),
+  png: PngBase64Schema,
+  kind: z.enum(["overview", "detail", "atlas"]),
+  tileNumber: z.number().int().min(1).max(12),
+}).strict();
+export const SketchTileManifestSchema = z.object({
+  version: z.literal(1),
+  quality: SketchExportQualitySchema,
+  overlap: z.number().min(0).max(0.25),
+  tiles: z.array(z.object({
+    tileNumber: z.number().int().min(1).max(12),
+    kind: z.enum(["overview", "detail", "atlas"]),
+    minX: z.number().finite(),
+    minY: z.number().finite(),
+    maxX: z.number().finite(),
+    maxY: z.number().finite(),
+  }).strict()).min(1).max(12),
+}).strict();
+
+const TiledSendSketchCommandSchema = z.object({
+  ...CommandMetadataShape,
+  type: z.literal("sendSketch"),
+  version: z.literal(2),
+  targetThreadId: ThreadIdSchema,
+  expectedThreadId: ThreadIdSchema,
+  instruction: z.literal(""),
+  boardId: z.string().uuid(),
+  checkpointId: z.string().uuid(),
+  scope: SketchExportScopeSchema,
+  images: z.array(SketchImageSchema).min(1).max(12),
+  manifest: SketchTileManifestSchema,
+}).strict().superRefine((command, context) => {
+  if (command.targetThreadId !== command.expectedThreadId) {
+    context.addIssue({ code: "custom", message: "targetThreadId must match expectedThreadId", path: ["targetThreadId"] });
+  }
+  if (new Set(command.images.map((image) => image.fileName)).size !== command.images.length) {
+    context.addIssue({ code: "custom", message: "image filenames must be unique", path: ["images"] });
+  }
+  if (command.manifest.tiles.length !== command.images.length) {
+    context.addIssue({ code: "custom", message: "manifest tiles must match ordered images", path: ["manifest", "tiles"] });
+  }
+});
+
+export const SendSketchCommandSchema = z.union([
+  LegacySendSketchCommandSchema,
+  TiledSendSketchCommandSchema,
+]);
 
 export const AcknowledgeCompletionCommandSchema = z
   .object({

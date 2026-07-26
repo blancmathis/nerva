@@ -916,6 +916,86 @@ test("commits a Pencil stroke when iPadOS ends pointer capture so Send becomes a
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
 });
 
+test("pans the infinite board with an imperfect two-finger gesture and exposes area export", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  await drawPenStroke(canvas);
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("Sketch canvas has no rendered bounds");
+  const touch = async (type: "pointerdown" | "pointermove" | "pointerup", pointerId: number, x: number, y: number) => {
+    await canvas.dispatchEvent(type, {
+      pointerId,
+      pointerType: "touch",
+      isPrimary: pointerId === 81,
+      button: type === "pointermove" ? -1 : 0,
+      buttons: type === "pointerup" ? 0 : 1,
+      pressure: type === "pointerup" ? 0 : 0.5,
+      clientX: box.x + box.width * x,
+      clientY: box.y + box.height * y,
+    });
+  };
+  await touch("pointerdown", 81, 0.35, 0.42);
+  await touch("pointerdown", 82, 0.62, 0.58);
+  await touch("pointermove", 81, 0.48, 0.31);
+  await touch("pointermove", 82, 0.76, 0.45);
+  await expect(page.getByRole("application", { name: /Board minimap/ })).toBeVisible();
+  await touch("pointerup", 81, 0.48, 0.31);
+  await touch("pointerup", 82, 0.76, 0.45);
+
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("radio", { name: /Select area/ }).click();
+  await expect(page.getByLabel("Selected export area. Drag to move.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resize selected area" })).toBeVisible();
+});
+
+test("explains a large tiled board without adding mandatory send steps", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const nodes = Array.from({ length: 24 }, (_, index) => ({
+    id: `package-node-${index}`,
+    label: `Structured architecture block ${index} with exact responsibility`,
+    x: index % 2 === 0 ? 20 : 3_720,
+    y: 20 + (index % 8) * 100,
+    width: 240,
+    height: 96,
+    shape: "rectangle",
+    tone: "blue",
+  }));
+  bridge.setDiagrams([{
+    version: 2,
+    diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8bb2",
+    threadId: THREADS[0].id,
+    revision: 4,
+    title: "Coherent package fixture",
+    nodes,
+    edges: nodes.slice(1).map((node, index) => ({
+      id: `package-edge-${index}`,
+      from: nodes[index]!.id,
+      to: node.id,
+      label: "cross-region handoff",
+      style: "solid",
+    })),
+    createdAt: 1,
+    updatedAt: 2,
+    createdBy: "codex",
+    lastEditedBy: "ipad",
+    sourceLabel: "Playwright agent",
+  }]);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  await expect(page.getByText("1 compatibility atlas · Overview detail")).toBeVisible();
+  await expect(page.getByText("Inspect package")).toBeVisible();
+  await page.getByText("Inspect package").click();
+  const packageInspector = page.locator(".drawing-send-sheet__regions");
+  await expect(packageInspector).toContainText("Structure index included");
+  await expect(packageInspector).toContainText("A1");
+  await expect(packageInspector).toContainText("A4");
+  await expect(page.getByRole("button", { name: "Prepare & Send" })).toBeVisible();
+});
+
 test("round-trips one exact-task agent diagram through structural touch edits and Pencil annotation", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   const agentDiagram = {
@@ -998,6 +1078,7 @@ test("round-trips one exact-task agent diagram through structural touch edits an
   await page.getByRole("button", { name: "Close inspector and draw" }).click();
   await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Prepare & Send" }).click();
 
   await expect.poll(
     () => bridge.diagramUpdateRequests,
@@ -1200,7 +1281,7 @@ test("follows the current Mac task immediately after leaving Stay mode", async (
   await expect(page.getByRole("heading", { name: "Bridge hardening", level: 1 })).toBeVisible();
 });
 
-test("follows a Mac task outside the six native Micro slots without enabling controls", async ({ page }) => {
+test("keeps local drawing available for a Mac task outside the six native Micro slots", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
 
@@ -1208,6 +1289,15 @@ test("follows a Mac task outside the six native Micro slots without enabling con
 
   await expect(page.getByRole("heading", { name: "Catalog reference", level: 1 })).toBeVisible();
   await expect(page.getByText("Display only", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recent activity" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Draw Start a local canvas" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Photo Camera, Library, or Files" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toBeVisible();
+  await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+  await expect(page.getByText("Reconnect to the Mac before attaching this image.")).toBeVisible();
 });
 
 test("recovers Draw Send and Model + Reasoning without waiting for a native snapshot change", async ({ page }) => {
@@ -1317,21 +1407,24 @@ test("keeps cleared marks deleted when Photo imports a new background", async ({
   await page.getByRole("button", { name: "Close drawing studio" }).click();
 
   await expect.poll(() => page.evaluate(async (threadId) => {
-    const request = indexedDB.open("codex-pad-drawings", 1);
+    const request = indexedDB.open("codex-pad-drawings");
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const transaction = database.transaction("drafts", "readonly");
-    const read = transaction.objectStore("drafts").get(`thread:${threadId}`);
-    const stored = await new Promise<{ scene?: string } | undefined>((resolve, reject) => {
-      read.onsuccess = () => resolve(read.result as { scene?: string } | undefined);
+    const activeRead = database.transaction("active-boards", "readonly").objectStore("active-boards").get(threadId);
+    const active = await new Promise<{ boardId?: string } | undefined>((resolve, reject) => {
+      activeRead.onsuccess = () => resolve(activeRead.result as { boardId?: string } | undefined);
+      activeRead.onerror = () => reject(activeRead.error);
+    });
+    if (typeof active?.boardId !== "string") { database.close(); return []; }
+    const read = database.transaction("board-elements", "readonly").objectStore("board-elements").index("boardId").getAll(active.boardId);
+    const stored = await new Promise<Array<{ json?: string }>>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result as Array<{ json?: string }>);
       read.onerror = () => reject(read.error);
     });
     database.close();
-    if (typeof stored?.scene !== "string") return [];
-    const parsed = JSON.parse(stored.scene) as { elements?: Array<{ kind?: unknown }> };
-    return parsed.elements?.map((element) => element.kind) ?? [];
+    return stored.map((record) => typeof record.json === "string" ? (JSON.parse(record.json) as { kind?: unknown }).kind : null);
   }, THREADS[0].id)).toEqual(["image"]);
 });
 
@@ -1344,18 +1437,19 @@ test("attaches a drawing to the Mac composer without text even when a skill is a
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Prepare & Send" }).click();
 
   await expect.poll(() => bridge.commands.at(-1)?.type).toBe("sendSketch");
   expect(bridge.commands.at(-1)?.instruction).toBe("");
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toBeHidden();
   await expect.poll(() => page.evaluate(async (threadId) => {
-    const request = indexedDB.open("codex-pad-drawings", 1);
+    const request = indexedDB.open("codex-pad-drawings");
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const transaction = database.transaction("drafts", "readonly");
-    const read = transaction.objectStore("drafts").get(`thread:${threadId}`);
+    const transaction = database.transaction("active-boards", "readonly");
+    const read = transaction.objectStore("active-boards").get(threadId);
     const stored = await new Promise<unknown>((resolve, reject) => {
       read.onsuccess = () => resolve(read.result);
       read.onerror = () => reject(read.error);

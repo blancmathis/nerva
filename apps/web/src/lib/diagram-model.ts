@@ -8,6 +8,7 @@ import {
 import {
   DIAGRAM_CANVAS_HEIGHT,
   DIAGRAM_CANVAS_WIDTH,
+  DIAGRAM_WORLD_LIMIT,
   DiagramDocumentSchema,
   type DiagramDocument,
   type DiagramEdge,
@@ -247,14 +248,8 @@ export function updateDiagramNode(
       ? {
           ...node,
           ...update,
-          x: Math.min(
-            DIAGRAM_CANVAS_WIDTH - (update.width ?? node.width),
-            Math.max(0, update.x ?? node.x),
-          ),
-          y: Math.min(
-            DIAGRAM_CANVAS_HEIGHT - (update.height ?? node.height),
-            Math.max(0, update.y ?? node.y),
-          ),
+          x: Math.min(DIAGRAM_WORLD_LIMIT - (update.width ?? node.width), Math.max(-DIAGRAM_WORLD_LIMIT, update.x ?? node.x)),
+          y: Math.min(DIAGRAM_WORLD_LIMIT - (update.height ?? node.height), Math.max(-DIAGRAM_WORLD_LIMIT, update.y ?? node.y)),
         }
       : node),
   });
@@ -316,16 +311,19 @@ export function removeDiagramEdge(diagram: DiagramDocument, edgeId: string): Dia
 }
 
 export function autoLayoutDiagram(diagram: DiagramDocument): DiagramDocument {
-  const columns = diagram.nodes.length <= 4 ? 2 : 3;
-  const cellWidth = DIAGRAM_CANVAS_WIDTH / columns;
-  const rows = Math.max(1, Math.ceil(diagram.nodes.length / columns));
-  const cellHeight = DIAGRAM_CANVAS_HEIGHT / rows;
+  const columns = Math.max(1, Math.min(8, Math.ceil(Math.sqrt(diagram.nodes.length))));
+  const gapX = 88;
+  const gapY = 72;
+  const cellWidth = Math.max(280, ...diagram.nodes.map((node) => node.width + gapX));
+  const cellHeight = Math.max(160, ...diagram.nodes.map((node) => node.height + gapY));
+  const originX = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_WIDTH / 2 : Math.min(...diagram.nodes.map((node) => node.x));
+  const originY = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_HEIGHT / 2 : Math.min(...diagram.nodes.map((node) => node.y));
   return DiagramDocumentSchema.parse({
     ...diagram,
     nodes: diagram.nodes.map((node, index) => ({
       ...node,
-      x: Math.round((index % columns) * cellWidth + (cellWidth - node.width) / 2),
-      y: Math.round(Math.floor(index / columns) * cellHeight + (cellHeight - node.height) / 2),
+      x: Math.round(originX + (index % columns) * cellWidth),
+      y: Math.round(originY + Math.floor(index / columns) * cellHeight),
     })),
   });
 }

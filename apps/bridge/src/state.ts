@@ -75,6 +75,8 @@ export interface BridgeCapabilities {
   models: readonly ModelInfo[];
   skills: readonly { id: string; label: string; description: string; enabled: boolean; group: string }[];
   drawing: boolean;
+  /** Fail-closed native composer batch capability; 12 only after exact Desktop attestation. */
+  composerAttachmentMaxImages: 1 | 12;
   review: boolean;
   reviewMaxImages: 0 | 1 | 12;
   multiImageInputVerified: boolean;
@@ -590,6 +592,7 @@ export class BridgeStateService {
         group: skillGroupId(skill),
       })),
       drawing: drawingAttachmentAvailable,
+      composerAttachmentMaxImages: 1,
       review: reviewDeliveryAvailable,
       reviewMaxImages: reviewDeliveryAvailable
         ? (this.#transportHealth.multiImageInputVerified ? 12 : 1)
@@ -956,6 +959,29 @@ export class BridgeStateService {
           );
         })()
       : await this.adapter.attachImageToComposer(attachment);
+    this.#recordTargetAuthorityObservation(state);
+    return this.#accept(state, await this.transport.health(), this.#skills);
+  }
+
+  async attachImagesToComposer(
+    expectedThreadId: string,
+    expectedSlot: number,
+    images: readonly { readonly fileName: `Nerva Board ${string}.png`; readonly pngBase64: string }[],
+  ): Promise<MicroSnapshot> {
+    const slot = this.#assertCurrentExactTarget(this.current(), expectedThreadId, expectedSlot, true);
+    if (this.#lastNative?.capabilities.composerAttachment !== true) {
+      throw new SnapshotConflictError("ADAPTER_DEGRADED", "The native Codex composer image attachment handler is unavailable");
+    }
+    const batch = {
+      expectedThreadId,
+      images: images.map((image) => ({ expectedThreadId, ...image })),
+    } as const;
+    const state = this.#transportHealth.desktopOwnershipVerified
+      ? await (async () => {
+          const authority = await this.#acquireNativeMutationAuthority(expectedThreadId, slot.slot, true);
+          return this.adapter.attachImagesToComposer(batch, () => this.#consumeNativeMutationAuthority(authority.authority), authority.desktopIdentity);
+        })()
+      : await this.adapter.attachImagesToComposer(batch);
     this.#recordTargetAuthorityObservation(state);
     return this.#accept(state, await this.transport.health(), this.#skills);
   }

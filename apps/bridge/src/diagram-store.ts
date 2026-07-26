@@ -124,7 +124,7 @@ export class DiagramStore {
       const id = randomUUID();
       const now = this.#now();
       const document = DiagramDocumentSchema.parse({
-        version: 1,
+        version: 2,
         diagramId: id,
         threadId: input.threadId,
         revision: 0,

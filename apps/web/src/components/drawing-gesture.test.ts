@@ -5,8 +5,8 @@ describe("pinch focal point", () => {
   it("keeps the scene point beneath the moving finger centroid", () => {
     const anchor = createGestureAnchor(
       { centerX: 500, centerY: 300, distance: 100 },
-      { zoom: 1, panX: 0, panY: 0 },
-      { zoom: 1, panX: 0, panY: 0 },
+      { zoom: 1, centerX: 720, centerY: 450 },
+      { zoom: 1, panX: -220, panY: -150 },
     );
     const view = solvePinchView(
       anchor,
@@ -15,9 +15,8 @@ describe("pinch focal point", () => {
       4,
     );
 
-    expect(view).toEqual({ zoom: 2, panX: -450, panY: -275 });
-    expect(anchor.sceneX * view.zoom + view.panX).toBe(550);
-    expect(anchor.sceneY * view.zoom + view.panY).toBe(325);
+    expect(view).toEqual({ zoom: 2, centerX: 695, centerY: 437.5 });
+    expect((anchor.sceneX - view.centerX) * view.zoom + 500).toBe(550);
+    expect((anchor.sceneY - view.centerY) * view.zoom + 300).toBe(325);
   });
 });
-
