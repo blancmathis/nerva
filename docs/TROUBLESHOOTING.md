@@ -80,7 +80,7 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
-On the 25 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` exposes seven independent stdio writers, the managed socket is absent and ownership cannot be attested. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; repeated restarts, hand-written attestations or killing unknown writers are not accepted workarounds.
+On the 26 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` coexists with three independent stdio writers owned by Codex Desktop, external Remodex and the active tooling session; the managed socket is absent and ownership cannot be attested. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; repeated restarts, hand-written attestations or killing unknown writers are not accepted workarounds.
 
 Expected path:
 
@@ -194,7 +194,7 @@ The bridge accepts a bounded PNG payload, verifies its signature, checks decoded
 - empty/meaningless bounds;
 - normalization timeout.
 
-The browser never supplies a local filename or path. A Drawing send contains only the normalized PNG and no instruction text. The composer receives an in-memory `Codex Pad Drawing.png` file; no `turn/start`, submit action or temporary local path is sent to Codex Desktop. Do not disable image checks or add a hidden text fallback to accept a problematic file.
+The browser never supplies a local path. A Drawing send contains only validated PNG images, a bounded tiling manifest and no instruction text. The composer receives one in-memory Nerva atlas or one attested ordered batch; no `turn/start`, submit action or temporary local path is sent to Codex Desktop. Do not disable image checks or add a hidden text fallback to accept a problematic file.
 
 ## Resting a palm interrupts Pencil drawing
 

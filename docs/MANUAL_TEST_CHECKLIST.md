@@ -33,7 +33,9 @@ Historical release-baseline result at `b94e30a`: check, 889 unit tests, build, 3
 
 Current pre-alpha result: a clean clone of `383f5c4` passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 902 unit tests plus 11/11 probe-safety tests, build, a 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 432-file release audit, Context Room doctor and both npm audits. GitHub Actions run `30172381118` reproduced the hosted CI gate on `b6e731c` with the same 275 passes and 13 explicit skips. Collaborative diagrams, the compact Home header and `Settings → System Diagnostics` are included. Physical iPad/Pencil checks remain deliberately unchecked.
 
-Runtime result: **blocked/degraded**. Nerva doctor reports seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
+Infinite-board and coherence-package candidate at local commit `c980fe3`: a separate clean clone passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 926 unit tests plus 11/11 probe-safety tests, build, a 387.70 KiB largest chunk, 287 E2E passes with 13 explicit profile skips, screenshots, the 438-file release audit, Context Room doctor and zero production vulnerabilities. Protocol coverage includes ordered 1/2/6/12-image exports. This is local clean-clone evidence, not hosted CI or physical-device proof. The physical items below remain unchecked.
+
+Runtime result on 26 July 2026: **blocked/degraded**. Nerva doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session —, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
 
 ## A. Mac setup and pairing
 
@@ -153,6 +155,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Photo opens an explicit source sheet whose `Camera`, `Photo Library` and `Files` controls are direct user gestures accepted by iPadOS.
 - [ ] Each source opens the same editor with the chosen image and enforces type, byte, dimension and pixel-area limits before decode.
 - [ ] Pen, highlighter, eraser, arrow, rectangle, ellipse, text, colors, widths, Undo/Redo, confirmed Clear and pan/zoom work in portrait and landscape.
+- [ ] Pan far past the old 1440 × 900 page in every direction, including negative coordinates. No page edge appears, distant elements remain recoverable with `Fit board`, and the contextual minimap recenters then disappears after inactivity.
 - [ ] Restore a marked draft, confirm `Clear`, then import a Camera/Photo Library/Files image. The imported image is the only remaining scene element and no cleared mark reappears.
 - [ ] Apple Pencil pressure and tilt are reflected when available; pressureless input falls back safely.
 - [ ] In `Pencil only`, one finger or a resting palm neither draws nor moves the canvas; two deliberate fingers pan/pinch, and lifting either finger stops navigation.
@@ -160,12 +163,18 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Fast strokes remain continuous at the supported display cadence and pointer cancellation does not leave a stuck gesture.
 - [ ] Losing Pencil pointer capture commits the visible stroke and enables `Send`; it does not leave only an uncommitted preview.
 - [ ] A WebKit `pointercancel` during a visible Pencil stroke preserves the samples already shown as a partial stroke instead of deleting them.
-- [ ] Draft scene, viewport and undoable state survive background suspension at 1, 10 and 60 minutes.
+- [ ] Board scene, camera and undoable state survive background suspension at 1, 10 and 60 minutes without a stale autosave restoring cleared content.
 - [ ] Live strokes are not synchronized to the Mac.
 - [ ] The exact destination remains visible; the studio offers direct `Send` with no instruction textarea or `Review before send` step.
-- [ ] `Send` adds exactly one `Codex Pad Drawing.png` attachment to the exact visible Mac composer, preserves any existing composer text and does not submit or start a turn.
-- [ ] After that attachment is confirmed, reopening Draw starts on a blank `New page`; the sent working draft is not restored, including after closing and reopening the PWA.
-- [ ] If attachment fails or its outcome is unknown, reopening Draw restores the exact working draft and retries with the same delivery identity.
+- [ ] `Whole board` and `Select area` are the only Send choices. Move and resize the area frame with touch and verify exported content matches its world bounds.
+- [ ] Verify one-image exports up to 4096² and synthetic 2/6/12-image plans. Every image remains below 8 MiB, the lot below 24 MiB and cumulative decoded pixels below 64 MP.
+- [ ] For every multi-view plan, verify `01-map` is first; region cores cover the complete selected bounds without gaps; render bounds overlap symmetrically by 12%; each detail header names its board/export, ordinal, region, scale, neighbors and highlighted mini-map; both sides of every neighboring pair show the same `R-…` registration code and motif; and filenames remain understandable after deliberately reordering the attachments.
+- [ ] Export a known structured Diagram across 6 and 12 views. Verify the map or separate structure index lists every block and inter-region edge, matching continuation codes appear on both sides of each known seam, and freehand Pencil marks receive no invented semantic labels.
+- [ ] Manually submit the 6-view package and then the 12-view package to Codex. Ask it to reconstruct the block membership, edge directions, regions and Pencil annotations, then compare the reconstruction with the source board. Record the exact Codex Desktop and model versions; automation is not a substitute for this semantic-understanding test.
+- [ ] Without exact-version batch attestation, a large board attaches exactly one bounded atlas PNG. With explicit batch attestation, one paste adds every uniquely named ordered tile and no message is submitted.
+- [ ] Simulate complete, absent, partial and unknown batch postconditions. Complete confirms; absent allows only manual retry after reconciliation; partial requires Mac resolution and is never auto-completed.
+- [ ] After confirmed attachment, reopening Draw starts on a blank `New page`; `Boards` reopens the checkpointed sent board without making it active by default.
+- [ ] If attachment fails or its outcome is unknown, reopening Draw restores the exact working board and exact retained image bytes, then retries with the same delivery identity.
 - [ ] Drawing attachment remains available while the managed app-server is reconnecting, provided the exact live native composer remains verified.
 - [ ] Unknown attachment outcome keeps the draft and never auto-attaches again after reconnection or agent completion.
 - [ ] `Keep in Saved Drawings` stores a Mac-backed record without sending it to Codex.
@@ -175,13 +184,13 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Limits fail clearly at 48 drawings, 8 MiB per PNG or 128 MiB total; no old record is silently evicted.
 - [ ] A newly paired replacement iPad can fetch Saved Drawings, while non-Keep local drafts remain only on the source iPad.
 - [ ] From one Codex task, publish [`examples/collaborative-diagram.json`](../examples/collaborative-diagram.json); Draw in that exact Session opens the latest unseen diagram automatically, while another Session cannot list or open it.
-- [ ] In `Diagram` mode, move and resize a block with a deliberately imperfect touch drag, rename and recolor it, add and delete a connection, add a block, and verify Undo/Redo and `Auto layout`.
+- [ ] In `Diagram` mode, move and resize blocks across negative and distant world positions with deliberately imperfect touch drags, rename and recolor them, add and delete connections, and verify Undo/Redo and extensible `Auto layout` with a dense 256-block document.
 - [ ] Tap `Draw on top`, annotate across multiple diagram blocks with Apple Pencil, rest the palm on the display and use exactly two fingers to pan/zoom. Structural blocks and freehand ink remain aligned.
 - [ ] Tap `Sync revision`, then run `diagram get` on the Mac. The returned structure has one incremented revision, `lastEditedBy: "ipad"` and the exact touch edits, without a PNG or composer mutation.
 - [ ] Publish a newer Codex revision while the iPad has unsynchronized structural changes. Nerva announces the update but does not overwrite local work. Resolve by syncing/reloading explicitly.
 - [ ] With a dirty collaborative diagram and Pencil annotation, tap `Keep`; the structure syncs first and Saved Drawings receives one flattened independent snapshot.
-- [ ] With a dirty collaborative diagram and Pencil annotation, tap `Send`; the structure syncs first, then the Mac composer receives exactly one flattened PNG and is not submitted.
-- [ ] After confirmed Send, reopen Draw. The sent diagram does not reappear. Publish a newer Codex revision, reopen Draw and confirm that the newer revision now appears.
+- [ ] With a dirty collaborative diagram and Pencil annotation, tap `Send`; the structure syncs first, then the Mac composer receives the compatible atlas or exact attested ordered batch and is not submitted.
+- [ ] After confirmed Send, reopen Draw and confirm a blank page. Reopen the sent board through `Boards`; then publish a newer Codex revision and confirm the newer revision is offered explicitly without deleting Pencil ink.
 - [ ] Disconnect the Mac after editing a diagram. The local draft survives, `Sync revision` fails visibly, and Keep/Send never claim that the structure was synchronized.
 
 ## F. Review and media delivery

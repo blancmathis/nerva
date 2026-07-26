@@ -5,7 +5,7 @@
 - Scope: Exact-thread image attachment, acknowledgement and retry behavior
 
 > **Product boundary:** Drawing and Photo expose one direct `Send` action. It
-> attaches one image-only PNG to the exact selected native Codex composer and
+> attaches one image-only PNG/atlas or one attested ordered image batch to the exact selected native Codex composer and
 > never submits that composer. There is no instruction field, hidden Skills
 > suffix, delivery inbox, queue or steer action on the iPad. See
 > [`docs/product/FEATURES_target.md`](../product/FEATURES_target.md#73-images-et-action-send).
@@ -17,7 +17,7 @@
 
 ## Context
 
-Nerva must move one PNG from the iPad drawing surface into the exact Codex
+Nerva must move one bounded visual export from the iPad drawing surface into the exact Codex
 Desktop task selected by the user. A title, recent task, foreground window or
 stale composer marker is not routing authority. Silent forking, guessed targets,
 duplicate replay and starting an agent turn before the user finishes the Mac
@@ -60,10 +60,10 @@ Review delivery.
 
 ## Decision
 
-Drawing/Photo uses one native composer attachment path:
+Drawing/Photo uses one native composer attachment path with a legacy one-image payload and a versioned ordered-batch payload:
 
 1. The PWA sends a unique `commandId`, exact `bridgeInstanceId`, snapshot
-   sequence, native slot, canonical thread UUID and the PNG bytes. It sends an
+   sequence, native slot, canonical thread UUID, board/checkpoint identity, scope, tiling manifest and PNG bytes. It sends an
    empty instruction and cannot provide a local Mac path.
 2. The bridge authenticates the bearer and exact Origin, validates the command,
    and reserves the durable idempotency record before mutation.
@@ -78,26 +78,32 @@ Drawing/Photo uses one native composer attachment path:
    same one-shot final-write authority used by exact native controls. Without
    full ownership, the exact selected native target is still sufficient for
    this existing-target renderer operation.
-6. The renderer operation accepts only the canonical expected UUID, the fixed
-   filename `Codex Pad Drawing.png`, and a canonical PNG no larger than 8 MiB.
+6. The renderer operation accepts only the canonical expected UUID, one to twelve uniquely named Nerva PNGs no larger than 8 MiB each and 24 MiB together.
    It rechecks the exact visible composer and refuses zero or multiple native
    add-context controls.
-7. The operation finds the live composer `onPaste` handler, creates one
-   in-memory PNG `File`, places it in a `DataTransfer`, and dispatches one
+7. The operation finds the live composer `onPaste` handler, creates every validated
+   in-memory PNG `File`, places them in one `DataTransfer`, and dispatches one
    cancelable `ClipboardEvent("paste")` to that handler.
 8. The fixed expression has no submit call, Enter shortcut, app-server RPC,
    arbitrary remote code or text mutation. It only attaches the image.
-9. Success requires the visible count of
-   `Remove Codex Pad Drawing.png` controls to increase within 2.5 seconds while
-   the exact composer remains current. Only then may the iPad animate away.
+9. Success requires every uniquely named `Remove …` control to appear while the exact composer remains current. No visible file and a partially visible batch are separate unknown outcomes; a partial batch must be resolved on the Mac and is never completed automatically. Only complete confirmation may animate the iPad away.
 10. After that postcondition, the bridge removes the temporary normalization
     file; the composer already owns the in-memory `File`.
 11. A definite failure before paste is retryable through the same command
     identity. Any error after paste may have fired becomes `DELIVERY_UNKNOWN`
-    and is never replayed automatically. The editable iPad draft and immutable
-    retry binding remain available for reconciliation.
+    and is never replayed automatically. The editable iPad board, exact exported bytes and immutable
+    retry binding remain available for reconciliation. A confirmed send checkpoints the board and makes the next Draw blank; `Boards` can reopen that checkpoint.
 12. Skills remain armed because Drawing contains no text. Nerva does not
     inspect or alter text typed or dictated into the native Mac composer.
+
+The bridge advertises `composerAttachmentMaxImages: 1 | 12`. It remains `1` until the exact installed Desktop batch behavior has been attested, so Draw automatically emits one bounded atlas instead of sending a speculative batch.
+
+The ordered payload is self-describing without composer text. `01-map` is
+always first; optional `structure-index` and region details follow with stable
+filenames derived from the immutable board/export identity. Export-only pixel
+headers carry each region's ordinal, neighbors, scale and mini-map, while the
+manifest retains the same board, checkpoint and scope binding. This does not
+expand the command union or allow the PWA to inject instructions.
 
 The path does not read app-server turn state and does not care whether the agent
 is idle, working or waiting. Managed app-server reconnect backoff may disable

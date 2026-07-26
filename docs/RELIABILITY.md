@@ -14,7 +14,7 @@ This page describes the reliability features that are implemented now. It does n
 
 ## Current runtime verdict
 
-As observed on 25 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports seven independent stdio app-server writers, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
+As observed on 26 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session —, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
 
 This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
 
@@ -49,6 +49,14 @@ System Diagnostics exposes only that state and a safe remediation. It never serv
 
 Schema compatibility proves protocol shape only. Native renderer actions, same-Desktop ownership, live Site mapping and physical iPad input retain separate gates.
 
+## Drawing export and recovery
+
+Draw never allocates a bitmap the size of its world. It renders only the viewport during editing and creates bounded PNGs sequentially during export. `Whole board` and `Select area` resolve to one image, a map-first linked package, or one compatibility atlas. The package uses gap-free rectangular cores, 12% symmetric render overlap, stable region IDs, deterministic filenames, external detail headers, neighbor links, mini-maps and identical `R-…` registration markers on both sides of every neighboring pair. A structured Diagram additionally provides an exact-revision node/region and cross-region edge index plus matching continuation codes; no semantics are inferred for Pencil ink. Each image is limited to 8 MiB, a native lot to 24 MiB and cumulative decoded pixels to 64 MP.
+
+Before any native mutation, Nerva validates every image, persists the exact ordered bytes and binds them to the board, checkpoint, command, thread, slot and snapshot. A reload or unknown result cannot silently rebuild a different export. Reconciliation is read-only; only an explicit retry reuses the immutable package and same command ID. Confirmed success checkpoints the board, while failure or uncertainty keeps it active. A partial native batch is never topped up automatically.
+
+The bridge advertises one or twelve composer attachments independently from Review's app-server image limit. The current runtime remains at one until the exact installed Codex Desktop batch path is physically attested, so the atlas fallback is the verified behavior rather than a simulated capability.
+
 ## Atomic PWA updates
 
 The build emits an immutable asset graph, a build-specific service worker and `app-meta.json`. The service worker installs a complete new cache before activation and deletes obsolete Nerva caches only after the new worker activates.
@@ -59,7 +67,7 @@ The update monitor also checks when the app returns to the foreground and at a b
 
 ## Activity and attention
 
-Nerva keeps a bounded local timeline of reliable status transitions per task. Home exposes compact counts for approval, error, working, waiting and completed across the validated catalog. Each count filters the existing Home cards directly; the separate priority button shows pinned attention first, then other pinned sessions, then unpinned attention. These views are temporary and never rewrite manual sections, cases, pins or order.
+Nerva derives privacy-safe reliable status transitions for Home attention counts, the app badge and allowed notifications. It does not render a growing per-task `Recent activity` feed. Home exposes compact counts for approval, error, working, waiting and completed across the validated catalog. Each count filters the existing Home cards directly; the separate priority button shows pinned attention first, then other pinned sessions, then unpinned attention. These views are temporary and never rewrite manual sections, cases, pins or order.
 
 Events contain only task ID, status, timestamp and fixed English status copy. They never contain prompts, agent output, inferred progress, source code or a generated summary. Initial observation does not create a false transition event.
 

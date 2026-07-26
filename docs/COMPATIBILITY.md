@@ -11,7 +11,7 @@ It is a compatibility record for the current implementation, not the future prod
 
 ## Current observed baseline
 
-| Component | Observed version/state on 25 July 2026 | Proof level |
+| Component | Observed version/state on 26 July 2026 | Proof level |
 | --- | --- | --- |
 | Mac | macOS `26.5.1`, Apple Silicon `arm64` | Observed locally |
 | Codex Desktop application | `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, version `26.721.41059`, build `5848` | Observed locally by doctor on 25 July 2026 |
@@ -20,7 +20,7 @@ It is a compatibility record for the current implementation, not the future prod
 | Native Micro renderer | Version-hashed modules with exactly six `AG00`–`AG05` slots and known native states | Static structural inspection only |
 | Native live slot values | CDP remains reachable on loopback, but the adapter is degraded under the installed renderer shape | Current doctor warning; commands fail closed |
 | Native composer image attachment | Historical diagnostic proof exists against `26.715.61943` | Not re-proven against the installed `26.721.41059`; physical iPad tap still pending |
-| App-server writers | Five independent stdio app-server writers observed | Current doctor red; process ownership is not inferred from PIDs |
+| App-server writers | Three independent stdio app-server writers observed: Codex Desktop, external Remodex service and the active tooling session | Current doctor red; process ownership was resolved from parent chains, but no external process was stopped |
 | Managed control socket | `~/.codex/app-server-control/app-server-control.sock` is absent | Current doctor red |
 | Desktop ownership attestation | No current reciprocal-peer ownership attestation | Current doctor red; app-server mutations remain disabled |
 | App-server initialize/resume/image turn | Historical disposable-thread proof only | Not current live Desktop proof |
@@ -34,6 +34,7 @@ It is a compatibility record for the current implementation, not the future prod
 | Tailscale and pairing | Tailscale installed and authenticated on the owner's Mac and iPad; private origin, QR pairing, Home Screen installation and credential reuse worked manually | One owner-confirmed live path; no timed clean-device or cross-version matrix |
 | Apple Pencil | The physical iPad path is connected, but Pencil pressure/tilt, palm rejection and 60/120 Hz behavior have not been recorded | Not hardware-validated |
 | Automated checkout | Clean-clone proof at `383f5c4`: 902 unit tests plus 11/11 probe-safety tests, build, 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, regenerated screenshots, release audit, Context Room doctor and both npm audits. GitHub Actions run `30172381118` reproduced the CI gate on `b6e731c`. | Automated local and hosted-runner proof only; the physical Mac/iPad/Pencil matrix is separate evidence |
+| Infinite-board checkout | Clean-clone proof at local commit `c980fe3`: 926 unit tests plus 11/11 probe-safety tests, 387.70 KiB largest JavaScript chunk, 287 E2E passes with 13 explicit profile skips, 438-file release audit, screenshots, Context Room doctor and zero production vulnerabilities | Local clean-clone proof only; no hosted CI, native multi-image or physical hardware claim |
 
 The isolated spike created a normal non-ephemeral test thread so it could be resumed, sent a 1×1 PNG using `localImage`, observed a completed reply, and deleted the test thread. It explicitly reported `liveDesktopCopresenceProven: false`.
 

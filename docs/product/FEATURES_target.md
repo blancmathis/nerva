@@ -260,9 +260,9 @@ Des images peuvent déjà être présentes dans le composer avant la dictée. Si
 
 ### 8.3 Images et action Send
 
-Drawing et Photo offrent une seule action principale `Send`. Il n'existe ni champ d'instruction, ni étape `Review before send`, ni texte implicite. L'action ajoute seulement le PNG final au composer Mac de la session exacte ; elle ne soumet pas le composer et ne lance donc pas d'appel Codex.
+Drawing et Photo offrent une seule action principale `Send`. Il n'existe ni champ d'instruction, ni étape `Review before send`, ni texte implicite. La feuille de Send ne contient que `Whole board` et `Select area`. L'action ajoute le PNG final ou le lot ordonné attesté au composer Mac de la session exacte ; elle ne soumet pas le composer et ne lance donc pas d'appel Codex.
 
-Après confirmation réelle du transfert, l'image glisse latéralement vers Codex, le brouillon de travail local est supprimé et le studio se ferme. Rouvrir Draw pour cette session présente donc une nouvelle page. En cas d'échec ou d'issue inconnue, le dessin reste disponible et réessayable avec la même identité idempotente. Cette suppression ne concerne jamais un original conservé explicitement dans Saved Drawings.
+Après confirmation réelle du transfert, les images glissent latéralement vers Codex, le tableau reçoit un checkpoint `Sent` et le studio se ferme. Rouvrir Draw pour cette session présente une nouvelle page ; le petit bouton `Boards` permet de reprendre le tableau envoyé. En cas d'échec ou d'issue inconnue, le tableau, ses tuiles exactes et son identité idempotente restent disponibles. Cette règle ne concerne jamais un original conservé explicitement dans Saved Drawings.
 
 L'utilisateur complète éventuellement le message sur le Mac, par saisie ou dictée native, puis l'envoie depuis Codex Desktop. Ce futur envoi suit les réglages queue/steer de Codex, mais l'action `Send` du studio iPad n'envoie elle-même aucun message. L'iPad n'affiche donc aucun état `Queued` ou `Sent` ; il confirme uniquement que l'image est visible dans le composer exact.
 
@@ -274,17 +274,17 @@ Le futur contrôle vocal général reste un mode produit séparé de `Dictation`
 
 ### 9.1 Éditeur partagé
 
-Draw ouvre une toile blanche de la taille de l'écran, extensible verticalement mais non infinie. Photo propose `Camera`, `Photo Library` ou `Files`, puis ouvre exactement le même éditeur.
+Draw ouvre un espace monde virtuellement infini, techniquement borné à ±1 000 000 unités. Le canvas HTML reste limité au viewport physique et une caméra indépendante `{centerX, centerY, zoom}` déplace la vue sans agrandir la bitmap. La grille reste ancrée au monde et une mini-carte contextuelle apparaît pendant pan, zoom et `Fit board`. Photo propose `Camera`, `Photo Library` ou `Files`, puis ouvre exactement le même éditeur.
 
 Outils : stylo, surligneur, gomme, flèche, rectangle, ellipse, texte, couleurs, tailles, annuler, rétablir, effacer avec confirmation et image de fond. En mode `Pencil only`, seul `pointerType="pen"` peut écrire ou placer un outil : un contact tactile unique, y compris la paume, reste passif et deux doigts sont nécessaires pour déplacer ou zoomer. Si iPadOS annule malgré tout le pointeur Pencil, les échantillons déjà visibles sont conservés comme trait partiel au lieu de disparaître. L'Apple Pencil dessine avec pression et inclinaison ; le rendu local vise 60/120 Hz et les orientations portrait et paysage.
 
-Pendant l'édition, les traits, l'historique, le viewport et le brouillon restent locaux à l'iPad. Il n'existe pas de synchronisation en temps réel du dessin vers le Mac.
+Pendant l'édition, les traits, l'historique différentiel, la caméra et le tableau restent locaux à l'iPad. Les éléments sont enregistrés séparément afin qu'un autosave ne réécrive pas tout le document. Il n'existe pas de synchronisation en temps réel du dessin vers le Mac.
 
 ### 9.2 Fin du dessin
 
-- `Send` transfère directement le PNG final dans le composer exact, sans champ de message et sans soumission, selon les règles de la section précédente.
+- `Send` exporte la zone réelle du tableau ou une sélection. Une zone lisible tient dans un PNG jusqu'à 4096 × 4096. Sinon Nerva produit une overview numérotée et jusqu'à 11 tuiles de détail 2048 × 2048 avec environ 10 % de recouvrement. Sans attestation multi-image native, un atlas unique 4096 × 4096 conserve la compatibilité.
 - `Keep` transfère volontairement le dessin au stockage global géré par le Mac et le rend disponible dans `Saved Drawings` sur un futur iPad.
-- Un brouillon non envoyé est restauré à la prochaine ouverture. Un `Send` confirmé supprime seulement ce brouillon de travail ; un échec ou un résultat inconnu le conserve pour retry.
+- Un tableau non envoyé est restauré à la prochaine ouverture. Un `Send` confirmé le checkpoint et retire seulement son statut de page active ; un échec ou un résultat inconnu conserve aussi les octets d'export exacts pour retry.
 - Les images conservent leur qualité d'origine autant que possible. Toute compression nécessaire est annoncée.
 
 ### 9.3 Saved Drawings
@@ -297,7 +297,7 @@ Le nombre d'images envoyables est une capacité runtime, pas une constante reven
 
 Depuis une Session exacte, Codex peut publier un schéma structuré vers Draw. Le document conserve des blocs, formes, couleurs, positions, dimensions, flèches et libellés modifiables ; il ne s'agit ni d'une image figée, ni de HTML/SVG arbitraire. À l'ouverture de Draw, la dernière révision non vue de cette Session s'affiche automatiquement.
 
-L'utilisateur peut déplacer, redimensionner, renommer, recolorer, relier, ajouter ou supprimer les blocs au doigt, puis utiliser `Draw on top` pour annoter librement au Pencil. La structure et l'encre restent deux couches distinctes pendant l'édition. `Sync revision` renvoie uniquement la structure au stockage privé Mac ; `Keep` et `Send` synchronisent d'abord toute structure sale. `Send` conserve sa règle existante : un unique PNG aplati est attaché au composer exact, sans texte implicite et sans soumettre le message.
+L'utilisateur peut déplacer, redimensionner, renommer, recolorer, relier, ajouter ou supprimer jusqu'à 256 blocs et 512 liens au doigt, y compris dans des coordonnées négatives, puis utiliser `Draw on top` pour annoter librement au Pencil. L'auto-layout étend le contenu au lieu de le comprimer dans une page. La structure et l'encre restent deux couches distinctes pendant l'édition. `Sync revision` renvoie uniquement la structure au stockage privé Mac ; `Keep` et `Send` synchronisent d'abord toute structure sale. `Send` applique le même export Board/Area tuilé ou atlas, sans texte implicite et sans soumettre le message.
 
 Chaque écriture utilise une révision optimiste. Une nouvelle révision Codex ne remplace jamais silencieusement des changements iPad non synchronisés. Après un Send confirmé, la page de travail locale est supprimée et la révision envoyée ne se rouvre pas ; une publication Codex ultérieure avec une révision plus récente la rend de nouveau disponible. Le contrat opérable et les commandes appartiennent à [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md).
 

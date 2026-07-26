@@ -89,18 +89,49 @@ polyfill afterthought.
 
 ### PNG export
 
-Export by rendering the authoritative scene into a fresh canvas:
+Export renders the authoritative scene into a bounded, self-describing visual
+package. The editable board is never decorated with export metadata.
 
-1. include the selected background and imported image;
-2. compute meaningful content bounds in scene coordinates;
-3. add configurable padding and clamp maximum pixel dimensions/area;
-4. choose a Retina-friendly scale within that clamp;
-5. render all elements in order using deterministic fonts and blend modes;
-6. encode a normalized PNG directly from the current scene when `Send` is tapped;
-7. attach exactly one PNG `File` to the exact visible native composer with no
-   text input and no submit action, disable duplicate taps, and animate away
-   only after the attachment is visibly confirmed;
-8. keep the vector draft after send for later editing and idempotent recovery.
+1. `Whole board` uses the real content bounds. `Select area` uses the explicit
+   world-space rectangle chosen by the user.
+2. A legible region becomes one PNG up to 4096 × 4096. A larger region becomes
+   one map plus at most eleven detail views, or one compatibility atlas when
+   native multi-attachment is not attested.
+3. The rectangular planner assigns stable regions such as `A1` and `B2`. Detail
+   cores cover the requested bounds without gaps; their render bounds add 12%
+   symmetric overlap. Candidate seams minimize, in order, cuts through blocks,
+   text or photos; structured connections; freehand strokes; and poor empty-space
+   or aspect-ratio choices.
+4. The map is always first. It shows every region, the overlap, export identity,
+   and Diagram revision when present. Details use an external header containing
+   their region, ordinal, scale, neighbors and a highlighted mini-map. Known
+   structured connections crossing a seam receive matching continuation codes.
+   Every neighboring pair also shares one deterministic registration marker
+   such as `R-A1-B1`, repeated with the same visual motif in both external
+   gutters. Freehand ink never receives invented semantic labels.
+5. A structured Diagram adds a compact region/node and cross-region edge index.
+   When that index cannot remain legible on the map, it becomes a separate
+   `structure-index` PNG before the details.
+6. Filenames are deterministic inside one immutable export:
+   `Nerva Board <board>-<export> 01-map.png`, optional
+   `02-structure-index.png`, then numbered region details. Every image therefore
+   remains localizable if the composer displays attachments out of order.
+7. The compatibility atlas reserves approximately 40% of its 4096 × 4096 area
+   for the map and places the remaining views in reading order. It reports
+   `Overview detail` instead of implying that an arbitrarily large board remains
+   fully legible in one raster image.
+8. Every PNG is normalized and bounded to 8 MiB; an attested native batch is
+   bounded to 24 MiB and 64 decoded megapixels. Canvases are produced
+   sequentially and released between images.
+9. A dirty structured Diagram revision is synchronized before image generation,
+   so the stored structure and exported pixels share the same revision.
+10. `Send` attaches only PNG files to the exact visible native composer. It adds
+    no text and performs no submit action. The UI exposes only `Whole board` and
+    `Select area`, plus an optional collapsed `Inspect package` disclosure.
+11. A confirmed Send creates a `Sent` checkpoint, closes Draw and makes the next
+    Draw a blank board; `Boards` can reopen the checkpoint. Failure or unknown
+    outcome keeps the active board, exact PNG bytes and delivery identity for an
+    explicit retry.
 
 The bridge, not the PWA, creates the randomized mode-`0600` normalization file.
 The native composer never receives that local path: the validated PNG bytes are
@@ -141,9 +172,13 @@ OpenAI/Work Louder/Apple artwork is included.
 
 Automated tests cover scene migration/serialization, undo/redo, pointer capture
 cancellation, pressure and fallback samples, pen-versus-finger routing,
-coalesced-event deduplication, bounds/clamps, background compositing, PNG export,
-IndexedDB restoration, Saved Drawings validation/limits, Keep/list/get/delete and
-opening an independent working copy. A real iPad/Apple Pencil checklist must
-additionally verify fast strokes, palm rejection, pinch/pan, Camera/Photo
-Library/Files import, background resume, portrait/landscape layout and
-preview/send fidelity.
+coalesced-event deduplication, bounds/clamps, background compositing,
+deterministic 2/6/12-view planning, negative coordinates, symmetric overlap,
+seam priorities, map-first packaging, structured indexes and continuation codes,
+atlas fallback, IndexedDB restoration, Saved Drawings validation/limits,
+Keep/list/get/delete and opening an independent working copy. A real iPad/Apple
+Pencil checklist must additionally verify fast strokes, palm rejection,
+pinch/pan, Camera/Photo Library/Files import, background resume,
+portrait/landscape layout and preview/send fidelity. Reconstructing a known
+6- and 12-view Diagram from the actual Codex composer remains a separate
+physical/model-understanding gate.

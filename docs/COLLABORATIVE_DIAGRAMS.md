@@ -1,6 +1,6 @@
 # Collaborative diagrams
 
-Nerva Draw can receive a structured diagram from the Codex task that is currently open, let the user edit it on the iPad, and preserve ordinary Pencil annotations above it. The Mac and iPad exchange the diagram structure; the existing Draw delivery still attaches one flattened PNG to the exact Codex composer without submitting the message.
+Nerva Draw can receive a structured diagram from the Codex task that is currently open, let the user edit it on the iPad, and preserve ordinary Pencil annotations above it. The Mac and iPad exchange the diagram structure; Draw exports the requested board/area as one compatible atlas or an attested ordered image batch to the exact Codex composer without submitting the message.
 
 ## User flow
 
@@ -11,9 +11,15 @@ Nerva Draw can receive a structured diagram from the Codex task that is currentl
 5. Tap a block or **Edit** to open its focused inspector. Rename it immediately; use **Style** for shape and color, **Links** for connections, and **More** for the diagram title, automatic arrangement or deletion. On iPad, the canvas reserves a narrow edge column for the inspector instead of placing controls over the drawing. On phone, the inspector temporarily replaces the canvas; closing it restores the full drawing view.
 6. Tap **Draw** or the Pencil action in the inspector to return to the ordinary Pencil canvas. Diagram structure and freehand ink remain separate while editing.
 7. **Sync revision** appears only while the structure has local changes. Tap it when Codex should read those changes without receiving a composer attachment. **Keep** and **Send** also synchronize a dirty diagram revision before continuing.
-8. **Send** renders the latest structure and Pencil ink into one PNG and attaches it to the exact visible Mac composer. It never submits the composer and never injects instruction text.
+8. **Send** synchronizes a dirty Diagram revision before rendering. A compact
+   summary announces the resulting package, for example
+   `1 map + 7 linked details · Good`; **Inspect package** optionally reveals the
+   regions without adding a required step. Nerva then attaches either one
+   compatibility atlas or one attested ordered PNG batch to the exact visible
+   Mac composer. It never submits the composer and never injects instruction
+   text.
 
-After a confirmed Send, the local working page is cleared and that diagram revision is marked seen. Reopening Draw starts blank. It reopens automatically only after Codex publishes a newer revision. **Clear** removes the local working page and marks the current revision seen; it does not delete the Mac copy.
+After a confirmed Send, the working board receives a `Sent` checkpoint and that diagram revision is marked seen. Reopening Draw starts blank, while **Boards** can reopen the checkpointed board. The diagram reopens automatically only after Codex publishes a newer revision. **Clear** removes the current local working page and marks the current revision seen; it does not delete the Mac copy.
 
 ## Agent flow
 
@@ -64,11 +70,11 @@ The full initial shape is available in [`examples/collaborative-diagram.json`](.
 
 ## Document contract
 
-- Canvas: fixed logical size of 1440 × 900. Nerva scales it to the available iPad canvas.
-- Nodes: at most 64. IDs are stable ASCII identifiers; labels are 1–240 characters.
+- World: version 2 positions are bounded to ±1,000,000 units and may be negative. Version 1 documents retain their exact positions and historical center `(720, 450)` when migrated.
+- Nodes: at most 256. IDs are stable ASCII identifiers; labels are 1–240 characters.
 - Node shapes: `rectangle` or `ellipse`.
 - Node tones: `neutral`, `blue`, `green`, `amber`, `red`, or `violet`.
-- Edges: at most 128. Each edge references two existing, different node IDs.
+- Edges: at most 512. Each edge references two existing, different node IDs.
 - Edge styles: `solid` or `dashed`.
 - Documents: at most 48 Mac-backed records, each bounded to 512 KiB.
 - Routing: every document belongs to one exact task UUID. Listing and iPad loading are always filtered by that task.
@@ -82,7 +88,7 @@ The bridge validates dimensions, bounds, IDs, references, duplicates, self-edges
 - Structural sync requires the authenticated Mac bridge. If it cannot be confirmed, the local revision stays dirty and Send/Keep do not pretend it was synchronized.
 - If Codex publishes a newer revision while the iPad has unsynchronized changes, Nerva shows the update but never replaces the local work automatically.
 - If the iPad has no local changes, the newer Codex revision can replace the current structured layer safely.
-- Failed or unknown PNG attachment keeps the complete working draft and the same delivery identity for retry.
+- Failed or unknown attachment keeps the complete working board, exact exported bytes and the same delivery identity for retry.
 - Saved Drawings remain flattened, independent snapshots. They do not mutate the collaborative structured document.
 
 ## Security and privacy boundaries
@@ -92,8 +98,32 @@ Collaborative diagrams do not add arbitrary HTML, SVG, JavaScript, selectors, fi
 The structural sync and the composer attachment are deliberately separate:
 
 - **Sync revision** updates the private diagram document.
-- **Send** attaches one rendered PNG to the exact visible native composer.
+- **Send** attaches one rendered atlas or one attested ordered image batch to the exact visible native composer.
 - Neither action submits a Codex message.
+
+## Visual coherence package
+
+Large collaborative boards are exported as an explicit visual coordinate
+system rather than unrelated screenshots:
+
+- `01-map` is always first and shows the whole board, the named rectangular
+  regions and their 12% overlap.
+- Every detail has an external header with its board/export identity, ordinal,
+  region, scale, neighbors and a highlighted mini-map. The saved Diagram and
+  Pencil scene are never changed by these export-only pixels.
+- Neighboring details repeat the same deterministic registration code and
+  visual marker in their external gutters, for example `R-A1-B1`.
+- Stable filenames and region labels keep each attachment understandable if a
+  composer displays the files in a different order.
+- A compact structure index lists the nodes in each region and every known
+  cross-region edge. When it does not fit legibly on the map, Nerva inserts a
+  dedicated `structure-index` image before the details.
+- Cross-region Diagram edges receive matching `E01`, `E02`, … continuation
+  codes. Pencil marks retain only visual overlap and map position because Nerva
+  must not infer meaning from freehand ink.
+- Compatibility mode composes the package into one 4096 × 4096 atlas, reserves
+  about 40% for the map and reports `Overview detail` when full detail cannot be
+  preserved honestly.
 
 ## Verification boundary
 
