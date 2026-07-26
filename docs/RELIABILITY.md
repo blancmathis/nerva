@@ -14,7 +14,7 @@ This page describes the reliability features that are implemented now. It does n
 
 ## Current runtime verdict
 
-As observed on 26 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session —, no managed control socket and no Desktop ownership attestation. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
+As observed on 26 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`; Nerva refuses a version-skewed Desktop restart. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
 
 This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
 

@@ -795,8 +795,31 @@ export async function doctorCodexPad(
     managedSocketReady && managedSocketPrivate && desktop
       ? await command(desktop.binaryPath, ["app-server", "daemon", "version"], 3_000)
       : undefined;
+  let managedDaemonVersionCompatible = false;
+  if (daemonVersion?.exitCode === 0) {
+    try {
+      const parsed = JSON.parse(daemonVersion.stdout) as unknown;
+      if (isRecord(parsed)) {
+        const cliVersion = typeof parsed.cliVersion === "string" ? parsed.cliVersion : undefined;
+        const appServerVersion = typeof parsed.appServerVersion === "string" ? parsed.appServerVersion : undefined;
+        const managedCodexVersion = typeof parsed.managedCodexVersion === "string" ? parsed.managedCodexVersion : undefined;
+        managedDaemonVersionCompatible = Boolean(
+          cliVersion
+          && appServerVersion
+          && managedCodexVersion
+          && cliVersion === appServerVersion
+          && cliVersion === managedCodexVersion,
+        );
+      }
+    } catch {
+      managedDaemonVersionCompatible = false;
+    }
+  }
   const managedDaemonReady =
-    managedSocketReady && managedSocketPrivate && (daemonVersion === undefined || daemonVersion.exitCode === 0);
+    managedSocketReady
+    && managedSocketPrivate
+    && daemonVersion?.exitCode === 0
+    && managedDaemonVersionCompatible;
   checks.push({
     id: "managed-app-server",
     category: "transport",
@@ -805,8 +828,10 @@ export async function doctorCodexPad(
       ? "Managed app-server control socket is private and responsive."
       : managedSocketReady && !managedSocketPrivate
         ? "Managed app-server control socket permissions are unsafe."
-        : managedSocketReady
-          ? "Managed app-server control socket did not answer the installed binary."
+        : managedSocketReady && daemonVersion?.exitCode === 0 && !managedDaemonVersionCompatible
+          ? "Managed app-server is responsive but its Codex versions do not match."
+          : managedSocketReady
+            ? "Managed app-server control socket did not answer the installed binary."
           : "Managed app-server control socket is absent.",
     ...(daemonVersion?.exitCode === 0 && daemonVersion.stdout.trim()
       ? { detail: daemonVersion.stdout.trim() }
@@ -815,10 +840,15 @@ export async function doctorCodexPad(
       ? {}
       : {
           remediation: desktop
-            ? [
-                `${shellQuote(desktop.binaryPath)} app-server daemon bootstrap --remote-control`,
-                "Then explicitly restart Codex Desktop only after saving active composer/turn state.",
-              ]
+            ? daemonVersion?.exitCode === 0 && !managedDaemonVersionCompatible
+              ? [
+                  "Update the OpenAI-managed standalone Codex CLI until its managed app-server version exactly matches Codex Desktop, then bootstrap again.",
+                  "Do not restart Codex Desktop onto a version-skewed daemon.",
+                ]
+              : [
+                  `${shellQuote(desktop.binaryPath)} app-server daemon bootstrap --remote-control`,
+                  "Then explicitly restart Codex Desktop only after saving active composer/turn state.",
+                ]
             : ["Install Codex Desktop before bootstrapping its managed daemon."],
         }),
     proofBoundary: "Socket presence does not prove Desktop was restarted onto it or that live thread co-presence is safe.",

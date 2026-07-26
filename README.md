@@ -14,7 +14,7 @@ The current PWA uses one unified Home plus `Home â†” Capture Inbox` and `Home â†
 >
 > Nerva is not made, supported or endorsed by OpenAI, Apple or Work Louder. Its current Codex native six-slot state/control adapter depends on undocumented Codex Desktop renderer internals and can require compatibility work after a Codex update. Thread messaging uses the installed Codex app-server protocol where its exact capability is proven. No proprietary artwork or extracted application assets are distributed.
 >
-> **Current local status (26 July 2026):** the code, clean-clone browser and production-security gates are green, but the installed Codex Desktop currently coexists with three independent stdio writers and no managed control socket. Nerva therefore reports `degraded` and keeps app-server mutations fail-closed. This public source release is pre-alpha: it is not hardware-validated, tagged or presented as a stable `v0.1.0`; see [Current implementation state](docs/product/CURRENT_STATE.md).
+> **Current local status (26 July 2026):** the code, clean-clone browser and production-security gates are green, but the installed Codex Desktop currently coexists with three independent stdio writers and the responsive managed daemon is still on Codex `0.145.0` while Desktop bundles `0.146.0-alpha.3.1`. Nerva therefore reports `degraded`, refuses a version-skewed Desktop restart and keeps app-server mutations fail-closed. This public source release is pre-alpha: it is not hardware-validated, tagged or presented as a stable `v0.1.0`; see [Current implementation state](docs/product/CURRENT_STATE.md).
 
 ## Source of truth
 

@@ -385,6 +385,20 @@ async function configureManagedDaemon(input: {
   if (!isRecord(parsed) || parsed.status !== "running") {
     throw new Error("Managed app-server verification did not report a running daemon.");
   }
+  const cliVersion = typeof parsed.cliVersion === "string" ? parsed.cliVersion : undefined;
+  const appServerVersion = typeof parsed.appServerVersion === "string" ? parsed.appServerVersion : undefined;
+  const managedCodexVersion = typeof parsed.managedCodexVersion === "string" ? parsed.managedCodexVersion : undefined;
+  if (
+    !cliVersion
+    || !appServerVersion
+    || !managedCodexVersion
+    || cliVersion !== appServerVersion
+    || cliVersion !== managedCodexVersion
+  ) {
+    throw new Error(
+      `Managed app-server version mismatch: Desktop CLI ${cliVersion ?? "unknown"}, managed Codex ${managedCodexVersion ?? "unknown"}, app-server ${appServerVersion ?? "unknown"}.`,
+    );
+  }
 }
 
 async function validateLaunchAgentDestination(homeDirectory: string, repositoryRoot: string): Promise<void> {
@@ -483,7 +497,7 @@ async function restartInstalledLaunchAgent(input: {
   return input.path;
 }
 
-async function bridgeHealthy(fetchImplementation: FetchLike, timeoutMs = 10_000): Promise<boolean> {
+async function bridgeHealthy(fetchImplementation: FetchLike, timeoutMs = 30_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {

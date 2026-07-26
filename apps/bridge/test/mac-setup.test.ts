@@ -67,7 +67,7 @@ describe("macOS one-command setup", () => {
         return commandResult("Serve started");
       }
       if (executable === test.codex && arguments_[2] === "version") {
-        return commandResult(JSON.stringify({ status: "running", appServerVersion: "test" }));
+        return commandResult(JSON.stringify({ status: "running", cliVersion: "test", managedCodexVersion: "test", appServerVersion: "test" }));
       }
       if (executable === test.codex) return commandResult();
       if (executable === "/bin/launchctl" && arguments_[0] === "bootout") {
@@ -158,7 +158,7 @@ describe("macOS one-command setup", () => {
         return commandResult();
       }
       if (executable === test.codex && arguments_[2] === "version") {
-        return commandResult(JSON.stringify({ status: "running", appServerVersion: "test" }));
+        return commandResult(JSON.stringify({ status: "running", cliVersion: "test", managedCodexVersion: "test", appServerVersion: "test" }));
       }
       if (executable === test.codex) return commandResult();
       if (executable === "/bin/launchctl" && arguments_[0] === "bootout") {
@@ -218,7 +218,7 @@ describe("macOS one-command setup", () => {
         return commandResult();
       }
       if (executable === test.codex && arguments_[2] === "version") {
-        return commandResult(JSON.stringify({ status: "running", appServerVersion: "test" }));
+        return commandResult(JSON.stringify({ status: "running", cliVersion: "test", managedCodexVersion: "test", appServerVersion: "test" }));
       }
       if (executable === test.codex) return commandResult();
       if (executable === "/bin/launchctl" && arguments_[0] === "bootout") return commandResult();
@@ -239,6 +239,51 @@ describe("macOS one-command setup", () => {
 
     expect(result.legacyAppServerLaunchAgentRemoved).toBe(true);
     await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("refuses a managed daemon whose Codex version differs from Desktop before changing launchd", async () => {
+    const test = await fixture();
+    let serveReady = false;
+    const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
+      if (executable === test.tailscale && arguments_[0] === "status") {
+        return commandResult(JSON.stringify({ BackendState: "Running", Self: { Online: true, DNSName: "mac.example.ts.net." } }));
+      }
+      if (executable === test.tailscale && arguments_[0] === "funnel") return commandResult("{}");
+      if (executable === test.tailscale && arguments_[0] === "serve" && arguments_[1] === "status") {
+        return commandResult(serveReady ? readyServeStatus() : "null");
+      }
+      if (executable === test.tailscale && arguments_[0] === "serve") {
+        serveReady = true;
+        return commandResult();
+      }
+      if (executable === test.codex && arguments_[2] === "version") {
+        return commandResult(JSON.stringify({
+          status: "running",
+          cliVersion: "0.146.0-alpha.3.1",
+          managedCodexVersion: "0.145.0",
+          appServerVersion: "0.145.0",
+        }));
+      }
+      if (executable === test.codex) return commandResult();
+      if (executable === "/bin/launchctl" && arguments_[0] === "bootout") return commandResult("", 1);
+      if (executable === "/bin/launchctl") return commandResult();
+      return commandResult("", 1, "unexpected command");
+    });
+
+    await expect(setupMac({
+      platform: "darwin",
+      homeDirectory: test.home,
+      repositoryRoot: test.repository,
+      nodeExecutable: "/usr/local/bin/node",
+      environment: { PATH: test.bin, CODEX_PAD_CODEX_BINARY: test.codex },
+      uid: 501,
+      runCommand,
+      fetch: async () => Response.json({ ok: true, data: { version: "0.1.0" } }),
+    })).rejects.toThrow("Managed app-server version mismatch");
+
+    expect(runCommand.mock.calls.some(([executable, arguments_]) => (
+      executable === "/bin/launchctl" && arguments_[0] === "setenv"
+    ))).toBe(false);
   });
 
   it("refuses an existing HTTPS route without changing launchd or writing a pairing secret", async () => {
@@ -342,7 +387,7 @@ describe("macOS one-command setup", () => {
         return commandResult();
       }
       if (executable === test.codex && arguments_[2] === "version") {
-        return commandResult(JSON.stringify({ status: "running", appServerVersion: "test" }));
+        return commandResult(JSON.stringify({ status: "running", cliVersion: "test", managedCodexVersion: "test", appServerVersion: "test" }));
       }
       if (executable === test.codex) return commandResult();
       if (executable === "/bin/launchctl" && arguments_[0] === "bootout") return commandResult("", 1);

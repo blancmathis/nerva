@@ -35,7 +35,7 @@ Current pre-alpha result: a clean clone of `383f5c4` passed `npm ci`, Chromium/W
 
 Infinite-board and coherence-package candidate at local commit `c980fe3`: a separate clean clone passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 926 unit tests plus 11/11 probe-safety tests, build, a 387.70 KiB largest chunk, 287 E2E passes with 13 explicit profile skips, screenshots, the 438-file release audit, Context Room doctor and zero production vulnerabilities. Protocol coverage includes ordered 1/2/6/12-image exports. This is local clean-clone evidence, not hosted CI or physical-device proof. The physical items below remain unchecked.
 
-Runtime result on 26 July 2026: **blocked/degraded**. Nerva doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session —, no managed control socket and no Desktop ownership attestation. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
+Runtime result on 26 July 2026: **blocked/degraded**. Nerva doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`; Nerva therefore forbids the Desktop restart. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
 
 ## A. Mac setup and pairing
 

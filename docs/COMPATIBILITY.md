@@ -21,7 +21,7 @@ It is a compatibility record for the current implementation, not the future prod
 | Native live slot values | CDP remains reachable on loopback, but the adapter is degraded under the installed renderer shape | Current doctor warning; commands fail closed |
 | Native composer image attachment | Historical diagnostic proof exists against `26.715.61943` | Not re-proven against the installed `26.721.41059`; physical iPad tap still pending |
 | App-server writers | Three independent stdio app-server writers observed: Codex Desktop, external Remodex service and the active tooling session | Current doctor red; process ownership was resolved from parent chains, but no external process was stopped |
-| Managed control socket | `~/.codex/app-server-control/app-server-control.sock` is absent | Current doctor red |
+| Managed control socket | Private and responsive, but managed Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1` | Current doctor red; Desktop must not be restarted onto the skewed daemon |
 | Desktop ownership attestation | No current reciprocal-peer ownership attestation | Current doctor red; app-server mutations remain disabled |
 | App-server initialize/resume/image turn | Historical disposable-thread proof only | Not current live Desktop proof |
 | Live same-Desktop app-server image routing | No safe current shared-daemon topology | Not proven for Review; Drawing/Photo uses the separate native composer path when that exact capability is live |
