@@ -2,7 +2,7 @@
 
 > **Current implementation:** Nerva provides a read-only `npm run setup:check` preflight and one explicit `npm run setup:mac` installer. The base installation is independent from the version-sensitive native Codex integration: it creates private Nerva state, configures only an available exact Tailscale Serve route, installs the bridge LaunchAgent, waits for `/api/health`, and only then creates the pairing invitation. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
 
-> **Current compatibility warning (26 July 2026):** on Codex Desktop `26.721.41059` build `5848`, doctor observes three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`. The schema cache is current, Tailscale/bridge checks are green and pairing may still work, but app-server-backed mutations remain degraded. Do not restart Desktop onto this version-skewed daemon or kill writers blindly; update the official standalone CLI to a matching release when available, bootstrap again, then rerun doctor.
+> **Current compatibility result (26 July 2026):** Desktop `0.146.0-alpha.3.1` and managed app-server `0.145.0` differ, but exact binary/schema fingerprints plus live read-only `initialize`, `thread/list` and `model/list` probes are compatible. Doctor reports **Ready with limitations** because exact-socket Desktop ownership and the native Micro adapter are not attested. Three unrelated stdio writers remain visible diagnostics; do not stop them merely to improve the report.
 
 The preflight produces three operator-facing outcomes:
 
@@ -10,7 +10,7 @@ The preflight produces three operator-facing outcomes:
 - **Ready with limited Codex controls:** the bridge, private route and pairing can be installed, but app-server-backed controls remain unavailable. Setup does not bootstrap a daemon, stop a writer, set a Desktop environment flag, create an ownership attestation or restart Desktop.
 - **Blocked:** a base prerequisite or safety boundary prevents installation, such as unsupported macOS/Node, missing Desktop or Tailscale, active or ambiguous Funnel, a conflicting HTTPS route, an unsafe path, or a bridge that cannot become healthy.
 
-The legacy `npm run setup` command remains inspection and Nerva-owned local-state setup. When and only when `setup:check` is **Ready**, `npm run setup:mac` may run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary and set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain. It never quits or relaunches Codex Desktop, uses Funnel, resets unrelated Serve routes, kills an unknown writer, or binds the bridge outside loopback. `npm run doctor` remains strict and exits nonzero while the native integration is degraded.
+The legacy `npm run setup` command remains inspection and Nerva-owned local-state setup. When and only when `setup:check` is **Ready**, `npm run setup:mac` may configure the managed daemon and GUI opt-in; it skips bootstrap when the existing daemon is already running and compatible. It never quits or relaunches Desktop, uses Funnel, resets unrelated Serve routes or kills an unknown writer. Default doctor exits zero for Ready and Ready with limitations; `npm run doctor -- --strict-native` is the maintainer/release gate.
 
 ## Fast path from a clone
 
@@ -24,9 +24,9 @@ npm run setup:check
 npm run setup:mac
 ```
 
-OpenAI's installer is the supported install/update path for the standalone package required by `app-server daemon`. Run it even when `~/.codex/packages/standalone/current/codex` exists if its version does not match the CLI bundled with Codex Desktop. File presence alone is not compatibility proof.
+OpenAI's installer is the supported install/update path for the standalone package required by `app-server daemon`. A version-string mismatch alone is neither compatibility nor incompatibility proof; Nerva fingerprints both binaries, validates both generated schemas and probes the private daemon read-only after every change.
 
-The bootstrap script performs `npm ci` when the lockfile has not yet been installed, builds the workspace, reruns the read-only preflight, and attempts to refresh the installed-version schema cache. A schema-generation failure is reported but cannot prevent the independent bridge/pairing installation. The script then installs `~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, establishes only the exact private route, verifies local bridge health, and prints the QR. Native daemon configuration is attempted only for a **Ready** preflight. If that later native step fails, setup finishes safely as **Ready with limited Codex controls** instead of discarding the working bridge and pairing path.
+The bootstrap script performs `npm ci` when needed, builds the workspace, reruns the read-only preflight, and refreshes schema caches for both exact Codex binaries. A schema-generation failure cannot prevent the independent bridge/pairing installation, but the affected capability remains unavailable. The script then installs `~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, establishes only the exact private route, verifies local bridge health, and prints the QR. Native daemon configuration is attempted only for a **Ready** preflight. If that later native step fails, setup finishes safely as **Ready with limited Codex controls** instead of discarding the working bridge and pairing path.
 
 In a Ready native topology, setup removes the obsolete Nerva raw-listener LaunchAgent only when its exact old generated shape is recognized. It never removes an unknown service. The command waits for the iPad in the same terminal. Pressing `Ctrl-C` stops only the wait; the launchd bridge remains running.
 
@@ -70,7 +70,7 @@ npm run setup:mac
 npm run doctor
 ```
 
-The npm scripts build the workspace packages imported by the CLI; a clean clone does not need committed or pre-existing `dist` output. `setup:check` is fully read-only and supports `--json`. `setup:mac` runs dependency installation when the lockfile changed, generates installed-version schemas in Nerva-owned state, installs the bridge, and produces a pairing invitation only after health succeeds. Doctor performs the strict process/network compatibility inspection and prints safe corrective actions. A successful Nerva installation and pairing may coexist with a nonzero doctor result.
+The npm scripts build the workspace packages imported by the CLI; a clean clone does not need committed or pre-existing `dist` output. `setup:check` is fully read-only and supports `--json`. `setup:mac` generates installed-version schemas in Nerva-owned state, installs the bridge, and produces a pairing invitation only after health succeeds. Doctor reports `ready`, `limited` or `blocked`, plus exact versions, `userAgent`, probe result and per-capability states. Default doctor exits zero for `ready` and `limited`; `--strict-native` requires `ready`.
 
 Read the full setup/doctor result before continuing. A useful report distinguishes:
 
@@ -120,7 +120,7 @@ This changes the environment inherited by subsequently launched GUI applications
 launchctl unsetenv CODEX_APP_SERVER_USE_LOCAL_DAEMON
 ```
 
-Quit and relaunch Codex Desktop only after saving composer text and waiting for active turns. Run doctor again. Full shared ownership is an optional stronger topology: doctor must positively observe one private socket identity, one current kernel listener generation, one owning daemon, one Desktop process/version, and one exact reciprocal Desktop-owned peer accepted by that listener before task creation or any mutation without a pre-existing exact native target can be enabled. Only when doctor offers the command, create the private attestation explicitly:
+Quit and relaunch Codex Desktop only after saving composer text and waiting for active turns. Run doctor again. Full shared ownership is an optional stronger topology: doctor must positively observe one private socket identity, one current kernel listener generation, one owning daemon, one Desktop process/version, and one exact reciprocal Desktop-owned peer accepted by that listener before any app-server mutation can be enabled. Only when doctor offers the command, create the private attestation explicitly:
 
 ```bash
 npm run setup -- --attest-desktop-ownership
@@ -130,7 +130,7 @@ The record is bound to the socket device/inode, kernel listener address/inode/ge
 
 An unlinked socket A cannot be composed with replacement socket B; either split generation, any restart, PID reuse, version change, third peer, unsafe file mode, or topology mismatch closes the delegate and returns mutations to unavailable. This closes cooperative bridge/provider races but is not an OS sandbox against a hostile or uncooperative same-UID process. There is no environment-variable override. Do not create or edit the attestation by hand.
 
-Without that optional full-ownership attestation, Nerva may still perform only operations that already have an exact selected native target. For each such app-server write it issues a one-shot authority after a final slot/thread revalidation and consumes it synchronously at the WebSocket sink. Session listing/read, cwd-scoped skills, model catalog, exact Drawing/Review send and exact model/effort update can therefore work while public health remains `degraded` with `desktopOwnershipVerified=false`. Native Micro controls use their separately revalidated HID path. New-task creation and any command without a pre-existing exact target remain disabled.
+Without that full-ownership attestation, Nerva permits compatible app-server reads such as session, model, skill and usage catalogs, but no app-server mutation. An exact selected native target does not override missing ownership. Drawing remains locally editable; any delivery path keeps its own exact composer and ownership gates. Native Micro controls use their separately revalidated HID path.
 
 ## 4. Launch Codex with loopback CDP
 
@@ -150,13 +150,13 @@ CDP is not exposed by the Nerva HTTP or WebSocket API. The browser can send only
 
 ## 5. Installed-version protocol generation
 
-With `--generate-schemas`, setup asks the Desktop-bundled binary to generate its experimental JSON Schema into an application-owned versioned cache:
+`setup:mac` generates experimental JSON Schemas for both the Desktop-bundled and managed-daemon binaries. The manual command below refreshes the Desktop side only:
 
 ```bash
 npm run setup -- --generate-schemas
 ```
 
-The cache is beneath `~/Library/Application Support/CodexPad/cache/app-server-schemas/<bundled-version>/`. Setup hashes the generated files and records `manifest.json` beside them. Do not copy this cache into committed source directories. OpenAI-generated protocol artifacts are version-matched input for compatibility validation, not project source.
+The caches are beneath `~/Library/Application Support/CodexPad/cache/app-server-schemas/<exact-version>--<binary-fingerprint>/`. This keeps Desktop and daemon schemas separate even when their version strings are identical. Setup hashes the exact binary and every generated file, then records both in `manifest.json`. Doctor validates representative Nerva requests with Ajv against both sets, then performs only read-only live calls. Do not copy these generated artifacts into committed source directories.
 
 ### Optional bounded multi-image attestation
 

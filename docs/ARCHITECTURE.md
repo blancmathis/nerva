@@ -314,28 +314,28 @@ The snapshot exposes at most the selected thread's bounded `pendingApprovals[]`.
 
 Immediately before the response, the bridge revalidates Desktop ownership, selected native thread, sequence authority, and the still-pending request object. A resolved request or any changed tuple, kind, actionable state, ownership, or target fails closed. Generic `APPR`/`REJ` HID mappings, label matching, and selected-window guesses are not approval mechanisms.
 
-## App-server version matching
+## App-server capability attestation
 
-The bundled Codex binary inside the installed Desktop app is authoritative for protocol compatibility. Setup and doctor prefer:
+The bundled Codex binary inside the installed Desktop app and the exact managed-daemon binary are both compatibility inputs. Setup and doctor locate and fingerprint each one; a matching version string grants nothing by itself. The Desktop binary normally lives at:
 
 ```text
 /Applications/ChatGPT.app/Contents/Resources/codex
 ```
 
-Where practical, installed-version protocol schemas are generated into an application-owned cache or temporary validation directory. The current setup path uses the bundled binary's JSON Schema generator, hashes its output, and records a versioned manifest. Generated OpenAI protocol source is not committed. The repository retains only its narrow, stable public projection and compatibility tests.
+Setup generates each binary's protocol schemas into a private version-and-binary-fingerprinted cache entry, hashes the output, and records the exact binary hash in the manifest. Doctor validates representative Nerva payloads against both schema sets with Ajv, then performs read-only live structural calls. The private result is reusable only for the same two binary hashes, two schema hashes and server `userAgent`; any update invalidates it. Generated OpenAI protocol source is not committed. The repository retains only its narrow public projection and compatibility tests.
 
 The optional multi-image capability has a deliberately separate private lifecycle:
 
 1. An operator explicitly runs the standalone probe with disposable-thread acknowledgement, the exact installed Codex version and schema hash, and `--write-attestation`. Normal startup never invokes it. The probe validates those inputs and resolves the executable before it may invalidate existing evidence.
 2. The only target is the operating-system account home's `~/Library/Application Support/CodexPad/security/image-input-capability.json`; no environment variable can redirect it. Existing evidence is removed only when its full parent chain and bounded strict private-file shape are safe. Unsafe or unknown content fails closed before app-server launch.
 3. Only a complete one-image plus ordered 12-image `turn/start` result followed by confirmed disposable-thread deletion produces the record. Its fixed shape includes `codexBinaryPath`; it contains no prompt, image, thread ID, credential, or local schema path. Publication refuses parent symlinks and existing targets.
-4. On every normal start/serve, the CLI locates Desktop, scans the installed-version schema cache, strictly parses each manifest, and recomputes the SHA-256 and ordered file list from all non-manifest files. It accepts only the manifest whose binary path and version exactly match the located installation.
+4. On every normal start/serve, the CLI locates Desktop, scans the installed-version schema cache, strictly parses each manifest, and recomputes the SHA-256 and ordered file list from all non-manifest files. It accepts only a manifest whose binary path, version and exact binary fingerprint match the located installation.
 5. The loader then requires the private record's `codexBinaryPath`, version, and schema hash to match that recomputed cache. Invalid, insecure, missing, tampered, or stale evidence projects no capability; absence is the ordinary one-image state.
 6. The managed transport finally matches the attested app-server user agent after connection. A match raises only the Review image-count bound from 1 to 12.
 
 This attestation is not mutation authority. It does not prove that Desktop owns or shares the app-server writer, does not select a thread, and does not prove `turn/steer`. Desktop ownership, exact-target authority, current thread state, and idempotency remain independent gates at the write sink.
 
-The managed daemon/control-socket route is experimental. The daemon's Unix listener speaks WebSocket, so the local bridge performs that handshake directly; it does not send raw JSONL to the socket and does not use the SSH-oriented `app-server proxy` byte relay. Its one-shot ownership-generation token is synchronously asserted inside the app-server client at the final WebSocket message write, closing the cooperative bridge/provider time-of-check/time-of-use window. This is fail-closed best-effort topology proof, not an OS isolation guarantee against a hostile or uncooperative same-UID local process. A standalone app-server is suitable for disposable tests, but not as a second live writer against a thread already owned by Desktop.
+The managed daemon/control-socket route is experimental. The daemon's Unix listener speaks WebSocket, so the local bridge performs that handshake directly; it does not send raw JSONL to the socket and does not use the SSH-oriented `app-server proxy` byte relay. Read-only compatibility never becomes mutation authority. Every app-server write requires current Desktop ownership on the exact socket generation; an exact native target alone is insufficient. The one-shot ownership-generation token is synchronously asserted inside the app-server client at the final WebSocket message write, closing the cooperative bridge/provider time-of-check/time-of-use window. This is fail-closed best-effort topology proof, not an OS isolation guarantee against a hostile or uncooperative same-UID local process.
 
 ## Degraded modes
 
@@ -377,6 +377,6 @@ The current Nerva Codex adapter does not implement a source editor, terminal, sh
 
 Architecture defines boundaries; it is not the owner of dated validation counts or installed-version evidence. The canonical same-day record is [`product/CURRENT_STATE.md`](product/CURRENT_STATE.md), and the required real-device matrix is [`MANUAL_TEST_CHECKLIST.md`](MANUAL_TEST_CHECKLIST.md).
 
-At this architecture level, the release rule is stable: browser automation may prove bounded source/UI contracts, while native Codex authority requires an exact-version live topology and Pencil/iPad behavior requires physical hardware evidence. A safe degraded setup may install the private bridge and pairing surface without configuring Codex. It must leave app-server-backed controls unavailable, keep doctor nonzero, and avoid daemon/writer/Desktop mutations until the stronger topology is proven.
+At this architecture level, the release rule is stable: browser automation may prove bounded source/UI contracts, while native Codex authority requires a capability-compatible, exact-socket attested topology and Pencil/iPad behavior requires physical hardware evidence. A safe limited setup may install the private bridge and pairing surface without configuring Codex. Default doctor may return success for that usable limited state, while `--strict-native` remains nonzero and every unattested app-server mutation stays unavailable.
 
 The repository remains public **pre-alpha**. No stable `v0.1.0` tag is valid until strict doctor and the physical checklist are both green.

@@ -31,13 +31,13 @@ Evidence: public baseline checkout and GitHub Actions run 30204589636
 
 Public pre-alpha baseline `0a95911`: 927 unit tests plus 11/11 probe-safety tests, build, a 387.70 kB largest JavaScript chunk, 293 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 438 files release audit, Context Room doctor and dependency audits. GitHub Actions run `30204589636` passed the required Node.js 22 check. Physical iPad/Pencil checks remain deliberately unchecked.
 
-Runtime result on 26 July 2026: `npm run setup:check` reports **Ready with limited Codex controls**, while strict doctor remains **red/degraded**. Nerva observes three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`. Base bridge installation and pairing are allowed; daemon/bootstrap/writer/Desktop mutations are not. Multi-image input is not verified. No physical item below is checked by browser automation.
+Runtime result on 26 July 2026: default doctor and `setup:check` report **Ready with limitations** and return success. Nerva observes Desktop `0.146.0-alpha.3.1`, daemon/app-server `0.145.0`, and three unrelated stdio writers. The two exact schema sets plus live `initialize`, `thread/list` and `model/list` responses are compatible, but Desktop ownership on the private socket and the native Micro adapter remain unverified. Compatible reads and pairing remain available; every app-server mutation remains unavailable. `npm run doctor -- --strict-native` is nonzero. Multi-image input and physical behavior are not verified.
 
 ## A. Mac setup and pairing
 
 - [ ] From a clean supported clone, with Tailscale already signed in, run OpenAI's official Codex installer as the install/update path, then `npm run setup:check` and `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
 - [ ] `npm run setup:check -- --json` is read-only and returns Ready, Ready with limited Codex controls, or Blocked with exact observed versions and safe remediation.
-- [ ] `setup:mac` generates a schema cache for the currently installed Desktop-bundled Codex before installing the bridge; Settings → System Diagnostics reports it as `Current` rather than silently relying on an older version.
+- [ ] `setup:mac` generates separate fingerprinted schema caches for the currently installed Desktop and daemon binaries before installing the bridge; Settings → System Diagnostics reports the exact compatible capabilities rather than silently relying on an older version.
 - [ ] In Ready state, the command uses the Desktop-bundled Codex daemon manager and changes only its managed daemon state plus Nerva-owned private state, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Serve route.
 - [ ] In Ready with limited Codex controls, setup installs the bridge and pairing but does not bootstrap the daemon, remove or stop a writer, set the Desktop environment flag, create an attestation or restart Desktop. App-server-backed controls visibly remain unavailable and no command reaches an unattested writer.
 - [ ] The bridge remains on `127.0.0.1:8787`; CDP and app-server sockets are not exposed to LAN/tailnet interfaces.
@@ -268,11 +268,11 @@ Choose one and explain the limiting evidence:
 - [ ] **Target product hardware-validated** — current checks and every target-only composer/Site requirement passed for the recorded matrix.
 - [ ] **Current implementation hardware-validated** — all implemented current checks passed; target-only capabilities remain explicitly unavailable.
 - [ ] **Local automated only** — code/browser gates passed but the live Desktop/Tailscale/iPad/Pencil matrix is incomplete.
-- [ ] **Blocked/degraded** — an exact compatibility or security invariant failed.
+- [ ] **Blocked** — an exact installation or security invariant failed.
 
 ```text
 Verdict notes (26 July 2026):
-Blocked/degraded. Automated checkout and clean-clone gates are green, but doctor is red
-for the native app-server topology and the physical Mac/iPad/Pencil matrix is
-incomplete. Do not create v0.1.0.
+Local automated only. Default doctor is Ready with limitations, while strict-native
+remains nonzero because exact-socket Desktop ownership and Micro are unverified.
+The physical Mac/iPad/Pencil matrix is incomplete. Do not create v0.1.0.
 ```

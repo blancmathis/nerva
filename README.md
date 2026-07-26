@@ -109,13 +109,13 @@ npm run setup:check
 npm run setup:mac
 ```
 
-Use OpenAI's installer both for a first Codex installation and to update an existing standalone package; merely having the file is not enough when its version differs from Codex Desktop. `setup:check` is read-only and reports one of three outcomes:
+Use OpenAI's installer for the initial Codex installation and normal updates. Nerva does not require the Desktop and managed-daemon version strings to be identical: `setup:check` probes the private daemon and validates the exact generated schemas instead. It reports one of three outcomes:
 
 - **Ready:** Nerva can install and the native Codex topology is compatible enough to configure.
-- **Ready with limited Codex controls:** Nerva can install, pair and provide its local/offline surfaces, but app-server-backed controls remain unavailable and no Codex daemon, writer or Desktop process is changed.
+- **Ready with limited Codex controls:** Nerva can install and pair; only the individually listed controls remain unavailable. No unknown writer or Desktop process is changed.
 - **Blocked:** a base prerequisite or private-network safety check must be fixed before installation.
 
-`setup:mac` installs dependencies when needed, builds Nerva, configures only the exact private Tailscale Serve route, installs the loopback bridge service, waits for bridge health and only then prints the pairing QR. A limited native result does not prevent pairing.
+`setup:mac` installs dependencies when needed, builds Nerva, configures only the exact private Tailscale Serve route, installs the loopback bridge service, waits for bridge health and only then prints the pairing QR. A limited native result does not prevent pairing. `npm run doctor` returns success for both Ready states; maintainers and release automation can require every principal native capability with `npm run doctor -- --strict-native`.
 
 ### iPad
 
@@ -141,7 +141,7 @@ Nerva deliberately distinguishes three kinds of proof:
 - **Live runtime:** the exact Codex Desktop, app-server and writer topology currently installed on the Mac.
 - **Physical:** pairing, Apple Pencil, palm rejection, camera, suspension, notifications and exact Mac/iPad behavior on real hardware.
 
-The code and clean-clone browser gates are green. The maintainer's current Codex installation reports a degraded native-control topology because the managed daemon and bundled Desktop versions differ and multiple app-server writers coexist. Nerva refuses those unsafe mutations rather than presenting a capability it cannot prove. Physical Apple Pencil and long-suspension evidence also remain incomplete.
+The code and clean-clone browser gates are green. On the maintainer's current Mac, different Desktop and daemon versions pass exact-schema validation for Nerva's supported capabilities and live read-only probes for initialization, sessions, and models. Doctor remains **Ready with limitations** because Desktop ownership on the exact managed socket and the current native Micro adapter are not attested. Independent stdio writers remain visible diagnostics but do not block an unrelated private socket. Physical Apple Pencil and long-suspension evidence also remain incomplete.
 
 The dated results, exact versions and remaining checklist live in [Current implementation state](docs/product/CURRENT_STATE.md). A stable `v0.1.0` must not be inferred from this pre-alpha repository.
 

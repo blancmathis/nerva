@@ -14,11 +14,11 @@ This page describes the reliability features that are implemented now. It does n
 
 ## Current runtime verdict
 
-As observed on 26 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`; Nerva refuses a version-skewed Desktop restart. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
+As observed on 26 July 2026, the bridge and private managed socket are reachable. Desktop `0.146.0-alpha.3.1` and daemon/app-server `0.145.0` differ, but their exact generated schemas accept Nerva's representative payloads and the live daemon returns structurally valid `thread/list` and `model/list` responses. Doctor therefore reports **Ready with limitations**, not a global failure. Desktop ownership on that exact socket and the native Micro adapter remain unverified, so their mutations stay disabled. Three unrelated stdio writers remain visible diagnostics only.
 
 This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
 
-`npm run setup:check` now reports this topology as **Ready with limited Codex controls**, not as a base-installation blocker. `npm run setup:mac` may install the loopback bridge, exact private Serve route and pairing in that state, but it leaves the daemon, writers, Desktop environment and ownership records untouched. The pairing invitation is created only after the installed bridge answers `/api/health`. `npm run doctor` deliberately remains red and nonzero.
+`npm run setup:check` and default doctor both return success for this limited state. `npm run doctor -- --strict-native` remains nonzero until the principal native capabilities are all attested. The pairing invitation is created only after the installed bridge answers `/api/health`.
 
 ## System Diagnostics
 
@@ -40,7 +40,7 @@ The center is diagnostic, not an override. It cannot enable a missing server cap
 
 ## Installed-version schema compatibility
 
-`npm run setup:mac` builds the checkout and asks the installed Desktop-bundled Codex binary to generate its experimental JSON Schemas into the private versioned Nerva/CodexPad cache before installing the bridge. Schema generation is version-sensitive: failure keeps native controls limited but no longer prevents the independent bridge and pairing installation. Startup validates the cache manifest and reports one of:
+`npm run setup:mac` asks both the Desktop-bundled and managed-daemon Codex binaries to generate experimental JSON Schemas into private version-and-binary-fingerprinted cache entries. Doctor recomputes every manifest hash/file list, validates representative request payloads, then performs read-only live structural calls. A compatibility record is reusable only for the same two binary hashes, schema hashes and `userAgent`; any update triggers a new probe. Schema failure limits the affected controls but does not prevent the independent bridge and pairing installation. Startup reports one of:
 
 - `current`: cache matches the installed binary and version;
 - `missing`: no valid cache exists yet;

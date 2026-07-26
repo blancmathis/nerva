@@ -9,7 +9,7 @@ npm run setup:check
 npm run doctor
 ```
 
-`setup:check` answers whether the Nerva base installation is Ready, Ready with limited Codex controls, or Blocked. Doctor is intentionally stricter: it remains nonzero until the full native topology is safe. A limited setup result can still support the bridge, pairing, offline/local surfaces, and any separately proven native capability.
+`setup:check` and default doctor both answer whether Nerva is Ready, Ready with limitations, or Blocked. Default doctor returns success for either usable Ready state. Maintainers can require every principal native capability with `npm run doctor -- --strict-native`; that stricter command remains nonzero for a limited topology.
 
 Then open **Settings → System Diagnostics**. Record the exact layer state, last proof, bridge/Codex/protocol versions and schema status. `Copy summary` is designed to be shareable: it omits prompts, outputs, titles, local paths, credentials and complete thread identifiers. A green browser notification row does not make a red native-control or Site row usable.
 
@@ -83,7 +83,7 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
-On the 26 July 2026 reference machine, this is the active compatibility blocker: Codex Desktop `26.721.41059` coexists with three independent stdio writers owned by Codex Desktop, external Remodex and the active tooling session; ownership cannot be attested. The managed socket answers, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`. The matching schema cache does not repair or override that topology. Nerva correctly reports `degraded`; restarting Desktop onto the skewed daemon, hand-written attestations or killing unknown writers are not accepted workarounds.
+On the 26 July 2026 reference machine, the socket is present and the different Desktop `0.146.0-alpha.3.1` / daemon `0.145.0` versions pass Nerva's schema and live read-only compatibility probe. Doctor reports **Ready with limitations** because Desktop ownership on that exact socket is not attested. Three independent stdio writers are listed for diagnosis but do not block an unrelated socket. Hand-written attestations and killing unknown writers are not accepted workarounds.
 
 Expected path:
 
@@ -98,7 +98,7 @@ Check with the Desktop-bundled binary:
 ls -l "$HOME/.codex/app-server-control/app-server-control.sock"
 ```
 
-Run OpenAI's official installer to install or update the standalone package, then run `npm run setup:check`. `npm run setup:mac` invokes `app-server daemon bootstrap --remote-control` only when that preflight is Ready. With a version mismatch, competing writers, missing ownership, or another degraded native condition, it installs the Nerva bridge and pairing path but leaves the daemon, writers, Desktop environment, and attestation untouched. An npm-global CLI alone is not the managed package. A missing or incompatible socket disables app-server-backed Skills, Model + Reasoning and Review delivery. It does not by itself disable Drawing/Photo attachment or native Fast/Dictation when their separate exact renderer bindings remain live. The socket speaks WebSocket over Unix domain sockets: raw JSONL, a raw `app-server --listen` replacement, or treating `app-server proxy` as a JSONL endpoint will hang or produce invalid-token handshakes.
+Run OpenAI's official installer for normal updates, then run `npm run setup:check`. A version mismatch is informational when the fingerprinted schema/live probe passes. `setup:mac` skips bootstrap for an already running compatible daemon and never kills a writer. A missing or incompatible socket disables only the affected app-server capabilities; Drawing/Photo and native controls retain their separate gates. The socket speaks WebSocket over Unix domain sockets: raw JSONL, a raw `app-server --listen` replacement, or treating `app-server proxy` as a JSONL endpoint will fail.
 
 Do not use `~/.codex/ipc/ipc.sock` as an app-server control socket. It is a different Desktop IPC transport.
 
@@ -110,9 +110,9 @@ Run `npm run doctor` and resolve the managed control-socket or competing-writer 
 
 ## Desktop ownership attestation is missing or stale
 
-A private socket answering is not mutation authority. Run `npm run doctor`. If doctor has positive current co-presence evidence, including an exact reciprocal Desktop peer accepted after the current kernel listener generation, it prints the explicit `npm run setup -- --attest-desktop-ownership` next action. If it does not print that action, first resolve the socket owner, Desktop process, Desktop-owned peer, replaced-socket generation, or independent-writer ambiguity; never hand-write the attestation.
+A private socket answering is not mutation authority. Run `npm run doctor`. If doctor has positive current co-presence evidence, including the signed/notarized OpenAI Desktop app and an exact reciprocal Desktop peer on the current listener generation, it prints the explicit `npm run setup -- --attest-desktop-ownership` next action. If it does not, resolve the socket owner, Desktop process/peer or replaced generation; unrelated stdio writers alone are not the deciding factor. Never hand-write the attestation.
 
-The attestation becomes stale after any bound socket, listener generation, peer, or process identity changes. Runtime also rejects a third peer and closes a delegate that remains connected to unlinked socket A after the pathname is replaced by socket B. Save active work, restore one unambiguous shared topology, rerun doctor, and explicitly attest again. Public bridge health reports only a sanitized state/reason; the private attestation itself is owner-only local state and must not be copied into bug reports.
+The attestation becomes stale after any bound socket, listener generation, peer, process or binary identity changes. Runtime rejects a third socket peer. A previously valid record can renew automatically after an update only when the OpenAI bundle ID, Team ID, Developer ID, notarized assessment and allowed paths are unchanged, the protocol probe passes, and two immediate topology observations match. Missing, unsafe or invalid records require explicit setup and are never auto-created.
 
 ## Another app-server process is running
 
@@ -122,7 +122,7 @@ List candidate writers:
 pgrep -lf 'codex.*app-server'
 ```
 
-Determine which application or service owns each process before making a change. Do not kill an unfamiliar process, start another writer, or attach a standalone test server to a live thread. If ownership cannot be established, sending remains disabled.
+Determine which application or service owns each process before making a change. Do not kill an unfamiliar process or attach a test server to a live thread. An independent stdio writer is diagnostic only; a third peer on Nerva's exact managed socket is the authority-blocking condition.
 
 ## A private state-file lock timed out
 
@@ -134,12 +134,12 @@ As a last resort only for a malformed or insecure object that cannot be recovere
 
 ## Desktop and bridge disagree after an update
 
-1. Stop the Nerva bridge.
-2. Save all Desktop work and allow active turns to finish.
-3. Record the Desktop and bundled Codex versions.
-4. Restart Desktop once through the documented CDP path.
-5. Restart the bridge.
-6. Run `npm run doctor` and the fake-server test suite.
+1. Record the Desktop, daemon and `userAgent` values from `npm run doctor -- --json`.
+2. Run `npm run setup:check`; the updated fingerprints automatically invalidate an older compatibility cache.
+3. Run `npm run setup:mac` to refresh both private schema caches and the bridge without restarting Desktop.
+4. Run `npm run doctor`; inspect only the capabilities now marked unavailable.
+5. Use `npm run doctor -- --strict-native` for the full maintainer gate.
+6. Restart Desktop only when a separate documented CDP/daemon step truly requires it, after saving active work.
 7. Run the opt-in isolated integration test only if creating a disposable thread is acceptable.
 
 Avoid automatic restart loops. A single failed recovery should become a clear degraded state with bounded backoff.
