@@ -147,6 +147,7 @@ export interface CliDependencies {
   readonly doctor?: (dependencies?: DoctorDependencies) => ReturnType<typeof doctorCodexPad>;
   readonly setup?: (dependencies?: SetupDependencies) => ReturnType<typeof setupCodexPad>;
   readonly locateDesktop?: typeof locateDesktopInstallation;
+  readonly runCommand?: typeof runCommand;
   readonly inspectMultiImageInputCapability?: (
     identity: { readonly codexBinaryPath: string; readonly codexVersion: string },
   ) => Promise<InstalledImageInputCapabilityInspection>;
@@ -608,6 +609,7 @@ export async function runCli(
     }
 
     if (command === "setup") {
+      const commandRunner = dependencies.runCommand ?? runCommand;
       const generateSchemas = hasFlag(rest, "--generate-schemas");
       const attestDesktopOwnership = hasFlag(rest, "--attest-desktop-ownership");
       const pairOriginRaw = flagValue(rest, "--pair-origin");
@@ -626,7 +628,7 @@ export async function runCli(
           enabled: true,
           binaryPath: desktop.binaryPath,
           binaryVersion: desktop.binaryVersion,
-          run: (executable, schemaArguments) => runCommand(executable, schemaArguments, 30_000),
+          run: (executable, schemaArguments) => commandRunner(executable, schemaArguments, 30_000),
         };
       }
       let desktopOwnership: SetupDependencies["desktopOwnership"];
@@ -648,7 +650,7 @@ export async function runCli(
           "current",
           "codex",
         );
-        const daemonVersionResult = await runCommand(daemonBinaryPath, ["--version"], 5_000);
+        const daemonVersionResult = await commandRunner(daemonBinaryPath, ["--version"], 5_000);
         if (daemonVersionResult.exitCode !== 0 || !daemonVersionResult.stdout.trim()) {
           throw new Error("Cannot attest Desktop ownership: the managed daemon binary/version is unavailable.");
         }
@@ -663,7 +665,7 @@ export async function runCli(
             daemonBinaryPath,
             daemonBinaryVersion: daemonVersionResult.stdout.trim(),
           },
-          runCommand,
+          runCommand: commandRunner,
         };
       }
       const result = await (dependencies.setup ?? setupCodexPad)({

@@ -653,6 +653,11 @@ describe("runCli", () => {
         binaryPath: "/Applications/ChatGPT.app/Contents/Resources/codex",
         binaryVersion: "codex-cli test",
       }),
+      runCommand: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: "codex-cli daemon-test\n",
+        stderr: "",
+      })),
       setup,
       doctor: async () => ({
         generatedAt: "2026-07-20T12:00:00.000Z",
@@ -669,6 +674,7 @@ describe("runCli", () => {
       appVersion: "26.test",
       buildVersion: "5591",
       binaryVersion: "codex-cli test",
+      daemonBinaryVersion: "codex-cli daemon-test",
     });
     expect(output.stdout.join("\n")).toContain("Desktop ownership attested at");
   });
