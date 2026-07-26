@@ -1,37 +1,34 @@
 # Mac setup
 
-> **Current implementation:** after the one-time official standalone Codex CLI install, Nerva provides one explicit `npm run setup:mac` command. It builds the checkout, generates and validates the installed Desktop Codex schema cache, invokes the Desktop-bundled app-server daemon manager with remote control enabled, installs the bridge LaunchAgent, enables the Desktop local-daemon opt-in for later GUI launches, configures only an available exact private Serve route and prints the QR. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
+> **Current implementation:** Nerva provides a read-only `npm run setup:check` preflight and one explicit `npm run setup:mac` installer. The base installation is independent from the version-sensitive native Codex integration: it creates private Nerva state, configures only an available exact Tailscale Serve route, installs the bridge LaunchAgent, waits for `/api/health`, and only then creates the pairing invitation. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
 
 > **Current compatibility warning (26 July 2026):** on Codex Desktop `26.721.41059` build `5848`, doctor observes three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`. The schema cache is current, Tailscale/bridge checks are green and pairing may still work, but app-server-backed mutations remain degraded. Do not restart Desktop onto this version-skewed daemon or kill writers blindly; update the official standalone CLI to a matching release when available, bootstrap again, then rerun doctor.
 
-The legacy `npm run setup` command remains inspection/local-state only. The separate `npm run setup:mac` command is explicit authorization to run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary, create or update Nerva's bridge LaunchAgent, set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain, and configure its private Serve route. It does not quit or relaunch Codex Desktop, use Funnel, reset unrelated Serve routes, or bind the bridge outside loopback. The environment value affects subsequently launched GUI processes; save work before any manual Desktop relaunch.
+The preflight produces three operator-facing outcomes:
+
+- **Ready:** the base prerequisites and native topology are compatible enough for setup to configure the managed daemon.
+- **Ready with limited Codex controls:** the bridge, private route and pairing can be installed, but app-server-backed controls remain unavailable. Setup does not bootstrap a daemon, stop a writer, set a Desktop environment flag, create an ownership attestation or restart Desktop.
+- **Blocked:** a base prerequisite or safety boundary prevents installation, such as unsupported macOS/Node, missing Desktop or Tailscale, active or ambiguous Funnel, a conflicting HTTPS route, an unsafe path, or a bridge that cannot become healthy.
+
+The legacy `npm run setup` command remains inspection and Nerva-owned local-state setup. When and only when `setup:check` is **Ready**, `npm run setup:mac` may run `app-server daemon bootstrap --remote-control` through the Desktop-bundled Codex binary and set `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1` in the current GUI launchd domain. It never quits or relaunches Codex Desktop, uses Funnel, resets unrelated Serve routes, kills an unknown writer, or binds the bridge outside loopback. `npm run doctor` remains strict and exits nonzero while the native integration is degraded.
 
 ## Fast path from a clone
 
-Prerequisites: Node.js/npm, Codex Desktop, the official standalone Codex CLI, and Tailscale already installed and signed into the intended tailnet on both devices.
+Prerequisites: Node.js 22/npm, Codex Desktop, and Tailscale already installed and signed into the intended tailnet on both devices.
 
 ```bash
+git clone https://github.com/blancmathis/nerva.git
+cd nerva
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
+npm run setup:check
 npm run setup:mac
 ```
 
-The first command is OpenAI's official installer. It downloads a release,
-verifies its published SHA-256, and creates the managed path required by
-`app-server daemon`. Skip it when
-`~/.codex/packages/standalone/current/codex` already exists.
+OpenAI's installer is the supported install/update path for the standalone package required by `app-server daemon`. Run it even when `~/.codex/packages/standalone/current/codex` exists if its version does not match the CLI bundled with Codex Desktop. File presence alone is not compatibility proof.
 
-The bootstrap script performs `npm ci` when the lockfile has not yet been
-installed, builds the workspace, generates the installed-version schema cache,
-validates the exact private network route,
-invokes the installed Codex daemon manager, and verifies that
-`app-server daemon version` reports `running`. It then installs
-`~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, checks
-local bridge health, and prints the QR.
+The bootstrap script performs `npm ci` when the lockfile has not yet been installed, builds the workspace, reruns the read-only preflight, and attempts to refresh the installed-version schema cache. A schema-generation failure is reported but cannot prevent the independent bridge/pairing installation. The script then installs `~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, establishes only the exact private route, verifies local bridge health, and prints the QR. Native daemon configuration is attempted only for a **Ready** preflight. If that later native step fails, setup finishes safely as **Ready with limited Codex controls** instead of discarding the working bridge and pairing path.
 
-Setup removes the obsolete Nerva raw-listener LaunchAgent only when its
-exact old generated shape is recognized. The command waits for the iPad in the
-same terminal. Pressing `Ctrl-C` stops only the wait; the durable Codex daemon
-and launchd bridge remain running.
+In a Ready native topology, setup removes the obsolete Nerva raw-listener LaunchAgent only when its exact old generated shape is recognized. It never removes an unknown service. The command waits for the iPad in the same terminal. Pressing `Ctrl-C` stops only the wait; the launchd bridge remains running.
 
 For a later replacement or cleared iPad credential:
 
@@ -39,7 +36,7 @@ For a later replacement or cleared iPad credential:
 npm run pair
 ```
 
-Both commands fail closed if Tailscale is offline, Funnel is not authoritatively disabled, HTTPS port 443 is already owned by another route, the built CLI path is unsafe or the bridge cannot become healthy. The owner has completed the private Tailscale pairing and reopened the installed PWA on the current Mac/iPad; a timed clean-device and replacement-iPad matrix remains outstanding.
+`npm run pair` depends on the installed, healthy bridge—not on a green native app-server topology. Both commands fail closed if Tailscale is offline, Funnel is not authoritatively disabled, HTTPS port 443 is already owned by another route, the built CLI path is unsafe or the bridge cannot become healthy. The owner has completed private Tailscale pairing and reopened the installed PWA on the current Mac/iPad; a timed clean-device and replacement-iPad matrix remains outstanding.
 
 ## 1. Manual diagnostic path and prerequisites
 
@@ -50,7 +47,7 @@ Both commands fail closed if Tailscale is offline, Funnel is not authoritatively
 - OpenAI-managed standalone Codex CLI at `~/.codex/packages/standalone/current/codex`
 - Tailscale for production iPad access, with either the Standalone app's CLI integration enabled or the App Store app's bundled CLI used explicitly
 
-The last local doctor run on 25 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.721.41059` build `5848`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.3.1`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. This is an observation, not a hardcoded support promise. Settings → System Diagnostics and doctor must report the currently installed versions and schema state after every update.
+The local preflight on 26 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.721.41059` build `5848`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.3.1`, standalone Codex `0.145.0`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. This is an observation, not a hardcoded support promise. Settings → System Diagnostics, `setup:check`, and doctor must report the currently installed versions after every update.
 
 Verify the local tools:
 
@@ -68,12 +65,12 @@ Prefer the binary bundled with Codex Desktop for schema compatibility and render
 From the repository root:
 
 ```bash
-npm ci
-npm run setup -- --generate-schemas
+npm run setup:check
+npm run setup:mac
 npm run doctor
 ```
 
-The npm scripts first build the workspace packages imported by the source CLI; a clean clone does not need committed or pre-existing `dist` output. `setup:mac` now performs the equivalent of `npm run setup -- --generate-schemas` automatically before installing the service. The manual command above remains useful for diagnostics. Setup creates or permission-hardens only `~/Library/Application Support/CodexPad/` and caches installed-version schemas there. Doctor performs the process/network compatibility inspection and prints any operator actions. Both remain non-interactive and non-destructive outside Nerva/CodexPad-owned state.
+The npm scripts build the workspace packages imported by the CLI; a clean clone does not need committed or pre-existing `dist` output. `setup:check` is fully read-only and supports `--json`. `setup:mac` runs dependency installation when the lockfile changed, generates installed-version schemas in Nerva-owned state, installs the bridge, and produces a pairing invitation only after health succeeds. Doctor performs the strict process/network compatibility inspection and prints safe corrective actions. A successful Nerva installation and pairing may coexist with a nonzero doctor result.
 
 Read the full setup/doctor result before continuing. A useful report distinguishes:
 
@@ -94,7 +91,7 @@ Treat the capability report literally. Native Micro controls, full session list/
 
 ## 3. Inspect the managed app-server
 
-`setup:mac` configures Codex's own durable app-server control-socket service; it is not a Nerva-owned raw listener. Before replacing or debugging that service manually, confirm that active Codex turns are idle and investigate every existing app-server process:
+Only a **Ready** preflight lets `setup:mac` configure Codex's own durable app-server control-socket service; it is not a Nerva-owned raw listener. **Ready with limited Codex controls** leaves that service and every writer untouched. Before replacing or debugging the service manually, confirm that active Codex turns are idle and investigate every existing app-server process:
 
 ```bash
 pgrep -lf 'codex.*app-server'
@@ -111,7 +108,7 @@ Verify the job and actual socket rather than assuming setup succeeded:
 stat "$HOME/.codex/app-server-control/app-server-control.sock"
 ```
 
-`setup:mac` also sets the local-daemon opt-in for later Desktop launches:
+After a Ready native setup, `setup:mac` also sets the local-daemon opt-in for later Desktop launches:
 
 ```bash
 launchctl setenv CODEX_APP_SERVER_USE_LOCAL_DAEMON 1
@@ -135,7 +132,7 @@ An unlinked socket A cannot be composed with replacement socket B; either split 
 
 Without that optional full-ownership attestation, Nerva may still perform only operations that already have an exact selected native target. For each such app-server write it issues a one-shot authority after a final slot/thread revalidation and consumes it synchronously at the WebSocket sink. Session listing/read, cwd-scoped skills, model catalog, exact Drawing/Review send and exact model/effort update can therefore work while public health remains `degraded` with `desktopOwnershipVerified=false`. Native Micro controls use their separately revalidated HID path. New-task creation and any command without a pre-existing exact target remain disabled.
 
-## 5. Launch Codex with loopback CDP
+## 4. Launch Codex with loopback CDP
 
 The native six-slot adapter needs a Chrome DevTools endpoint. CDP must remain on `127.0.0.1` and use a random port. Never add a fixed LAN-facing debugging port.
 
@@ -151,7 +148,7 @@ Do not use `open -na` while Codex is already running; a second application/app-s
 
 CDP is not exposed by the Nerva HTTP or WebSocket API. The browser can send only fixed typed commands that the adapter translates into bridge-authored native events.
 
-## 6. Installed-version protocol generation
+## 5. Installed-version protocol generation
 
 With `--generate-schemas`, setup asks the Desktop-bundled binary to generate its experimental JSON Schema into an application-owned versioned cache:
 
@@ -184,7 +181,7 @@ At normal startup, Nerva does not trust the record alone. It strictly parses the
 
 This attestation proves only the isolated binary's bounded multi-image `turn/start` behavior. It does not prove that Codex Desktop and Nerva share one writer, grant exact-thread authority, prove live same-Desktop delivery, or prove image input to `turn/steer`; those independent gates must still pass.
 
-## 7. Build the bridge
+## 6. Build the bridge
 
 ```bash
 npm run build
@@ -202,7 +199,7 @@ The local address must be `127.0.0.1`, not `0.0.0.0`, `::`, a LAN address, or a 
 
 For development, use `npm run dev`. Development URLs and authentication behavior may differ; do not treat a development server as the production remote-control surface.
 
-## 8. Configure private HTTPS with Tailscale Serve
+## 7. Configure private HTTPS with Tailscale Serve
 
 Install Tailscale from its official distribution, sign the Mac and iPad into the intended tailnet, and verify the current client before changing Serve state. The Standalone app can install `/usr/local/bin/tailscale` from **Settings → CLI integration**; the App Store build exposes `/Applications/Tailscale.app/Contents/MacOS/Tailscale`. Resolve either form once for the current shell:
 
@@ -230,7 +227,7 @@ Inspect or remove the Serve configuration with the commands documented by the in
 
 No separate Push account, Apple Developer membership, certificate or notification daemon is required. On first bridge startup, Nerva creates one private VAPID keypair beneath `~/Library/Application Support/CodexPad/security/`; the iPad registers its subscription only after the user taps **Enable** in the installed PWA. The Mac must be allowed to make outbound HTTPS requests to the browser Push service selected by iPadOS—normally an Apple `*.push.apple.com` endpoint. An outbound firewall that blocks that host will prevent delivery while leaving normal Tailscale sync available.
 
-## 9. Rotate pairing for the exact origin
+## 8. Rotate pairing for the exact origin
 
 Rotate the short-lived pairing payload before the foreground bridge starts. This persists the exact MagicDNS origin that the bridge will accept when it initializes:
 
@@ -254,7 +251,7 @@ CODEX_PAD_PUBLIC_ORIGIN=https://your-mac.your-tailnet.ts.net npm run start
 
 Do not rotate to a new host after the bridge has started and assume the running Origin policy changed; it is established during startup.
 
-## 10. Start the foreground bridge in a second terminal
+## 9. Start the foreground bridge in a second terminal
 
 Keep the first terminal open if you want the QR visible. Open a second terminal at the repository root and run:
 
@@ -282,7 +279,7 @@ From the iPad, scan the QR or open its HTTPS URL and pair. Then:
 
 Continue with [iPad setup](SETUP_IPAD.md).
 
-## 11. Manage legacy registered Review context (optional)
+## 10. Manage legacy registered Review context (optional)
 
 The visible **Sites** picker does not need registration. It lists only verified Codex Browser pages whose native webview conversation is proven for the exact requested task, and operates only the opaque page explicitly chosen by the user. Ambiguous or duplicate mappings remain hidden.
 
@@ -313,7 +310,7 @@ A legacy registration proves only operator intent for that registered-route Revi
 
 Capture is independently unavailable. The current production build returns `process-sandbox-unavailable` before launching Chrome: on the audited Mac, its exact-egress macOS process policy could not coexist with Chrome's own required child sandbox. Do not work around this by disabling Chrome's sandbox. Manually capture a screenshot outside Nerva, import it through Photos/Files, then annotate, compare, and send through the independently gated review path.
 
-## 12. Development-only unsafe LAN mode
+## 11. Development-only unsafe LAN mode
 
 Tailscale Serve is the production path. For an isolated development network only, the CLI requires a concrete non-loopback address and its exact HTTP Origin:
 
@@ -331,7 +328,7 @@ npm run start -- \
 
 The first command creates a five-minute, single-use HTTP pairing QR and is accepted only with the same explicit unsafe-LAN address and port. Unsafe mode uses the same exact-origin bearer design as production—dedicated browser IndexedDB or memory, `Authorization: Bearer` for HTTP, and one-time WebSocket tickets—not a development cookie. Replace the documentation address with one explicit interface address. Hostnames, loopback addresses, wildcards, mismatched ports, and paths are rejected. Authentication and Origin checks stay enabled, but the nonce, bearer, and all traffic are unencrypted on this HTTP network. Never use this mode on an untrusted network or present it as production security.
 
-## 13. Optional Context Room health
+## 12. Optional Context Room health
 
 Nerva can show a read-only Context Room health card. This integration is off unless the bridge process receives an exact loopback HTTP origin:
 
@@ -342,7 +339,7 @@ launchctl kickstart -k "gui/$(id -u)/com.codex-pad.bridge"
 
 Replace `4319` only with the exact local room port. The value must contain no credentials, query, fragment or non-loopback hostname. The adapter reads only `/api/health`, sanitizes the room basename/version/state and exposes no Context Room mutation. Remove the optional integration with `launchctl unsetenv CODEX_PAD_CONTEXT_ROOM_ORIGIN` and restart the exact bridge service.
 
-## 14. Validation
+## 13. Validation
 
 ```bash
 npm run check

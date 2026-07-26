@@ -8,7 +8,7 @@
 > attaches one image-only PNG/atlas or one attested ordered image batch to the exact selected native Codex composer and
 > never submits that composer. There is no instruction field, hidden Skills
 > suffix, delivery inbox, queue or steer action on the iPad. See
-> [`docs/product/FEATURES_target.md`](../product/FEATURES_target.md#73-images-et-action-send).
+> [`docs/product/FEATURES_target.md`](../product/FEATURES_target.md#83-images-and-send-action).
 >
 > The Session page also has a separate compact `Send prompt` control. It never
 > participates in Drawing delivery: it invokes only the exact live native

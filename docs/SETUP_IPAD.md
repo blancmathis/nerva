@@ -19,11 +19,12 @@ The owner has completed the real-iPad Tailscale pairing, Home Screen installatio
 ## 1. Connect privately
 
 1. Open Tailscale on the iPad and confirm the intended account/tailnet.
-2. Run `npm run setup:mac` for the first install, or `npm run pair` for an already configured Mac.
-3. Scan the terminal QR with the iPad camera. Confirm Safari shows the exact private HTTPS MagicDNS origin. Do not proceed through a certificate warning or substitute a raw LAN address.
-4. Safari displays `Add Nerva to your Home Screen` without consuming the invitation. Use Share → Add to Home Screen, keep Open as Web App enabled, then launch Nerva.
-5. If the installed app shows `Connect to <Mac name>`, tap `Connect`. If it opens `Scan the QR on your Mac`, scan the same QR once more inside the app. There is no code, URL, origin or device-name field.
-6. Confirm the app reports `Mac connected` and opens the exact current Mac session. If the invitation expired, run `npm run pair` and scan the new QR.
+2. On the Mac, run `npm run setup:check`. Both **Ready** and **Ready with limited Codex controls** can proceed to pairing; **Blocked** cannot.
+3. Run `npm run setup:mac` for the first install, or `npm run pair` for an already configured Mac.
+4. Scan the terminal QR with the iPad camera. Confirm Safari shows the exact private HTTPS MagicDNS origin. Do not proceed through a certificate warning or substitute a raw LAN address.
+5. Safari displays `Add Nerva to your Home Screen` without consuming the invitation. Use Share → Add to Home Screen, keep Open as Web App enabled, then launch Nerva.
+6. If the installed app shows `Connect to <Mac name>`, tap `Connect`. If it opens `Scan the QR on your Mac`, scan the same QR once more inside the app. There is no code, URL, origin or device-name field.
+7. Confirm the app reports `Mac connected`. In limited mode, app-server-backed controls must be visibly unavailable rather than routed to an unverified writer. If the invitation expired, run `npm run pair` and scan the new QR.
 
 Successful pairing returns one random 43-character revocable bearer credential once. Nerva stores it only in the `codex-pad-origin-auth` IndexedDB for this exact scheme/host/port origin, or keeps it in memory for the current page when private storage is unavailable. It is never placed in a cookie, URL, service-worker cache, or `localStorage`; do not copy it between browsers or origins. Exact-origin storage matters because browser cookies ignore ports and could otherwise reach approved review servers on sibling MagicDNS ports.
 

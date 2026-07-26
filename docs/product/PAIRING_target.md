@@ -3,85 +3,78 @@ context_room:
   kind: canonical
   scope: product
   status: draft
-  canonical_for: parcours utilisateur et exigences de securite du pairing cible
-  last_verified: 2026-07-20
-  sources: [docs/adr/004-tailscale-serve.md]
+  canonical_for: target pairing experience and security requirements
+  last_verified: 2026-07-26
+  sources: [docs/adr/004-tailscale-serve.md, docs/SETUP_MAC.md, docs/SETUP_IPAD.md]
 ---
 
-# Nerva — pairing cible en moins de deux minutes
+# Nerva — target pairing in under two minutes
 
-> Cette page décrit le parcours validé et son critère de fin. Le chemin sans formulaire est maintenant implémenté ; [`CURRENT_STATE.md`](./CURRENT_STATE.md) et [`ADR 004`](../adr/004-tailscale-serve.md) indiquent précisément les preuves physiques déjà obtenues et celles qui manquent encore.
+> This document defines the accepted target and completion bar; it is not physical completion proof. The no-form path is implemented. [`CURRENT_STATE.md`](./CURRENT_STATE.md) and [`ADR 004`](../adr/004-tailscale-serve.md) own current evidence and remaining hardware gates.
 
-## Résultat attendu
+## Expected outcome
 
-Lorsque le Mac et l'iPad sont déjà connectés au même tailnet, une personne non technique doit pouvoir ouvrir Nerva depuis l'iPad en moins de deux minutes avec une seule commande déjà copiée dans le Terminal, sans copier d'URL, saisir de code, nommer l'appareil ni utiliser un deuxième terminal.
+When the Mac and iPad are already on the same tailnet, a non-technical user must be able to open Nerva on the iPad in under two minutes with one copied Terminal command and without copying a URL, typing a code, naming the device, or opening a second terminal.
 
-Objectifs de qualité :
+Quality objectives:
 
-- temps médian visé : 30 à 45 secondes ;
-- 95 % des pairings terminés en moins de 120 secondes sur une configuration supportée ;
-- environ deux secondes d'action humaine sur le Mac : lancer une commande déjà copiée, puis attendre le QR ;
-- une commande, un scan, les gestes système d'installation, puis un tap explicite `Connect` ;
-- aucune permission ou confirmation qui n'ajoute pas une protection réelle ;
-- accès révocable immédiatement depuis le Mac.
+- target median: 30–45 seconds;
+- 95% under 120 seconds on a supported configuration;
+- about two seconds of deliberate Mac interaction: run the copied command, then wait for the QR;
+- one command, one scan, system installation gestures, and one explicit `Connect` tap;
+- no permission or confirmation that adds no protection;
+- immediate revocation from the Mac.
 
-L'installation et l'authentification initiales de Tailscale sont un prérequis séparé. Leur durée dépend de l'App Store, du fournisseur d'identité et de la politique du tailnet ; le produit ne doit donc pas les inclure dans la promesse de deux minutes.
+Installing and signing into Tailscale is a separate prerequisite whose timing depends on the App Store, identity provider, and tailnet policy.
 
-## Parcours principal
+## Primary flow
 
 ### 1. Mac
 
-Il n'existe pas d'app macOS Nerva séparée. Après avoir cloné le dépôt, le parcours cible est :
+There is no separate Nerva macOS app. From a clone:
 
 ```bash
-cd codex-pad
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+npm run setup:check
 npm run setup:mac
 ```
 
-`setup:mac` est une commande idempotente qui réalise toute la préparation :
+The official OpenAI installer is both the install and update path. An existing standalone file is insufficient when its version differs from Codex Desktop.
 
-1. installer les dépendances manquantes et construire les artefacts nécessaires ;
-2. vérifier Codex Desktop et le bridge ;
-3. détecter Tailscale, son état et l'origine MagicDNS sans demander de copier cette origine ;
-4. configurer uniquement la route Tailscale Serve appartenant à Nerva ;
-5. installer ou mettre à jour un LaunchAgent utilisateur, sans `sudo`, pour lancer le bridge à l'ouverture de session ;
-6. démarrer ou recharger le bridge ;
-7. créer une invitation et afficher son QR dans ce même terminal ;
-8. attendre la réussite du pairing, afficher `iPad connected`, puis rendre la main.
+`setup:check` is read-only and classifies the machine:
 
-La durée murale du premier `npm ci` et du build dépend de la machine et du réseau ; la promesse de « deux secondes via Git » concerne l'effort utilisateur, pas la fin du téléchargement. Les exécutions suivantes sautent les étapes déjà à jour.
+- **Ready:** base installation and native Codex configuration can proceed;
+- **Ready with limited Codex controls:** Nerva can install and pair, but no daemon/writer/Desktop mutation is allowed and app-server-backed controls remain unavailable;
+- **Blocked:** a base prerequisite or private-network safety issue must be repaired first.
 
-La commande effectue un preflight automatique :
+`setup:mac` is idempotent and:
 
-1. bridge local démarré et sain ;
-2. Tailscale installé, connecté et privé ;
-3. route Tailscale Serve exacte de Nerva disponible ;
-4. Funnel absent pour cette route ;
-5. origine HTTPS stable et non sensible.
+1. installs missing dependencies and builds required artifacts;
+2. reruns the preflight;
+3. creates or hardens private Nerva state;
+4. discovers the Tailscale MagicDNS origin without asking the user to copy it;
+5. preserves or creates only Nerva's exact Serve route and refuses Funnel or a conflicting port 443 route;
+6. installs or updates the user LaunchAgent without `sudo`;
+7. starts/reloads the loopback bridge and waits for `/api/health`;
+8. configures the managed Codex daemon only after a Ready preflight;
+9. creates the invitation and prints its QR only after bridge health;
+10. waits for pairing, prints `iPad connected`, and returns control.
 
-Elle maintient uniquement la route qu'elle possède et ne lance jamais un reset global de Tailscale Serve. L'exécution explicite de `setup:mac` autorise la création ou la réparation de cette seule route et du seul LaunchAgent Nerva `com.codex-pad.bridge`. Un conflit avec une route tierce provoque un arrêt avec l'action exacte à effectuer, sans écraser la configuration.
+If native configuration fails after the bridge succeeds, installation finishes with limited Codex controls. It does not discard pairing, restart Desktop, kill a writer, fabricate ownership, or weaken a capability gate.
 
-Lorsque le preflight passe, le Mac affiche immédiatement :
+The first `npm ci` and build may take time; the “two seconds from Git” objective describes user effort, not network/download duration. Later runs skip current work.
 
-- un grand QR ;
-- `Scan with your iPad camera` ;
-- un compte à rebours de cinq minutes ;
-- `Press Ctrl-C to cancel` ;
-- un message précis si le Mac perd Tailscale ou si le bridge s'arrête.
+After initial pairing, no daily command is required. The LaunchAgent restores the bridge after login/restart and the iPad credential remains valid until revocation, origin change, or PWA storage loss.
 
-Une fois le premier pairing terminé, aucune commande quotidienne n'est nécessaire. Le LaunchAgent redémarre le bridge après reconnexion ou redémarrage du Mac, et le credential iPad reste valide jusqu'à révocation, changement d'origine ou effacement du stockage de la web app.
+### 2. Safari and Home Screen installation
 
-### 2. Safari et installation
+The QR opens Nerva's private HTTPS origin in Safari without consuming the invitation. The page presents a short `Add to Home Screen` instruction and asks the user to keep `Open as Web App` enabled.
 
-Le QR ouvre l'origine privée HTTPS de Nerva dans Safari. La page ne consomme pas encore l'invitation. Elle montre une instruction visuelle courte pour `Add to Home Screen` et demande de conserver `Open as Web App` activé.
+The QR uses `/pair#pair=<invitation>`. The fragment is not part of the HTTP request and reaches the bridge only in the body of `POST /api/pair`. The manifest uses a fixed `/pair` `start_url`. Because iPadOS may install the current fragment URL or fall back to `start_url`, Nerva never assumes Safari and the installed PWA share storage or navigation state.
 
-iPadOS traite une web app Home Screen comme une application séparée de Safari. Le parcours ne dépend donc jamais d'un partage de credential ou d'IndexedDB entre Safari et l'app installée.
+### 3. First installed-app opening
 
-Le QR ouvre `/pair#pair=<invitation>`. Un fragment n'est pas envoyé dans la ligne de requête HTTP et n'atteint le bridge que lorsque la PWA le soumet dans le corps de `POST /api/pair`. Le manifeste utilise la `start_url` fixe `/pair` afin qu'une installation non appairée arrive toujours sur le parcours de connexion. iPadOS peut conserver l'URL courante avec son fragment lors de l'installation, ou revenir à cette `start_url` sans le fragment ; le produit ne dépend donc jamais de ce handoff et possède obligatoirement le fallback de la section suivante.
-
-### 3. Première ouverture de la web app
-
-L'app installée affiche :
+The installed app shows one decision:
 
 ```text
 Connect to Mathis's Mac
@@ -91,118 +84,112 @@ Private connection through your tailnet.
 [ Connect ]
 ```
 
-Le tap `Connect` est l'unique confirmation explicite. Le nom de l'iPad est généré automatiquement, par exemple `iPad — Nerva`, puis peut être modifié plus tard dans Settings.
+`Connect` is the only explicit confirmation. Nerva assigns an automatic device label such as `iPad — Nerva`, editable later in Settings.
 
-Après succès :
+On success:
 
-1. l'invitation est effacée de l'URL visible ;
-2. l'app affiche une courte animation ; un haptic n'est ajouté que si la plateforme expose réellement une API compatible ;
-3. le Mac affiche `iPad connected` ;
-4. Home ouvre directement la session active sur le Mac, sans l'épingler automatiquement.
+1. the invitation is removed from visible navigation state;
+2. Nerva shows short feedback and uses haptics only when the platform exposes a real compatible API;
+3. the Mac prints `iPad connected`;
+4. Home opens with the current Mac session available, without pinning it automatically.
 
-## Fallbacks sans saisie
+## No-typing fallbacks
 
-### Invitation non transmise à l'app installée
+### Invitation not transferred to the installed app
 
-Si iPadOS ignore la `start_url` ou perd son fragment, l'app affiche `Scan the QR again` et utilise sa caméra pour lire le même QR encore visible sur le Mac. Aucun code manuel n'est nécessaire.
+If iPadOS loses the fragment, Nerva shows `Scan the QR again` and scans the same QR still visible on the Mac. There is no manual code or URL field.
 
-### Nerva déjà installée
+### Nerva already installed
 
-Une app installée mais non appairée ouvre directement son scanner interne. L'utilisateur lance `npm run pair` dans le dépôt sur le Mac puis vise le QR depuis Nerva ; le passage par Safari et l'installation sont sautés.
+An installed but unpaired app opens its scanner. Run `npm run pair` on the Mac and scan from Nerva; Safari installation is skipped. `npm run pair` works after both Ready and limited installations because it depends on the healthy bridge, not native app-server authority.
 
-### Expiration ou annulation
+### Expiration and cancellation
 
-- Une invitation est aléatoire, à usage unique et valable cinq minutes.
-- Le Mac peut l'annuler immédiatement.
-- Une expiration affiche `Pairing expired` et `Show a new QR on your Mac`.
-- Générer une nouvelle invitation invalide l'ancienne.
-- Un échec réseau ne consomme pas l'invitation avant l'émission durable du credential.
+- invitations are random, single-use, and valid for five minutes;
+- the Mac can cancel immediately;
+- `Pairing expired` directs the user to show a new QR;
+- a new invitation invalidates the old invitation;
+- a network failure does not consume the invitation before durable credential issuance.
 
-### Remplacement d'un iPad
+### Replacing an iPad
 
-Lorsqu'un appareil est déjà associé, `npm run pair` indique qu'il remplacera l'iPad actuel après réussite et demande une confirmation simple dans le terminal.
+The replacement flow must avoid accidental lockout:
 
-1. Le nouvel iPad effectue le parcours normal.
-2. Il reçoit l'état global synchronisé depuis le Mac.
-3. L'ancien credential est révoqué seulement après la réussite du nouveau pairing.
+1. the new iPad follows normal pairing;
+2. it restores global Mac-backed state;
+3. the old credential is revoked only after the new pairing succeeds.
 
-Cette séquence évite un verrouillage accidentel. Deux appareils actifs ne constituent pas un parcours produit principal, mais le stockage ne doit pas être corrompu si une période de chevauchement existe.
+Two simultaneously active iPads are not a primary product scenario, but temporary overlap must not corrupt storage.
 
-## Modèle de sécurité
+## Security model
 
-### Invitation courte
+### Short invitation
 
-- secret aléatoire de 256 bits ;
-- transporté dans le fragment du QR et soumis au bridge uniquement dans le corps de l'échange ;
-- exact origin HTTPS obligatoire ;
-- usage unique, cinq minutes, comparaison en temps constant et rate limiting ;
-- pairing possible uniquement à travers la route privée Tailscale Serve ;
-- aucune invitation, credential ou ticket dans les logs, captures, cookies, `localStorage` ou cache du service worker.
+- random 256-bit secret;
+- carried in the QR fragment and submitted only in the pairing request body;
+- exact HTTPS origin required;
+- single-use, five-minute expiry, constant-time comparison, and rate limiting;
+- reachable only through private Tailscale Serve;
+- absent from logs, cookies, `localStorage`, service-worker cache, and diagnostics.
 
-### Credential de l'appareil
+### Device credential
 
-- credential aléatoire propre à l'installation, retourné une seule fois ;
-- seul son hash est stocké sur le Mac dans un fichier privé ;
-- la web app le conserve dans l'IndexedDB de son origine exacte, avec fallback mémoire uniquement ;
-- HTTP utilise un header Authorization ;
-- chaque WebSocket utilise un ticket séparé, lié à l'origine, à usage unique et de courte durée ;
-- une révocation invalide le credential, les tickets inutilisés et les sockets actifs de cet appareil.
+- random credential unique to the installation, returned once;
+- only its hash is stored in a private Mac file;
+- the PWA stores it in exact-origin IndexedDB, with memory-only fallback;
+- HTTP uses `Authorization: Bearer`;
+- every WebSocket uses a separate short-lived, single-use, Origin-bound ticket;
+- revocation invalidates the credential, unused tickets, and active sockets.
 
-Tailnet et credential applicatif sont deux barrières indépendantes. Le tailnet limite qui peut atteindre le bridge ; le credential décide quel appareil Nerva peut utiliser ses API typées.
+The tailnet and app credential are independent barriers: Tailscale limits reachability; Nerva authorizes a typed API device.
 
-### Ce qui n'est pas demandé
+### Not requested
 
-- aucun compte Nerva ;
-- aucun mot de passe ;
-- aucun Face ID supplémentaire : le verrouillage de l'iPad et la possession physique du QR constituent déjà les gestes utilisateur ;
-- aucune confirmation Mac après le scan ;
-- aucune app macOS supplémentaire ;
-- aucun bearer durable dans le QR ;
-- aucun fallback LAN ou Funnel.
+- no Nerva account or password;
+- no extra Face ID gate;
+- no post-scan Mac confirmation;
+- no additional macOS app;
+- no durable bearer in the QR;
+- no public Funnel or production LAN fallback.
 
-## États d'interface
+## UI states
 
-| État | Texte principal | Action |
-|---|---|---|
-| Dépôt prêt | `npm run setup:mac` | Installer, démarrer et afficher le QR |
-| Preflight corrigeable | `Repairing Nerva secure access…` | Automatique dans la portée technique Nerva/CodexPad |
-| Tailscale manquant | `Tailscale is required on both devices` | Installer/se connecter puis relancer la même commande |
-| QR actif | `Scan with your iPad camera` | `Press Ctrl-C to cancel` |
-| Installation Safari | `Add Nerva to your Home Screen` | Instruction système |
-| App prête | `Connect to <Mac name>` | `Connect` |
-| Succès | `iPad connected` | Ouvrir Home |
-| Expiré | `Pairing expired` | Nouveau QR depuis le Mac |
-| Révocation | `This iPad was disconnected` | `Pair again` |
+| State | Primary copy | Action |
+| --- | --- | --- |
+| Ready | `Nerva setup check: READY` | Install and show QR |
+| Limited | `READY WITH LIMITED CODEX CONTROLS` | Install/pair; native controls stay unavailable |
+| Blocked | Precise failed safety check | Repair and rerun preflight |
+| Active QR | `Scan with your iPad camera` | `Press Ctrl-C to cancel` |
+| Safari | `Add Nerva to your Home Screen` | System instruction |
+| Installed app | `Connect to <Mac name>` | `Connect` |
+| Success | `iPad connected` | Open Home |
+| Expired | `Pairing expired` | New Mac QR |
+| Revoked | `This iPad was disconnected` | `Pair again` |
 
-## Critères d'acceptation
+## Acceptance criteria
 
-Le pairing cible n'est pas déclaré terminé tant qu'un test physique n'a pas prouvé :
+Target pairing is not complete until real-device evidence proves:
 
-1. parcours neuf avec iPadOS actuel en moins de 120 secondes après preflight vert ;
-2. une seule commande de setup après le clone, sans deuxième terminal ni app macOS ;
-3. aucune saisie de code, URL, origine ou nom d'appareil ;
-4. installation Home Screen, `start_url` et fallback second scan ;
-5. pairing déjà installé sans passage par Safari ;
-6. persistance après fermeture du terminal, reconnexion et redémarrage du Mac ;
-7. expiration, annulation, rejeu et rate limiting ;
-8. absence du secret dans logs HTTP, historique serveur, cookies, service worker et captures de diagnostic ;
-9. révocation avec fermeture immédiate du socket ;
-10. remplacement d'iPad sans révoquer l'ancien avant la réussite du nouveau ;
-11. Funnel absent et bridge toujours lié à loopback.
+1. clean flow under 120 seconds after prerequisites;
+2. one setup command after clone, no second terminal or native Nerva Mac app;
+3. no typed code, URL, origin, or device name;
+4. Home Screen install, fixed `start_url`, and second-scan fallback;
+5. already-installed pairing without Safari;
+6. persistence after terminal close, reconnect, and Mac restart;
+7. expiry, cancellation, replay prevention, and rate limiting;
+8. no secret in HTTP logs, server history, cookies, service worker, or diagnostics;
+9. revocation closes the active socket immediately;
+10. replacement does not revoke the old device before new success;
+11. no Funnel and a loopback-only bridge;
+12. limited-mode pairing with every app-server-backed control visibly unavailable and no command sent to an unattested writer.
 
-## Écart avec le dépôt actuel
+## Current gap
 
-Le dépôt actuel possède déjà la sécurité fondamentale : nonce fort, usage unique, expiration, origine exacte, rate limiting, bearer révocable, hash côté Mac, IndexedDB exact-origin et tickets WebSocket.
+The fundamental security and no-form UI are implemented and automatically tested. The maintainer has completed one private Tailscale pairing, Home Screen installation, and credential reuse. Still missing are a timed clean-clone run, physical expiry/cancellation, replacement with deferred revocation, a broader iPadOS matrix, and the explicit limited-runtime physical check. See [`CURRENT_STATE.md`](./CURRENT_STATE.md).
 
-Le chemin Mac cible est implémenté et testé localement par fixtures : `npm run setup:mac`, bootstrap des dépendances, build, détection MagicDNS, refus Funnel, inspection et ajout bornés de la route Serve, LaunchAgent privé, health check, QR et attente dans le même terminal. `npm run pair` renouvelle ensuite l'invitation.
+## Platform references
 
-La partie iPad est également alignée dans le code : QR en fragment `/pair#pair=…`, durée de cinq minutes, écran Safari install-first sans consommation, `start_url` `/pair`, nom d'appareil automatique, bouton `Connect`, scanner interne et fallback Camera/Photos. Le propriétaire a confirmé un pairing physique via Tailscale et la persistance lors de la réouverture depuis l'écran d'accueil.
-
-Ce qui manque encore pour fermer les critères d'acceptation : chronométrage instrumenté sous 120 secondes, test depuis un clone totalement neuf, annulation complète, expiration physique, remplacement d'iPad avec révocation différée et matrice iPadOS. Le handoff direct du fragment Safari vers la Home Screen PWA reste une capacité consultative d'iPadOS ; le second scan interne est donc le fallback produit réel, pas une promesse de partage de stockage entre Safari et la PWA.
-
-## Références plateforme
-
-- [WebKit — web apps sur l'écran d'accueil avec iOS et iPadOS 26](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
-- [WebKit — séparation d'une Home Screen web app et de Safari](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
-- [WebKit bug 181849 — ne pas supposer un stockage partagé avec Safari](https://bugs.webkit.org/show_bug.cgi?id=181849)
-- [W3C Web App Manifest — `start_url` est consultative](https://www.w3.org/TR/appmanifest/#start_url-member)
+- [WebKit — Home Screen web apps in iOS and iPadOS 26](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
+- [WebKit — Home Screen web app and Safari separation](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
+- [WebKit bug 181849 — do not assume shared Safari storage](https://bugs.webkit.org/show_bug.cgi?id=181849)
+- [W3C Web App Manifest — `start_url` is advisory](https://www.w3.org/TR/appmanifest/#start_url-member)

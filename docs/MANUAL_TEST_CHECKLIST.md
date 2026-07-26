@@ -20,30 +20,26 @@ Evidence location:
 ## Latest recorded automated run
 
 ```text
-Date/time: 25 July 2026, Europe/Paris
-Nerva commit: 383f5c4
+Date/time: 26 July 2026, Europe/Paris
+Nerva commit: 0a95911
 Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
 Codex Desktop / bundled Codex: 26.721.41059 build 5848 / codex-cli 0.146.0-alpha.3.1
 Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
 iPad / iPadOS / Pencil: not recorded in this run
-Evidence: current checkout, clean local Git clone and GitHub Actions run 30172381118
+Evidence: public baseline checkout and GitHub Actions run 30204589636
 ```
 
-Historical release-baseline result at `b94e30a`: check, 889 unit tests, build, 381.70 KiB bundle ceiling, release audit, Context Room doctor, screenshots and both sequential/parallel E2E matrices passed. Each baseline matrix recorded 250 passes, eight explicit profile skips, zero failures and no retry. The critical Drawing scenarios passed 72/72 over three repetitions.
+Public pre-alpha baseline `0a95911`: 927 unit tests plus 11/11 probe-safety tests, build, a 387.70 kB largest JavaScript chunk, 293 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 438 files release audit, Context Room doctor and dependency audits. GitHub Actions run `30204589636` passed the required Node.js 22 check. Physical iPad/Pencil checks remain deliberately unchecked.
 
-Current pre-alpha result: a clean clone of `383f5c4` passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 902 unit tests plus 11/11 probe-safety tests, build, a 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 432-file release audit, Context Room doctor and both npm audits. GitHub Actions run `30172381118` reproduced the hosted CI gate on `b6e731c` with the same 275 passes and 13 explicit skips. Collaborative diagrams, the compact Home header and `Settings → System Diagnostics` are included. Physical iPad/Pencil checks remain deliberately unchecked.
-
-Infinite-board and coherence-package candidate at local commit `c980fe3`: a separate clean clone passed `npm ci`, Chromium/WebKit installation, `npm run validate`, 926 unit tests plus 11/11 probe-safety tests, build, a 387.70 KiB largest chunk, 287 E2E passes with 13 explicit profile skips, screenshots, the 438-file release audit, Context Room doctor and zero production vulnerabilities. Protocol coverage includes ordered 1/2/6/12-image exports. This is local clean-clone evidence, not hosted CI or physical-device proof. The physical items below remain unchecked.
-
-Runtime-hardening commit `b1f7324`: a second clean clone passed `npm ci`, check, 927 unit tests plus 11/11 probe-safety tests, the 438-file release audit and zero production vulnerabilities. It adds an explicit setup/doctor refusal for a managed Codex version mismatch; it does not replace the full browser matrix recorded for `c980fe3`.
-
-Runtime result on 26 July 2026: **blocked/degraded**. Nerva doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`; Nerva therefore forbids the Desktop restart. Bridge health is degraded and multi-image input is not verified. No physical item below is checked by browser automation.
+Runtime result on 26 July 2026: `npm run setup:check` reports **Ready with limited Codex controls**, while strict doctor remains **red/degraded**. Nerva observes three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`. Base bridge installation and pairing are allowed; daemon/bootstrap/writer/Desktop mutations are not. Multi-image input is not verified. No physical item below is checked by browser automation.
 
 ## A. Mac setup and pairing
 
-- [ ] From a clean supported clone, with Tailscale already signed in, install the official standalone Codex CLI once if absent, then run `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
+- [ ] From a clean supported clone, with Tailscale already signed in, run OpenAI's official Codex installer as the install/update path, then `npm run setup:check` and `npm run setup:mac`; no native Nerva pairing app or second terminal is required.
+- [ ] `npm run setup:check -- --json` is read-only and returns Ready, Ready with limited Codex controls, or Blocked with exact observed versions and safe remediation.
 - [ ] `setup:mac` generates a schema cache for the currently installed Desktop-bundled Codex before installing the bridge; Settings → System Diagnostics reports it as `Current` rather than silently relying on an older version.
-- [ ] The command uses the Desktop-bundled Codex daemon manager, changes only its managed daemon state plus `~/Library/Application Support/CodexPad/`, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Tailscale Serve route; it never enables Funnel, uses `sudo`, resets unrelated Serve routes or restarts Codex Desktop.
+- [ ] In Ready state, the command uses the Desktop-bundled Codex daemon manager and changes only its managed daemon state plus Nerva-owned private state, `com.codex-pad.bridge`, the GUI local-daemon opt-in and the exact private Serve route.
+- [ ] In Ready with limited Codex controls, setup installs the bridge and pairing but does not bootstrap the daemon, remove or stop a writer, set the Desktop environment flag, create an attestation or restart Desktop. App-server-backed controls visibly remain unavailable and no command reaches an unattested writer.
 - [ ] The bridge remains on `127.0.0.1:8787`; CDP and app-server sockets are not exposed to LAN/tailnet interfaces.
 - [ ] A fresh physical-iPad setup completes in under 120 seconds after the Tailscale preflight.
 - [ ] Safari shows the install-first instructions without consuming the invitation; **Share → Add to Home Screen** produces a standalone Nerva icon.
@@ -250,6 +246,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 ## I. Local release gate
 
 - [ ] `npm run check`
+- [ ] `npm run docs:check`
 - [ ] `npm test`
 - [ ] `npm run build`
 - [ ] `npm run check:bundle`
@@ -274,7 +271,7 @@ Choose one and explain the limiting evidence:
 - [ ] **Blocked/degraded** — an exact compatibility or security invariant failed.
 
 ```text
-Verdict notes (25 July 2026):
+Verdict notes (26 July 2026):
 Blocked/degraded. Automated checkout and clean-clone gates are green, but doctor is red
 for the native app-server topology and the physical Mac/iPad/Pencil matrix is
 incomplete. Do not create v0.1.0.

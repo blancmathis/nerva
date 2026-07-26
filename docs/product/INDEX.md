@@ -3,48 +3,47 @@ context_room:
   kind: index
   scope: product
   status: current
-  canonical_for: navigation de la documentation produit
-  last_verified: 2026-07-25
+  canonical_for: product documentation navigation
+  last_verified: 2026-07-26
   sources: [docs/product/FEATURES_target.md, docs/product/SITE_QA_RECORDER_target.md, docs/product/CAPTURE_INBOX.md, docs/product/PAIRING_target.md, docs/product/CURRENT_STATE.md, docs/COLLABORATIVE_DIAGRAMS.md]
 ---
 
-# Nerva — documentation produit
+# Nerva — product documentation
 
-Ce dossier sert de source de vérité éditoriale pour clarifier le produit avant de poursuivre son implémentation.
+This directory is the editorial source of truth for the product. It deliberately separates accepted target behavior from implementation evidence.
 
-## Ordre de vérification
+## Reading order
 
-1. [`FEATURES_target.md`](./FEATURES_target.md) — la spécification fonctionnelle cible validée pendant l'interview. C'est le document principal.
-2. [`SITE_QA_RECORDER_target.md`](./SITE_QA_RECORDER_target.md) — le contrat cible du Recorder ; son implémentation actuelle et ses limites prouvées sont consignées dans `CURRENT_STATE.md`.
-3. [`CAPTURE_INBOX.md`](./CAPTURE_INBOX.md) — la bibliothèque locale réellement implémentée pour capturer sans Session, réutiliser depuis une Session exacte sans affectation et ne jamais envoyer à la reconnexion.
-4. [`PAIRING_target.md`](./PAIRING_target.md) — le parcours de pairing sans saisie, son objectif de moins de deux minutes et ses invariants de sécurité.
-5. [`CURRENT_STATE.md`](./CURRENT_STATE.md) — ce qui existe réellement dans le dépôt, avec les preuves et les limites connues.
-6. [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md) — le flux réellement implémenté Codex → Draw → structure/Pencil → Mac, son format JSON et ses limites.
-7. [`../RELIABILITY.md`](../RELIABILITY.md) — la preuve de capacités, les mises à jour PWA, les notifications et les intégrations bornées réellement implémentées.
+1. [`CURRENT_STATE.md`](./CURRENT_STATE.md) — what is observable in the repository and which runtime or physical proofs remain open.
+2. [`FEATURES_target.md`](./FEATURES_target.md) — the accepted target product specification from the product interview.
+3. [`SITE_QA_RECORDER_target.md`](./SITE_QA_RECORDER_target.md) — the Recorder target contract; Current State owns implementation claims.
+4. [`CAPTURE_INBOX.md`](./CAPTURE_INBOX.md) — the implemented local capture library and its no-send guarantees.
+5. [`PAIRING_target.md`](./PAIRING_target.md) — the no-typing pairing target, under-two-minute objective, and security invariants.
+6. [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md) — the implemented Codex → Draw → graph/Pencil → Mac protocol and limits.
+7. [`../RELIABILITY.md`](../RELIABILITY.md) — capability evidence, PWA updates, notifications, and bounded integrations.
 
-## Règle de lecture
+## Interpretation rule
 
-- `FEATURES_target.md`, `SITE_QA_RECORDER_target.md` et `PAIRING_target.md` décrivent ce que le produit **doit devenir**. `CAPTURE_INBOX.md` et `CURRENT_STATE.md` décrivent des surfaces actuellement implémentées. Une décision cible ne prouve pas à elle seule qu'un effet réel est déjà live sur le matériel.
-- `CURRENT_STATE.md` décrit uniquement ce qui est **observable aujourd'hui** dans le code ou lors d'une vérification locale.
-- La source de ces décisions est l'interview GRILL ME complète. Une correction ultérieure remplace une réponse antérieure ; après l'énoncé de la règle « absence de réponse = recommandation acceptée », une recommandation laissée sans réponse est confirmée.
-- Les documents techniques existants dans le dossier parent `docs/` décrivent surtout l'architecture et le setup actuellement implémentés. Ils ne peuvent pas redéfinir la cible produit. Lorsqu'un ADR indique qu'il est partiellement remplacé par la cible produit, suivre les fichiers `_target` pour le futur comportement et `CURRENT_STATE.md` pour le présent.
+- Target-specification documents describe what the product **must become**. They are not proof that a behavior is implemented or physically verified.
+- `CURRENT_STATE.md` and `CAPTURE_INBOX.md` describe the currently observed implementation and name their evidence boundaries.
+- The full GRILL ME interview is the source of accepted product decisions. A later correction replaces an earlier answer. After the user established “no answer means the recommendation is accepted,” an unanswered recommendation is treated as confirmed.
+- Technical documents under `docs/` describe current architecture and setup. They cannot silently redefine the product target. Use target files for future behavior and Current State for present behavior.
 
-## Vocabulaire de statut
+## Status vocabulary
 
-- **Confirmé** : décision donnée explicitement par Mathis ou recommandation acceptée selon sa règle « absence de réponse = recommandation acceptée » ; l'implémentation doit la respecter.
-- **Inconnu d'implémentation** : preuve runtime ou matérielle encore manquante, sans rouvrir la décision produit.
-- **Cible** : comportement confirmé mais pas encore prouvé dans le produit actuel.
-- **Actuel** : comportement observé dans le dépôt ou lors d'une vérification locale explicitement datée.
+- **Accepted target:** an explicit user decision or an accepted recommendation. Implementation must respect it, but it may not exist yet.
+- **Implemented:** present in source and covered by identified local evidence.
+- **Live verified:** observed against the exact installed Mac/Codex runtime.
+- **Physically verified:** completed on the named real iPad/Mac hardware.
+- **Unknown:** required evidence is missing; this does not reopen the accepted product decision.
 
-## Utilisation de la Context Room
+## Documentation ownership
 
-La Context Room est volontairement limitée à ce dossier. Son ordre de revue commence par la spec fonctionnelle, le Site QA Recorder, le pairing, l'état actuel, puis cette page d'orientation.
-
-Commandes locales :
-
-```bash
-npm run context-room:start
-npm run context-room:doctor
-```
-
-La validation d'un document dans la room signifie seulement qu'il a été relu. Elle ne signifie pas que les fonctionnalités décrites sont implémentées.
+| Topic | Canonical owner |
+| --- | --- |
+| Short public installation path | [`../../README.md`](../../README.md) |
+| Detailed Mac procedure | [`../SETUP_MAC.md`](../SETUP_MAC.md) |
+| Detailed iPad procedure | [`../SETUP_IPAD.md`](../SETUP_IPAD.md) |
+| Supported/observed versions | [`../COMPATIBILITY.md`](../COMPATIBILITY.md) |
+| Repair procedures | [`../TROUBLESHOOTING.md`](../TROUBLESHOOTING.md) |
+| Dated validation evidence | [`CURRENT_STATE.md`](./CURRENT_STATE.md) |

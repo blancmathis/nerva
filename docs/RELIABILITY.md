@@ -3,8 +3,8 @@ context_room:
   kind: canonical
   scope: runtime
   status: current
-  canonical_for: preuve de capacites mises a jour PWA notifications et integrations bornees
-  last_verified: 2026-07-25
+  canonical_for: capability evidence PWA updates notifications and bounded integrations
+  last_verified: 2026-07-26
   sources: [packages/protocol/src/runtime.ts, packages/protocol/src/nerva-card.ts, packages/protocol/src/integrations.ts, apps/bridge/src/server.ts, apps/bridge/src/push-notifications.ts, apps/bridge/src/context-room-adapter.ts, apps/web/src/components/CapabilityCenter.tsx, apps/web/src/lib/pwa-updates.ts, apps/web/src/lib/agent-notifications.ts, apps/web/src/lib/activity-timeline.ts, apps/web/src/sw-template.js]
 ---
 
@@ -17,6 +17,8 @@ This page describes the reliability features that are implemented now. It does n
 As observed on 26 July 2026, the bridge is reachable and the installed schema cache matches `codex-cli 0.146.0-alpha.3.1`, but native integration is degraded. Doctor reports three independent stdio app-server writers — Codex Desktop, external Remodex and the active tooling session — and no Desktop ownership attestation. The managed socket is private and responsive, but its Codex/app-server `0.145.0` does not match Desktop CLI `0.146.0-alpha.3.1`; Nerva refuses a version-skewed Desktop restart. `/api/health` therefore reports `state: degraded`, `desktopOwnershipVerified: false` and `multiImageInputVerified: false`.
 
 This is the intended fail-closed behavior. Pairing, cached read-only state and local editing may remain available, but an app-server-backed action must not be advertised or executed until its independent capability gate is current. Older live proofs are compatibility history, not authority for this Desktop version.
+
+`npm run setup:check` now reports this topology as **Ready with limited Codex controls**, not as a base-installation blocker. `npm run setup:mac` may install the loopback bridge, exact private Serve route and pairing in that state, but it leaves the daemon, writers, Desktop environment and ownership records untouched. The pairing invitation is created only after the installed bridge answers `/api/health`. `npm run doctor` deliberately remains red and nonzero.
 
 ## System Diagnostics
 
@@ -38,7 +40,7 @@ The center is diagnostic, not an override. It cannot enable a missing server cap
 
 ## Installed-version schema compatibility
 
-`npm run setup:mac` builds the checkout and automatically asks the installed Desktop-bundled Codex binary to generate its experimental JSON Schemas into the private versioned Nerva/CodexPad cache before installing the bridge. Startup validates the cache manifest and reports one of:
+`npm run setup:mac` builds the checkout and asks the installed Desktop-bundled Codex binary to generate its experimental JSON Schemas into the private versioned Nerva/CodexPad cache before installing the bridge. Schema generation is version-sensitive: failure keeps native controls limited but no longer prevents the independent bridge and pairing installation. Startup validates the cache manifest and reports one of:
 
 - `current`: cache matches the installed binary and version;
 - `missing`: no valid cache exists yet;

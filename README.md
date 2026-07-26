@@ -105,10 +105,17 @@ Nerva is not a remote desktop and does not move code execution onto the iPad. Th
 git clone https://github.com/blancmathis/nerva.git
 cd nerva
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
+npm run setup:check
 npm run setup:mac
 ```
 
-The OpenAI installer is needed only when the managed standalone Codex CLI is absent. `setup:mac` installs dependencies when needed, builds Nerva, checks the private-network prerequisites, installs the bridge service, configures the exact loopback Tailscale Serve route and prints the pairing QR.
+Use OpenAI's installer both for a first Codex installation and to update an existing standalone package; merely having the file is not enough when its version differs from Codex Desktop. `setup:check` is read-only and reports one of three outcomes:
+
+- **Ready:** Nerva can install and the native Codex topology is compatible enough to configure.
+- **Ready with limited Codex controls:** Nerva can install, pair and provide its local/offline surfaces, but app-server-backed controls remain unavailable and no Codex daemon, writer or Desktop process is changed.
+- **Blocked:** a base prerequisite or private-network safety check must be fixed before installation.
+
+`setup:mac` installs dependencies when needed, builds Nerva, configures only the exact private Tailscale Serve route, installs the loopback bridge service, waits for bridge health and only then prints the pairing QR. A limited native result does not prevent pairing.
 
 ### iPad
 

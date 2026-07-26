@@ -5,8 +5,11 @@
 Start with:
 
 ```bash
+npm run setup:check
 npm run doctor
 ```
+
+`setup:check` answers whether the Nerva base installation is Ready, Ready with limited Codex controls, or Blocked. Doctor is intentionally stricter: it remains nonzero until the full native topology is safe. A limited setup result can still support the bridge, pairing, offline/local surfaces, and any separately proven native capability.
 
 Then open **Settings → System Diagnostics**. Record the exact layer state, last proof, bridge/Codex/protocol versions and schema status. `Copy summary` is designed to be shareable: it omits prompts, outputs, titles, local paths, credentials and complete thread identifiers. A green browser notification row does not make a red native-control or Site row usable.
 
@@ -22,7 +25,7 @@ Run the normal idempotent setup again:
 npm run setup:mac
 ```
 
-It now regenerates the installed-version schema cache before installing/restarting the bridge. For diagnosis without changing the service, use `npm run setup -- --generate-schemas`, then `npm run doctor`. Do not copy a cache from another Codex version or weaken its manifest/hash checks.
+It attempts to regenerate the installed-version schema cache before installing/restarting the bridge. If the installed Codex version cannot generate compatible schemas, setup continues with limited Codex controls and pairing remains available. For diagnosis without changing the service, use `npm run setup -- --generate-schemas`, then `npm run doctor`. Do not copy a cache from another Codex version or weaken its manifest/hash checks.
 
 ## A Nerva update is available
 
@@ -95,7 +98,7 @@ Check with the Desktop-bundled binary:
 ls -l "$HOME/.codex/app-server-control/app-server-control.sock"
 ```
 
-`npm run setup:mac` invokes the Desktop-bundled `app-server daemon bootstrap --remote-control` manager and verifies `app-server daemon version` reports a running service. The manager requires the official standalone install at `~/.codex/packages/standalone/current/codex`; an npm-global CLI alone is not enough. A missing socket disables app-server-backed Skills, Model + Reasoning and Review delivery. It does not by itself disable Drawing/Photo attachment or native Fast/Dictation when their exact renderer bindings remain live. The socket speaks WebSocket over Unix domain sockets: raw JSONL, a raw `app-server --listen` replacement, or treating `app-server proxy` as a JSONL endpoint will hang or produce invalid-token handshakes. Rerun setup only after identifying any existing socket owner and saving active Codex work.
+Run OpenAI's official installer to install or update the standalone package, then run `npm run setup:check`. `npm run setup:mac` invokes `app-server daemon bootstrap --remote-control` only when that preflight is Ready. With a version mismatch, competing writers, missing ownership, or another degraded native condition, it installs the Nerva bridge and pairing path but leaves the daemon, writers, Desktop environment, and attestation untouched. An npm-global CLI alone is not the managed package. A missing or incompatible socket disables app-server-backed Skills, Model + Reasoning and Review delivery. It does not by itself disable Drawing/Photo attachment or native Fast/Dictation when their separate exact renderer bindings remain live. The socket speaks WebSocket over Unix domain sockets: raw JSONL, a raw `app-server --listen` replacement, or treating `app-server proxy` as a JSONL endpoint will hang or produce invalid-token handshakes.
 
 Do not use `~/.codex/ipc/ipc.sock` as an app-server control socket. It is a different Desktop IPC transport.
 

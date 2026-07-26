@@ -16,7 +16,7 @@ It is a compatibility record for the current implementation, not the future prod
 | Mac | macOS `26.5.1`, Apple Silicon `arm64` | Observed locally |
 | Codex Desktop application | `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, version `26.721.41059`, build `5848` | Observed locally by doctor on 25 July 2026 |
 | Desktop-bundled Codex | `0.146.0-alpha.3.1` | Observed locally; matching installed-version schema cache generated and verified |
-| OpenAI-managed standalone CLI | Daemon manager available only through an older standalone installation during this run | Version skew prevents treating the standalone daemon as current Desktop authority |
+| OpenAI-managed standalone CLI | `0.145.0` at `~/.codex/packages/standalone/current/codex` | Version skew prevents treating the standalone daemon as current Desktop authority |
 | Native Micro renderer | Version-hashed modules with exactly six `AG00`–`AG05` slots and known native states | Static structural inspection only |
 | Native live slot values | CDP remains reachable on loopback, but the adapter is degraded under the installed renderer shape | Current doctor warning; commands fail closed |
 | Native composer image attachment | Historical diagnostic proof exists against `26.715.61943` | Not re-proven against the installed `26.721.41059`; physical iPad tap still pending |
@@ -33,8 +33,8 @@ It is a compatibility record for the current implementation, not the future prod
 | Home/Session PWA | Current visible navigation with 0–12 pins, manual sections/cases, temporary priority/status filters across pinned and unpinned sessions, Unpinned Sessions, exact Session controls, explicit `Following Mac` / `Staying here`, immediate follow realignment, Mac navigation outside the native six and Mac-backed Product State/Saved Drawings | Local automated browser proof at iPad landscape, iPad portrait and phone sizes; physical touch/Pencil gesture matrix incomplete |
 | Tailscale and pairing | Tailscale installed and authenticated on the owner's Mac and iPad; private origin, QR pairing, Home Screen installation and credential reuse worked manually | One owner-confirmed live path; no timed clean-device or cross-version matrix |
 | Apple Pencil | The physical iPad path is connected, but Pencil pressure/tilt, palm rejection and 60/120 Hz behavior have not been recorded | Not hardware-validated |
-| Automated checkout | Clean-clone proof at `383f5c4`: 902 unit tests plus 11/11 probe-safety tests, build, 379.69 KiB largest JavaScript chunk, 275 E2E passes with 13 explicit profile skips, regenerated screenshots, release audit, Context Room doctor and both npm audits. GitHub Actions run `30172381118` reproduced the CI gate on `b6e731c`. | Automated local and hosted-runner proof only; the physical Mac/iPad/Pencil matrix is separate evidence |
-| Infinite-board checkout | Clean-clone proof at local commit `c980fe3`: 926 unit tests plus 11/11 probe-safety tests, 387.70 KiB largest JavaScript chunk, 287 E2E passes with 13 explicit profile skips, 438-file release audit, screenshots, Context Room doctor and zero production vulnerabilities | Local clean-clone proof only; no hosted CI, native multi-image or physical hardware claim |
+| Automated checkout | Public baseline commit `0a95911`: 927 unit tests plus 11/11 probe-safety tests, build, 387.70 kB largest JavaScript chunk, 293 E2E passes with 13 explicit profile skips, 438-file release audit, screenshots, Context Room doctor and production audit. GitHub Actions run `30204589636` passed. | Automated local and hosted-runner proof only; the physical Mac/iPad/Pencil matrix is separate evidence |
+| Setup preflight | Read-only preflight classifies the current three-writer, `0.145.0` / `0.146.0-alpha.3.1` runtime as Ready with limited Codex controls | Live local read-only proof; base bridge/pairing may install, but full native integration remains unavailable |
 
 The isolated spike created a normal non-ephemeral test thread so it could be resumed, sent a 1×1 PNG using `localImage`, observed a completed reply, and deleted the test thread. It explicitly reported `liveDesktopCopresenceProven: false`.
 
@@ -100,7 +100,7 @@ Exactly six slots are required. Missing, extra, duplicate, malformed, or thread-
 
 Use `/Applications/ChatGPT.app/Contents/Resources/codex` as the protocol authority for that Desktop installation. A global CLI may differ.
 
-`setup:mac` runs the bundled binary's experimental JSON Schema generator into an application-owned, versioned cache and records a hash manifest before installing the bridge. Doctor and Settings → System Diagnostics report whether that cache is current, missing, invalid or unknown. Generated OpenAI source is not committed. Nerva's checked-in protocol package exposes only its narrow application contract and runtime translators.
+`setup:mac` first runs a read-only safety preflight. Its bootstrap then runs the bundled binary's experimental JSON Schema generator into an application-owned, versioned cache and records a hash manifest before installing the bridge. Doctor and Settings → System Diagnostics report whether that cache is current, missing, invalid or unknown. Generated OpenAI source is not committed. Nerva's checked-in protocol package exposes only its narrow application contract and runtime translators.
 
 At minimum, a new bundled version must pass:
 
@@ -122,7 +122,7 @@ Normal startup accepts that record only after scanning the installed-version sch
 
 This isolated `turn/start` attestation is not shared-writer authority. It never proves Desktop co-presence, the exact live target, same-Desktop delivery, or image steering. The managed ownership attestation and exact-target checks remain mandatory independent gates, and the live bounded multi-image path remains unproven until the opt-in probe and manual same-Desktop checks are actually recorded.
 
-The managed daemon and Desktop local-daemon opt-in are experimental. Setup invokes the Desktop-bundled daemon manager and sets the GUI environment value, but socket existence, Desktop adoption, and full single-writer topology must still be verified at runtime. A private full-ownership attestation binds the socket device/inode, current kernel listener generation, daemon process-start identity, Desktop process-start identity/version, and exact reciprocal Desktop peer. Exact-target operations instead consume a narrower one-shot token whose selected slot/thread proof is synchronously checked at the final write.
+The managed daemon and Desktop local-daemon opt-in are experimental. Setup invokes the Desktop-bundled daemon manager and sets the GUI environment value **only** when the preflight is Ready. A degraded preflight still installs the Nerva bridge and pairing surface but does not bootstrap the daemon, stop a writer, set the environment value, create an attestation, or restart Desktop. Socket existence, Desktop adoption, and full single-writer topology must still be verified at runtime. A private full-ownership attestation binds the socket device/inode, current kernel listener generation, daemon process-start identity, Desktop process-start identity/version, and exact reciprocal Desktop peer. Exact-target operations instead consume a narrower one-shot token whose selected slot/thread proof is synchronously checked at the final write.
 
 A replaced pathname or changed managed connection revokes outstanding authority and forces reconnection. Missing full ownership leaves list/read plus exact-selected-target operations available but disables task creation and other no-target writes. A third peer or stale full-ownership proof disables that stronger mode. Both mechanisms are best-effort fail-closed topology proof, not OS isolation from a hostile same-UID process. The ordinary Desktop IPC socket is not interchangeable with the app-server control socket.
 
@@ -163,9 +163,9 @@ After a Codex Desktop, macOS, Node, Safari, iPadOS, or Tailscale update:
 
 1. Save active work; do not restart automatically.
 2. Record old and new versions.
-3. Run `npm run doctor` before enabling mutations.
+3. Run `npm run setup:check`, then `npm run doctor`, before enabling mutations.
 4. Run type checks, unit/fake-server tests, build, and release audit.
-5. For Codex updates, rerun `npm run setup:mac` or the manual `npm run setup -- --generate-schemas`, then run the isolated integration test. Any old multi-image attestation fails the exact version/hash check; rerun the standalone probe only with explicit disposable-thread consent.
+5. For Codex updates, use OpenAI's official installer as the install/update path, rerun `npm run setup:check`, then `npm run setup:mac` or the manual `npm run setup -- --generate-schemas`. Run the isolated integration test only with disposable-thread consent. Any old multi-image attestation fails the exact version/hash check.
 6. Relaunch Desktop once with loopback CDP if needed; verify listener scope.
 7. Compare a redacted native snapshot structure against a known fixture.
 8. Test all six selections and one synthetic command per command family.

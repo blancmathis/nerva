@@ -3,76 +3,76 @@ context_room:
   kind: canonical
   scope: product
   status: current
-  canonical_for: comportement implemente de Capture Inbox
-  last_verified: 2026-07-22
+  canonical_for: implemented Capture Inbox behavior
+  last_verified: 2026-07-26
   sources: [apps/web/src/components/CaptureInboxPage.tsx, apps/web/src/lib/capture-inbox-store.ts, apps/web/src/lib/capture-review.ts, apps/web/e2e/codex-pad.spec.ts, apps/web/e2e/pwa-offline.spec.ts]
 ---
 
 # Nerva — Capture Inbox
 
-Capture Inbox est une bibliothèque locale réutilisable. Elle permet de capturer du contexte sans choisir immédiatement une Session, puis d'ouvrir cette même bibliothèque depuis la Session exacte où l'utilisateur veut employer ce contexte.
+Capture Inbox is a reusable local library. It lets the user capture context before choosing a Session, then open the same library from the exact Session where that context is useful.
 
-Une capture n'est jamais assignée à une Session. Nerva ne stocke ni destination, ni état de routage, ni marque `prepared` dans l'Inbox.
+A capture is never assigned to a Session. Nerva stores no destination, routing state, or `prepared` marker in the Inbox.
 
-## Parcours utilisateur actuel
+## Current user flow
 
-### Capturer et gérer depuis Home
+### Capture and manage from Home
 
-1. Depuis Home, l'utilisateur ouvre `Capture Inbox`.
-2. Il choisit `Photo`, `Scan`, `Sketch`, `File` ou `Note`.
-3. La capture est enregistrée dans IndexedDB sur cet iPad, sans Session et sans appel au Mac.
-4. Il peut rechercher, filtrer ou consulter les captures. Chaque carte possède une corbeille tactile directe ; `Select` permet aussi une suppression multiple avec un bouton `Delete` explicite.
-5. Toute suppression demande confirmation. Annuler conserve l'original ; confirmer le retire seulement de cet iPad.
+1. Open `Capture Inbox` from Home.
+2. Choose `Photo`, `Scan`, `Sketch`, `File`, or `Note`.
+3. Nerva stores the capture in IndexedDB on this iPad, without a Session or Mac request.
+4. Search, filter, or inspect captures. Every card has a direct touch delete control; `Select` also enables explicit multi-delete.
+5. Every deletion requires confirmation. Cancel preserves the original; confirm removes it only from this iPad.
 
-### Utiliser depuis une Session
+### Use from a Session
 
-1. L'utilisateur ouvre d'abord la Session exacte.
-2. Dans `Choose an input`, il touche `Capture Inbox`.
-3. L'Inbox affiche un contexte temporaire portant le titre de cette Session. Ce contexte n'est pas écrit sur les captures.
-4. Il sélectionne une ou plusieurs notes ou images compatibles puis touche `Use in session`.
-5. Nerva copie ces éléments dans le Review local du `threadId` exact et ouvre ce Review. Les originaux restent dans l'Inbox.
-6. Le même élément peut être repris plus tard depuis une autre Session. La première utilisation ne le déplace, ne le consomme et ne l'assigne pas.
+1. Open the exact Session first.
+2. Under `Choose an input`, tap `Capture Inbox`.
+3. The Inbox shows a temporary context with that Session's title. This context is never written into the captures.
+4. Select one or more compatible notes or images and tap `Use in session`.
+5. Nerva copies them into the local Review for the exact displayed `threadId` and opens that Review. Originals remain in the Inbox.
+6. The same item can be reused later from another Session. Use never moves, consumes, or assigns it.
 
-`Use in session` n'envoie rien au Mac. L'envoi reste celui du Review existant : aperçu explicite, capacité exacte et confirmation séparée. Une reconnexion ne déclenche aucune de ces étapes.
+`Use in session` sends nothing to the Mac. Delivery remains the existing Review flow: explicit preview, exact capability, and separate confirmation. Reconnection triggers none of those steps.
 
-Le changement de Session sur le Mac ne ferme pas une capture commencée depuis Home. En revanche, lorsqu'une Session ouvre l'Inbox, le contexte d'utilisation reste borné à cette Session exacte jusqu'au retour explicite.
+Changing the Mac Session does not close a capture started from Home. When a Session opens the Inbox, however, the temporary use context remains bound to that exact Session until the user explicitly leaves.
 
-## Types de capture
+## Capture types
 
-| Type | Capture locale | Utilisation actuelle dans une Session |
-|---|---|---|
-| `Photo` | Caméra ou photothèque via le picker système | Oui, après validation et normalisation PNG/JPEG/WebP/HEIC/HEIF par le pipeline Review |
-| `Scan` | Photo de document via la caméra arrière | Oui, comme une image. Nerva ne prétend pas fournir le scanner documentaire natif d'iPadOS. |
-| `Sketch` | Canvas tactile/Pencil, Pencil-only par défaut, paume passive et navigation à deux doigts | Oui, sous forme de PNG borné |
-| `File` | Un fichier reçu, sans exécution ni prévisualisation arbitraire | Seulement si le fichier est une image compatible. Les autres fichiers restent locaux. |
-| `Note` | Texte local jusqu'à 20 000 caractères | Oui, dans l'instruction générale du Review. Une note seule exige encore une image ou annotation avant que Review puisse préparer un envoi valide. |
+| Type | Local capture | Current Session use |
+| --- | --- | --- |
+| `Photo` | Camera or photo library through the system picker | Yes, after Review validates and normalizes PNG/JPEG/WebP/HEIC/HEIF |
+| `Scan` | Rear-camera document photo | Yes, as an image. Nerva does not claim iPadOS native document-scanner behavior. |
+| `Sketch` | Touch/Pencil canvas, Pencil-only by default, passive palm, two-finger navigation | Yes, as a bounded PNG |
+| `File` | Received file, with no execution or arbitrary preview | Only when it is a compatible image; other files remain local |
+| `Note` | Local text up to 20,000 characters | Yes, in Review's general instruction. A note alone still needs an image or annotation before Review can prepare a valid send. |
 
-Capture Inbox ne propose aucune action `Voice` et ne demande jamais le microphone. La dictée d'une Session et la note vocale d'un checkpoint Site QA restent des fonctionnalités séparées avec leurs propres contrats.
+Capture Inbox has no `Voice` action and never requests microphone permission. Session Dictation and the optional Site QA checkpoint voice note are separate capabilities with separate contracts.
 
-Nerva ne supprime et ne convertit jamais silencieusement un fichier non pris en charge. Une sélection contenant un fichier non-image explique la limite et reste dans l'Inbox.
+Nerva never silently deletes or converts an unsupported file. A selection containing a non-image file explains the limit and leaves the original in the Inbox.
 
-## Stockage et migration
+## Storage and migration
 
-- base IndexedDB séparée : `nerva-capture-inbox` ;
-- 200 captures maximum ;
-- 32 MiB maximum par capture ;
-- 256 MiB maximum comptabilisés pour les données de l'Inbox ;
-- bytes stockés comme `ArrayBuffer` pour éviter les clones `Blob` peu fiables de WebKit ;
-- aucun champ de destination, affectation, préparation ou livraison ;
-- suppression directe par carte ou multiple par sélection, toujours avec confirmation.
+- separate IndexedDB database: `nerva-capture-inbox`;
+- at most 200 captures;
+- at most 32 MiB per capture;
+- at most 256 MiB accounted Inbox data;
+- bytes stored as `ArrayBuffer` to avoid unreliable WebKit `Blob` clones;
+- no destination, assignment, preparation, or delivery field;
+- direct or multi-select deletion, always confirmed.
 
-La version 2 du store migre sans perte les anciennes données locales : elle retire les anciens champs de destination/préparation et transforme un ancien enregistrement `voice` en fichier audio générique. Son titre devient `Audio file…`, ses bytes sont conservés et aucun microphone n'est réexposé dans l'interface.
+Store v2 migrates older local data without dropping bytes: it removes historical destination/preparation fields and turns a historical `voice` item into a generic audio file. Its title becomes `Audio file…`; it remains stored, but the microphone is not restored to the UI.
 
-Capture Inbox n'est pas synchronisé dans le Product State Mac et ne revient pas sur un iPad de remplacement. Ce choix est volontaire : les captures restent locales. Les layouts, préférences et Saved Drawings conservent leurs règles de synchronisation distinctes.
+Capture Inbox is not part of Mac Product State and does not return on a replacement iPad. This is intentional. Layout, preferences, and Saved Drawings follow their own synchronization rules.
 
-## Garanties de non-envoi
+## No-send guarantees
 
-Le store Capture Inbox ne possède aucun champ `queued`, `pendingSend`, commande, retry ou replay. Capturer, consulter, sélectionner et supprimer n'appellent ni `/api/command`, ni le transport Sketch, ni `sendReview`.
+The Capture Inbox store has no `queued`, `pendingSend`, command, retry, or replay state. Capturing, viewing, selecting, and deleting never call `/api/command`, Sketch transport, or `sendReview`.
 
-`Use in session` écrit seulement dans le Review local du `threadId` affiché. La reconnexion du WebSocket ou du bridge ne lit pas l'Inbox et ne lance aucun effet de livraison. Seul un geste ultérieur dans Review peut construire puis confirmer un envoi.
+`Use in session` writes only to the displayed thread's local Review. WebSocket or bridge reconnection never reads the Inbox and never starts a delivery effect. Only a later explicit Review gesture may prepare and confirm a send.
 
-## Preuves et limites
+## Evidence and limits
 
-Les tests locaux couvrent le store, la migration v1 → v2, l'absence d'état de destination, le refus des fichiers non transportables, la copie note/image vers le Review exact, la réutilisation d'une même capture dans deux Sessions, le rechargement, l'offline/reconnexion, l'absence de commande Mac et le canvas Pencil émulé. Les parcours passent sous Chromium et WebKit en iPad paysage, iPad portrait et téléphone.
+Local tests cover storage, v1-to-v2 migration, absence of destination state, unsupported transport files, exact-Review note/image copying, reuse in two Sessions, reload, offline/reconnect, absence of Mac commands, and an emulated Pencil canvas. Flows pass under Chromium and WebKit for iPad landscape, iPad portrait, and phone profiles.
 
-Restent à valider sur le matériel réel : caméra/Photos/Files, stockage sous pression iPadOS, Apple Pencil physique, suspension/arrière-plan et persistance après éviction iPadOS.
+Physical Camera/Photos/Files behavior, iPadOS storage pressure, real Apple Pencil input, background suspension, and persistence after iPadOS eviction remain unproved.

@@ -4,7 +4,7 @@
 - Date: 2026-07-20
 - Scope: Reading and controlling native Codex Micro state
 
-> **Target boundary:** this adapter remains authoritative only for the six native Micro slots and actions it actually proves. The confirmed Home target may display 0–12 pinned sessions obtained through exact authenticated Mac session identity; a session does not need to occupy a Micro slot to appear on Home, but it may not inherit Micro controls merely by being pinned. See [`docs/product/FEATURES_target.md`](../product/FEATURES_target.md#3-home-et-sessions-épinglées).
+> **Target boundary:** this adapter remains authoritative only for the six native Micro slots and actions it actually proves. The confirmed Home target may display 0–12 pinned sessions obtained through exact authenticated Mac session identity; a session does not need to occupy a Micro slot to appear on Home, but it may not inherit Micro controls merely by being pinned. See [`docs/product/FEATURES_target.md`](../product/FEATURES_target.md#3-home-and-pinned-sessions).
 
 ## Context
 
