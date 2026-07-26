@@ -1554,7 +1554,10 @@ export function DrawingStudio({
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      if (editorLocked || event.button > 0) return;
+      // Draft restoration is asynchronous. Never accept a stroke that a late
+      // restore can overwrite; the canvas exposes aria-busy so touch clients
+      // and deterministic tests can wait for the same observable boundary.
+      if (!draftReady || editorLocked || event.button > 0) return;
       event.preventDefault();
       if (event.pointerType === "pen") {
         penActiveRef.current = true;
@@ -1645,7 +1648,7 @@ export function DrawingStudio({
       drawInteractionRef.current = interaction;
       setDrawingPreview(toolPreview(interaction, color, size));
     },
-    [beginGesture, color, editorLocked, pencilOnly, resetGestureStart, scene, size, textValue, tool, view],
+    [beginGesture, color, draftReady, editorLocked, pencilOnly, resetGestureStart, scene, size, textValue, tool, view],
   );
 
   const onPointerMove = useCallback(
@@ -2479,6 +2482,7 @@ export function DrawingStudio({
               style={{ touchAction: "none" }}
               role="img"
               aria-label="Sketch canvas. Use Apple Pencil to draw; use two fingers to pan and pinch to zoom."
+              aria-busy={!draftReady}
               tabIndex={0}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}

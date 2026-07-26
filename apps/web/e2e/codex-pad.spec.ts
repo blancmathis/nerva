@@ -19,6 +19,9 @@ async function openAuthenticatedApp(page: Page): Promise<MockBridge> {
 }
 
 async function drawPenStroke(canvas: Locator): Promise<void> {
+  if (await canvas.getAttribute("aria-busy") !== null) {
+    await expect(canvas).toHaveAttribute("aria-busy", "false");
+  }
   const box = await canvas.boundingBox();
   if (!box) throw new Error("Sketch canvas has no rendered bounds");
   const points = [[.3, .38], [.48, .56], [.68, .42]] as const;
@@ -909,6 +912,7 @@ test("commits a Pencil stroke when iPadOS ends pointer capture so Send becomes a
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  await expect(canvas).toHaveAttribute("aria-busy", "false");
   const box = await canvas.boundingBox();
   if (!box) throw new Error("Sketch canvas has no rendered bounds");
 
@@ -1230,6 +1234,7 @@ test("keeps the visible Pencil stroke when palm rejection cancels the active poi
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  await expect(canvas).toHaveAttribute("aria-busy", "false");
   const box = await canvas.boundingBox();
   if (!box) throw new Error("Sketch canvas has no rendered bounds");
 
