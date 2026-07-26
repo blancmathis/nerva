@@ -23,6 +23,15 @@ function io() {
   };
 }
 
+const startupDoctor = async () => ({
+  generatedAt: "2026-07-26T00:00:00.000Z",
+  state: "limited" as const,
+  overall: "warn" as const,
+  checks: [],
+  safeCommands: [],
+  proofBoundaries: [],
+});
+
 describe("runCli", () => {
   it("publishes one structured diagram to the exact ambient Codex task", async () => {
     const output = io();
@@ -107,7 +116,7 @@ describe("runCli", () => {
     expect(code).toBe(0);
     expect(output.stdout.join("\n")).toContain("READY WITH LIMITED CODEX CONTROLS");
     expect(output.stdout.join("\n")).toContain("0.146.0-alpha.3.1");
-    expect(output.stdout.join("\n")).toContain("app-server-backed controls will remain unavailable");
+    expect(output.stdout.join("\n")).toContain("Only the capabilities listed as unavailable remain disabled");
   });
 
   it("emits setup-check JSON and exits nonzero only when installation is blocked", async () => {
@@ -247,6 +256,29 @@ describe("runCli", () => {
     expect(JSON.parse(output.stdout.join("\n"))).toMatchObject({ overall: "red" });
   });
 
+  it("returns success for limited doctor by default and preserves the strict native gate", async () => {
+    const report = {
+      generatedAt: "2026-07-26T00:00:00.000Z",
+      state: "limited" as const,
+      overall: "warn" as const,
+      checks: [],
+      safeCommands: [],
+      proofBoundaries: [],
+    };
+    const normal = await runCli(["doctor", "--json"], {
+      stdout: () => undefined,
+      stderr: () => undefined,
+      doctor: async () => report,
+    });
+    const strict = await runCli(["doctor", "--strict-native", "--json"], {
+      stdout: () => undefined,
+      stderr: () => undefined,
+      doctor: async () => report,
+    });
+    expect(normal).toBe(0);
+    expect(strict).toBe(1);
+  });
+
   it("serves on default loopback and accepts start as an alias", async () => {
     const output = io();
     const close = vi.fn(async () => undefined);
@@ -263,6 +295,7 @@ describe("runCli", () => {
         binaryVersion: "codex-cli 0.145.0-test",
       }),
       inspectMultiImageInputCapability,
+      doctor: startupDoctor,
       loadServer: async () => ({ startBridge }),
       waitForShutdown: async (handle) => handle.close(),
     });
@@ -305,6 +338,7 @@ describe("runCli", () => {
         binaryVersion: "codex-cli 0.145.0-test",
       }),
       inspectMultiImageInputCapability,
+      doctor: startupDoctor,
       loadServer: async () => ({ startBridge }),
       waitForShutdown: async () => undefined,
     });
@@ -336,6 +370,7 @@ describe("runCli", () => {
         binaryVersion: "codex-cli 0.145.0-test",
       }),
       inspectMultiImageInputCapability: async () => ({ attestationStatus: "invalid-or-stale" }),
+      doctor: startupDoctor,
       loadServer: async () => ({ startBridge }),
       waitForShutdown: async () => undefined,
     });
@@ -383,6 +418,7 @@ describe("runCli", () => {
         stdout: output.writeOut,
         stderr: output.writeError,
         locateDesktop: async () => undefined,
+        doctor: startupDoctor,
         loadServer: async () => ({ startBridge }),
         waitForShutdown: async () => undefined,
       },
@@ -550,6 +586,7 @@ describe("runCli", () => {
       schema: {
         formatVersion: 1 as const,
         codexBinary: "/Applications/ChatGPT.app/Contents/Resources/codex",
+        codexBinarySha256: "b".repeat(64),
         codexVersion: "codex-cli test",
         generatedAt: "2026-07-20T00:00:00.000Z",
         schemaSha256: "a".repeat(64),

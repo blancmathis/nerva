@@ -31,6 +31,7 @@ import {
   codexPadPaths,
   DEFAULT_BRIDGE_HOST,
   DEFAULT_BRIDGE_PORT,
+  generateProtocolSchemas,
   setupCodexPad,
   type SetupResult,
 } from "./setup.js";
@@ -72,7 +73,7 @@ export interface MacPairingResult {
 
 export interface MacSetupResult extends MacPairingResult {
   readonly setup: SetupResult;
-  readonly installationState: "ready" | "degraded";
+  readonly installationState: "ready" | "limited" | "degraded";
   readonly serveChanged: boolean;
   readonly launchAgentChanged: boolean;
   readonly managedDaemonConfigured: boolean;
@@ -104,14 +105,14 @@ export interface MacSetupIssue {
 }
 
 export interface MacSetupNativeIntegration {
-  readonly state: "ready" | "degraded";
+  readonly state: "ready" | "limited" | "degraded";
   readonly desktopCodexVersion?: string;
   readonly standaloneCodexVersion?: string;
   readonly reasons: readonly MacSetupIssue[];
 }
 
 export interface MacSetupPreflight {
-  readonly installationState: "ready" | "degraded" | "blocked";
+  readonly installationState: "ready" | "limited" | "degraded" | "blocked";
   readonly nativeIntegration: MacSetupNativeIntegration;
   readonly blockers: readonly MacSetupIssue[];
 }
@@ -404,6 +405,19 @@ async function configureManagedDaemon(input: {
   readonly codexBinaryPath: string;
   readonly command: CommandRunner;
 }): Promise<void> {
+  const current = await input.command(
+    input.codexBinaryPath,
+    ["app-server", "daemon", "version"],
+    10_000,
+  );
+  if (current.exitCode === 0) {
+    try {
+      const parsed = JSON.parse(current.stdout) as unknown;
+      if (isRecord(parsed) && parsed.status === "running") return;
+    } catch {
+      // A malformed response is not accepted; bootstrap performs the explicit repair.
+    }
+  }
   const bootstrap = await input.command(
     input.codexBinaryPath,
     ["app-server", "daemon", "bootstrap", "--remote-control"],
@@ -428,20 +442,6 @@ async function configureManagedDaemon(input: {
   }
   if (!isRecord(parsed) || parsed.status !== "running") {
     throw new Error("Managed app-server verification did not report a running daemon.");
-  }
-  const cliVersion = typeof parsed.cliVersion === "string" ? parsed.cliVersion : undefined;
-  const appServerVersion = typeof parsed.appServerVersion === "string" ? parsed.appServerVersion : undefined;
-  const managedCodexVersion = typeof parsed.managedCodexVersion === "string" ? parsed.managedCodexVersion : undefined;
-  if (
-    !cliVersion
-    || !appServerVersion
-    || !managedCodexVersion
-    || cliVersion !== appServerVersion
-    || cliVersion !== managedCodexVersion
-  ) {
-    throw new Error(
-      `Managed app-server version mismatch: Desktop CLI ${cliVersion ?? "unknown"}, managed Codex ${managedCodexVersion ?? "unknown"}, app-server ${appServerVersion ?? "unknown"}.`,
-    );
   }
 }
 
@@ -741,6 +741,8 @@ export async function preflightMacSetup(
         )]
       : []),
     ...(desktopCodexVersion && standaloneCodexVersion && desktopCodexVersion !== standaloneCodexVersion
+      && doctor?.compatibility?.state !== "compatible"
+      && doctor?.compatibility?.state !== "limited"
       ? [setupIssue(
           "codex-version-mismatch",
           `Codex Desktop uses ${desktopCodexVersion}, while the standalone daemon package uses ${standaloneCodexVersion}.`,
@@ -752,7 +754,6 @@ export async function preflightMacSetup(
       : []),
     ...(doctor
       ? [
-          issueFromDoctorCheck(doctor, "app-server-writers", "app-server-writers"),
           issueFromDoctorCheck(doctor, "managed-app-server", "managed-app-server-unavailable"),
           issueFromDoctorCheck(doctor, "desktop-shared-ownership", "desktop-ownership-unverified"),
           issueFromDoctorCheck(doctor, "cdp-loopback", "cdp-unavailable"),
@@ -762,7 +763,7 @@ export async function preflightMacSetup(
       : []),
   ]);
   const nativeIntegration: MacSetupNativeIntegration = {
-    state: nativeReasons.length === 0 ? "ready" : "degraded",
+    state: nativeReasons.length === 0 ? "ready" : "limited",
     ...(desktopCodexVersion ? { desktopCodexVersion } : {}),
     ...(standaloneCodexVersion ? { standaloneCodexVersion } : {}),
     reasons: nativeReasons,
@@ -784,6 +785,29 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
   }
   const setup = await setupCodexPad({ homeDirectory: input.homeDirectory, platform: input.platform });
   if (!setup.ok) throw new Error("Nerva local storage setup did not complete.");
+  const schemaBinaries = [
+    { path: input.codexBinaryPath, version: preflight.nativeIntegration.desktopCodexVersion },
+    {
+      path: join(
+        input.environment.CODEX_HOME?.trim() || join(input.homeDirectory, ".codex"),
+        "packages",
+        "standalone",
+        "current",
+        "codex",
+      ),
+      version: preflight.nativeIntegration.standaloneCodexVersion,
+    },
+  ];
+  for (const binary of schemaBinaries) {
+    if (!binary.version) continue;
+    await generateProtocolSchemas(setup.paths, {
+      enabled: true,
+      binaryPath: binary.path,
+      binaryVersion: `codex-cli ${binary.version}`,
+      run: (executable, arguments_) => input.command(executable, arguments_, 30_000),
+      now: input.now,
+    }).catch(() => undefined);
+  }
   await validateLaunchAgentDestination(input.homeDirectory, input.repositoryRoot);
   const identity = await tailscaleIdentity(input.environment, input.command);
   const serveChanged = await ensurePrivateServe(identity, input.command);
@@ -837,7 +861,7 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
   });
   const nativeIntegration: MacSetupNativeIntegration = {
     ...preflight.nativeIntegration,
-    state: nativeReasons.length === 0 && managedDaemonConfigured ? "ready" : "degraded",
+    state: nativeReasons.length === 0 && managedDaemonConfigured ? "ready" : "limited",
     reasons: uniqueIssues(nativeReasons),
   };
   return {

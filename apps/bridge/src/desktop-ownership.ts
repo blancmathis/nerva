@@ -23,6 +23,8 @@ export interface DesktopOwnershipInstallation {
   readonly buildVersion: string;
   readonly binaryPath: string;
   readonly binaryVersion: string;
+  readonly daemonBinaryPath?: string;
+  readonly daemonBinaryVersion?: string;
 }
 
 export interface DesktopOwnershipEvidence {
@@ -58,6 +60,12 @@ export interface DesktopOwnershipEvidence {
     readonly clientEndpointGeneration: string;
   };
   readonly codex: {
+    readonly desktopBinaryPath: string;
+    readonly desktopBinaryVersion: string;
+    readonly daemonBinaryPath: string;
+    readonly daemonBinaryVersion: string;
+  } | {
+    /** Legacy in-memory fixture shape. Attestation parsing never accepts it. */
     readonly binaryPath: string;
     readonly binaryVersion: string;
   };
@@ -87,6 +95,7 @@ export interface DesktopOwnershipInspection {
   readonly summary: string;
   /** Private local evidence used only to create an attestation after a positive probe. */
   readonly currentEvidence?: DesktopOwnershipEvidence;
+  readonly renewed?: boolean;
 }
 
 export interface OwnershipCommandResult {
@@ -129,6 +138,10 @@ export interface CollectDesktopOwnershipOptions {
   readonly socketPath: string;
   readonly platform?: NodeJS.Platform;
   readonly runCommand: OwnershipCommandRunner;
+  readonly verifyDesktopSignature?: (
+    installation: DesktopOwnershipInstallation,
+    runCommand: OwnershipCommandRunner,
+  ) => Promise<boolean>;
 }
 
 export interface InspectDesktopOwnershipOptions {
@@ -141,6 +154,8 @@ export interface InspectDesktopOwnershipOptions {
   readonly collectEvidence?: (
     options: CollectDesktopOwnershipOptions,
   ) => Promise<DesktopOwnershipEvidence>;
+  readonly allowSafeRenewal?: boolean;
+  readonly now?: () => Date;
 }
 
 export interface CreateDesktopOwnershipAttestationOptions
@@ -196,6 +211,35 @@ const DEFAULT_SOCKET_PATH = join(
   "app-server-control",
   "app-server-control.sock",
 );
+const OPENAI_TEAM_ID = "2DC432GLL2";
+const CODEX_BUNDLE_ID = "com.openai.codex";
+
+export async function verifyOfficialDesktopSignature(
+  installation: DesktopOwnershipInstallation,
+  command: OwnershipCommandRunner,
+): Promise<boolean> {
+  if (installation.bundleId !== CODEX_BUNDLE_ID) return false;
+  const [verify, details, requirement, assessment] = await Promise.all([
+    command("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", installation.appPath], 10_000),
+    command("/usr/bin/codesign", ["-dv", "--verbose=4", installation.appPath], 10_000),
+    command("/usr/bin/codesign", ["-d", "-r-", installation.appPath], 10_000),
+    command("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", installation.appPath], 10_000),
+  ]);
+  const signature = `${details.stdout}\n${details.stderr}`;
+  const designated = `${requirement.stdout}\n${requirement.stderr}`;
+  const notarization = `${assessment.stdout}\n${assessment.stderr}`;
+  return verify.exitCode === 0
+    && details.exitCode === 0
+    && requirement.exitCode === 0
+    && assessment.exitCode === 0
+    && signature.includes(`Identifier=${CODEX_BUNDLE_ID}`)
+    && signature.includes(`TeamIdentifier=${OPENAI_TEAM_ID}`)
+    && signature.includes(`Authority=Developer ID Application: OpenAI OpCo, LLC (${OPENAI_TEAM_ID})`)
+    && designated.includes(`identifier \"${CODEX_BUNDLE_ID}\"`)
+    && new RegExp(`certificate leaf\\[subject\\.OU\\].*\"${OPENAI_TEAM_ID}\"`).test(designated)
+    && /accepted/i.test(notarization)
+    && /Notarized Developer ID/i.test(notarization);
+}
 
 export function defaultDesktopOwnershipAttestationPath(homeDirectory = homedir()): string {
   return join(
@@ -291,8 +335,10 @@ function parseEvidence(value: unknown): DesktopOwnershipEvidence | undefined {
     !HEX_PATTERN.test(desktopClient.clientEndpointAddress) ||
     typeof desktopClient.clientEndpointGeneration !== "string" ||
     !HEX_PATTERN.test(desktopClient.clientEndpointGeneration) ||
-    !absolutePath(codex.binaryPath) ||
-    !nonEmptyString(codex.binaryVersion, 256)
+    !absolutePath(codex.desktopBinaryPath) ||
+    !nonEmptyString(codex.desktopBinaryVersion, 256) ||
+    !absolutePath(codex.daemonBinaryPath) ||
+    !nonEmptyString(codex.daemonBinaryVersion, 256)
   ) {
     return undefined;
   }
@@ -325,7 +371,12 @@ function parseEvidence(value: unknown): DesktopOwnershipEvidence | undefined {
       clientEndpointAddress: desktopClient.clientEndpointAddress,
       clientEndpointGeneration: desktopClient.clientEndpointGeneration,
     },
-    codex: { binaryPath: codex.binaryPath, binaryVersion: codex.binaryVersion },
+    codex: {
+      desktopBinaryPath: codex.desktopBinaryPath,
+      desktopBinaryVersion: codex.desktopBinaryVersion,
+      daemonBinaryPath: codex.daemonBinaryPath,
+      daemonBinaryVersion: codex.daemonBinaryVersion,
+    },
   };
 }
 
@@ -410,11 +461,6 @@ function isDescendant(
     parent = byPid.get(parent)?.ppid ?? 0;
   }
   return false;
-}
-
-function isStandaloneAppServer(command: string): boolean {
-  if (!/(?:^|\s)app-server(?:\s|$)/.test(command)) return false;
-  return !/(?:^|\s)app-server\s+(?:daemon|proxy|generate-|help)(?:\s|$)/.test(command);
 }
 
 function lsofNames(output: string): readonly string[] {
@@ -515,7 +561,7 @@ function desktopExecutablePath(appPath: string): string {
 
 function normalizedInstallation(
   installation: DesktopOwnershipInstallation,
-): DesktopOwnershipInstallation {
+): Required<DesktopOwnershipInstallation> {
   if (
     !absolutePath(installation.appPath) ||
     !absolutePath(installation.binaryPath) ||
@@ -523,6 +569,8 @@ function normalizedInstallation(
     !nonEmptyString(installation.appVersion, 256) ||
     !nonEmptyString(installation.buildVersion, 256) ||
     !nonEmptyString(installation.binaryVersion, 256)
+    || (installation.daemonBinaryPath !== undefined && !absolutePath(installation.daemonBinaryPath))
+    || (installation.daemonBinaryVersion !== undefined && !nonEmptyString(installation.daemonBinaryVersion, 256))
   ) {
     throw new OwnershipProbeError(
       "topology-unavailable",
@@ -536,6 +584,8 @@ function normalizedInstallation(
     buildVersion: installation.buildVersion,
     binaryPath: resolve(installation.binaryPath),
     binaryVersion: installation.binaryVersion,
+    daemonBinaryPath: resolve(installation.daemonBinaryPath ?? installation.binaryPath),
+    daemonBinaryVersion: installation.daemonBinaryVersion ?? installation.binaryVersion,
   };
 }
 
@@ -546,6 +596,12 @@ export async function collectDesktopOwnershipEvidence(
     throw new OwnershipProbeError("platform-unsupported", "macOS is required.");
   }
   const installation = normalizedInstallation(options.installation);
+  if (!(await (options.verifyDesktopSignature ?? verifyOfficialDesktopSignature)(installation, options.runCommand))) {
+    throw new OwnershipProbeError(
+      "topology-unavailable",
+      "Codex Desktop signature, Team ID, bundle identity, or notarization is not trusted.",
+    );
+  }
   if (!absolutePath(options.socketPath)) {
     throw new OwnershipProbeError(
       "topology-unavailable",
@@ -578,12 +634,6 @@ export async function collectDesktopOwnershipEvidence(
     throw new OwnershipProbeError("topology-unavailable", "Process topology is unavailable.");
   }
   const processes = parseProcessRows(processResult.stdout);
-  if (processes.some((process_) => isStandaloneAppServer(process_.command))) {
-    throw new OwnershipProbeError(
-      "topology-ambiguous",
-      "An independent app-server writer is present.",
-    );
-  }
   const byPid = new Map(processes.map((process_) => [process_.pid, process_]));
   const desktopExecutable = desktopExecutablePath(installation.appPath);
   const desktopCandidates = processes.filter(
@@ -609,12 +659,15 @@ export async function collectDesktopOwnershipEvidence(
   const daemonCandidates: ProcessRow[] = [];
   const proxyCandidates: ProcessRow[] = [];
   for (const process_ of processes) {
-    const arguments_ = executableArguments(process_.command, installation.binaryPath);
-    if (arguments_ === undefined) continue;
-    if (/^app-server\s+daemon(?:\s|$)/.test(arguments_)) daemonCandidates.push(process_);
+    const daemonArguments = executableArguments(process_.command, installation.daemonBinaryPath);
+    const desktopCodexArguments = executableArguments(process_.command, installation.binaryPath);
+    if (daemonArguments !== undefined && /^app-server\s+daemon(?:\s|$)/.test(daemonArguments)) {
+      daemonCandidates.push(process_);
+    }
     if (
-      /^app-server\s+proxy(?:\s|$)/.test(arguments_) &&
-      hasExactSocketArgument(arguments_, socketPath) &&
+      desktopCodexArguments !== undefined
+      && /^app-server\s+proxy(?:\s|$)/.test(desktopCodexArguments) &&
+      hasExactSocketArgument(desktopCodexArguments, socketPath) &&
       isDescendant(process_, desktop.pid, byPid)
     ) {
       proxyCandidates.push(process_);
@@ -623,7 +676,7 @@ export async function collectDesktopOwnershipEvidence(
   const verifiedDaemons: ProcessRow[] = [];
   for (const daemon of daemonCandidates) {
     if (
-      (await processHasExactExecutable(options.runCommand, daemon.pid, installation.binaryPath)) &&
+      (await processHasExactExecutable(options.runCommand, daemon.pid, installation.daemonBinaryPath)) &&
       (await processHasSocket(options.runCommand, daemon.pid, socketPath))
     ) {
       verifiedDaemons.push(daemon);
@@ -657,6 +710,13 @@ export async function collectDesktopOwnershipEvidence(
     throw new OwnershipProbeError(
       "topology-unavailable",
       "The managed socket generation could not be inspected.",
+    );
+  }
+
+  if (socketTopology.peers.length !== 1) {
+    throw new OwnershipProbeError(
+      socketTopology.peers.length > 1 ? "topology-ambiguous" : "topology-unavailable",
+      "The managed socket must have exactly one Desktop-owned peer before the bridge connects.",
     );
   }
 
@@ -741,8 +801,10 @@ export async function collectDesktopOwnershipEvidence(
       clientEndpointGeneration: desktopClient.peer.clientGeneration,
     },
     codex: {
-      binaryPath: installation.binaryPath,
-      binaryVersion: installation.binaryVersion,
+      desktopBinaryPath: installation.binaryPath,
+      desktopBinaryVersion: installation.binaryVersion,
+      daemonBinaryPath: installation.daemonBinaryPath,
+      daemonBinaryVersion: installation.daemonBinaryVersion,
     },
   };
 }
@@ -794,13 +856,23 @@ async function readAttestation(
 }
 
 function installationFromEvidence(evidence: DesktopOwnershipEvidence): DesktopOwnershipInstallation {
+  const codex = "desktopBinaryPath" in evidence.codex
+    ? evidence.codex
+    : {
+        desktopBinaryPath: evidence.codex.binaryPath,
+        desktopBinaryVersion: evidence.codex.binaryVersion,
+        daemonBinaryPath: evidence.codex.binaryPath,
+        daemonBinaryVersion: evidence.codex.binaryVersion,
+      };
   return {
     appPath: evidence.desktop.appPath,
     bundleId: evidence.desktop.bundleId,
     appVersion: evidence.desktop.appVersion,
     buildVersion: evidence.desktop.buildVersion,
-    binaryPath: evidence.codex.binaryPath,
-    binaryVersion: evidence.codex.binaryVersion,
+    binaryPath: codex.desktopBinaryPath,
+    binaryVersion: codex.desktopBinaryVersion,
+    daemonBinaryPath: codex.daemonBinaryPath,
+    daemonBinaryVersion: codex.daemonBinaryVersion,
   };
 }
 
@@ -898,9 +970,50 @@ export async function inspectDesktopOwnership(
   }
   if (
     resolve(existing.value.evidence.socket.path) !== resolve(options.socketPath) ||
-    resolve(existing.value.evidence.codex.binaryPath) !== resolve(options.codexBinaryPath) ||
+    resolve("desktopBinaryPath" in existing.value.evidence.codex
+      ? existing.value.evidence.codex.desktopBinaryPath
+      : existing.value.evidence.codex.binaryPath) !== resolve(options.codexBinaryPath) ||
     evidenceDigest(existing.value.evidence) !== evidenceDigest(currentEvidence)
   ) {
+    const existingInstallation = installationFromEvidence(existing.value.evidence);
+    const pathsAndSignerPolicyUnchanged =
+      resolve(existingInstallation.appPath) === resolve(currentEvidence.desktop.appPath)
+      && existingInstallation.bundleId === currentEvidence.desktop.bundleId
+      && resolve(existingInstallation.binaryPath) === resolve(
+        "desktopBinaryPath" in currentEvidence.codex
+          ? currentEvidence.codex.desktopBinaryPath
+          : currentEvidence.codex.binaryPath,
+      )
+      && resolve(existingInstallation.daemonBinaryPath ?? existingInstallation.binaryPath) === resolve(
+        "daemonBinaryPath" in currentEvidence.codex
+          ? currentEvidence.codex.daemonBinaryPath
+          : currentEvidence.codex.binaryPath,
+      );
+    if (options.allowSafeRenewal === true && pathsAndSignerPolicyUnchanged && installation !== undefined) {
+      const revalidated = await (options.collectEvidence ?? collectDesktopOwnershipEvidence)({
+        installation,
+        socketPath: options.socketPath,
+        platform: options.platform ?? process.platform,
+        runCommand: options.runCommand,
+      });
+      if (evidenceDigest(revalidated) === evidenceDigest(currentEvidence)) {
+        const renewed: DesktopOwnershipAttestation = {
+          formatVersion: 2,
+          createdAt: (options.now ?? (() => new Date()))().toISOString(),
+          evidence: revalidated,
+          evidenceSha256: evidenceDigest(revalidated),
+        };
+        await writeAttestationAtomic(attestationPath, renewed);
+        return {
+          verified: true,
+          canCreate: false,
+          code: "verified",
+          summary: "Shared Desktop ownership was safely renewed for the current compatible Codex update.",
+          currentEvidence: revalidated,
+          renewed: true,
+        };
+      }
+    }
     return {
       verified: false,
       canCreate: true,

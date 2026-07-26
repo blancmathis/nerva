@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -131,6 +131,8 @@ describe("setupCodexPad", () => {
 
   it("generates and records schemas from the selected installed binary once", async () => {
     const homeDirectory = await temporaryHome();
+    const binaryPath = join(homeDirectory, "codex-test");
+    await writeFile(binaryPath, "codex-test-binary");
     let calls = 0;
     const generate = async (_executable: string, arguments_: readonly string[]) => {
       calls += 1;
@@ -141,7 +143,7 @@ describe("setupCodexPad", () => {
     };
     const options = {
       enabled: true,
-      binaryPath: "/Applications/ChatGPT.app/Contents/Resources/codex",
+      binaryPath,
       binaryVersion: "codex-cli 0.test",
       run: generate,
       now: () => new Date("2026-07-20T10:00:00.000Z"),
@@ -157,6 +159,44 @@ describe("setupCodexPad", () => {
     });
     expect(second.schema?.schemaSha256).toBe(first.schema?.schemaSha256);
     expect(calls).toBe(1);
+  });
+
+  it("keeps separate schema caches for different binaries with the same version", async () => {
+    const homeDirectory = await temporaryHome();
+    const desktopBinary = join(homeDirectory, "desktop-codex");
+    const daemonBinary = join(homeDirectory, "daemon-codex");
+    await writeFile(desktopBinary, "desktop-binary");
+    await writeFile(daemonBinary, "daemon-binary");
+    const generate = async (_executable: string, arguments_: readonly string[]) => {
+      const output = arguments_.at(-1);
+      if (!output) throw new Error("missing output");
+      await writeFile(join(output, "ClientRequest.json"), "{\"type\":\"object\"}\n");
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    const first = await setupCodexPad({
+      homeDirectory,
+      platform: "darwin",
+      protocolSchema: {
+        enabled: true,
+        binaryPath: desktopBinary,
+        binaryVersion: "codex-cli same",
+        run: generate,
+      },
+    });
+    const second = await setupCodexPad({
+      homeDirectory,
+      platform: "darwin",
+      protocolSchema: {
+        enabled: true,
+        binaryPath: daemonBinary,
+        binaryVersion: "codex-cli same",
+        run: generate,
+      },
+    });
+
+    expect(first.schema?.codexBinarySha256).not.toBe(second.schema?.codexBinarySha256);
+    const schemaDirectories = await readdir(join(first.paths.cache, "app-server-schemas"));
+    expect(schemaDirectories.filter((entry) => entry.startsWith("codex-cli-same--"))).toHaveLength(2);
   });
 
   it("does not touch the filesystem on unsupported platforms", async () => {

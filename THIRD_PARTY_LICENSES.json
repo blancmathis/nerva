@@ -485,7 +485,9 @@
       "version": "8.20.0",
       "license": "MIT",
       "source": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
-      "directFrom": [],
+      "directFrom": [
+        "apps/bridge"
+      ],
       "optional": false,
       "lockPaths": [
         "node_modules/ajv"

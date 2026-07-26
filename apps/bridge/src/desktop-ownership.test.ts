@@ -2,12 +2,13 @@ import { chmod, mkdir, mkdtemp } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   collectDesktopOwnershipEvidence,
   createDesktopOwnershipAttestation,
   inspectDesktopOwnership,
+  verifyOfficialDesktopSignature,
   verifyDesktopProcessIdentityAtWriteBoundary,
   type DesktopOwnershipEvidence,
   type DesktopOwnershipInstallation,
@@ -21,6 +22,8 @@ const installation: DesktopOwnershipInstallation = {
   buildVersion: "5591",
   binaryPath: "/Applications/ChatGPT.app/Contents/Resources/codex",
   binaryVersion: "codex-cli 0.test",
+  daemonBinaryPath: "/Applications/ChatGPT.app/Contents/Resources/codex",
+  daemonBinaryVersion: "codex-cli 0.test",
 };
 
 function evidence(socketPath: string, daemonPid = 201): DesktopOwnershipEvidence {
@@ -54,8 +57,10 @@ function evidence(socketPath: string, daemonPid = 201): DesktopOwnershipEvidence
       clientEndpointGeneration: "11",
     },
     codex: {
-      binaryPath: installation.binaryPath,
-      binaryVersion: installation.binaryVersion,
+      desktopBinaryPath: installation.binaryPath,
+      desktopBinaryVersion: installation.binaryVersion,
+      daemonBinaryPath: installation.daemonBinaryPath ?? installation.binaryPath,
+      daemonBinaryVersion: installation.daemonBinaryVersion ?? installation.binaryVersion,
     },
   };
 }
@@ -118,6 +123,31 @@ const unusedCommand: OwnershipCommandRunner = async () => ({
 });
 
 describe("Desktop ownership attestation", () => {
+  it("accepts only the official bundle, Team ID, Developer ID and notarized assessment", async () => {
+    const command: OwnershipCommandRunner = async (executable, arguments_) => {
+      if (executable === "/usr/bin/codesign" && arguments_[0] === "--verify") {
+        return { exitCode: 0, stdout: "", stderr: "valid on disk" };
+      }
+      if (executable === "/usr/bin/codesign" && arguments_[1] === "--verbose=4") {
+        return {
+          exitCode: 0,
+          stdout: "",
+          stderr: "Identifier=com.openai.codex\nTeamIdentifier=2DC432GLL2\nAuthority=Developer ID Application: OpenAI OpCo, LLC (2DC432GLL2)",
+        };
+      }
+      if (executable === "/usr/bin/codesign") {
+        return {
+          exitCode: 0,
+          stdout: "",
+          stderr: "designated => identifier \"com.openai.codex\" and certificate leaf[subject.OU] = \"2DC432GLL2\"",
+        };
+      }
+      return { exitCode: 0, stdout: "accepted\nsource=Notarized Developer ID", stderr: "" };
+    };
+    await expect(verifyOfficialDesktopSignature(installation, command)).resolves.toBe(true);
+    await expect(verifyOfficialDesktopSignature({ ...installation, bundleId: "invalid.bundle" }, command)).resolves.toBe(false);
+  });
+
   it("keeps mutation unavailable when the attestation is missing", async () => {
     const paths = await fixture();
     const current = evidence(paths.socketPath);
@@ -201,6 +231,48 @@ describe("Desktop ownership attestation", () => {
     }
   });
 
+  it("renews only a previously valid attestation after two identical safe topology probes", async () => {
+    const paths = await fixture();
+    const prior = evidence(paths.socketPath);
+    await createDesktopOwnershipAttestation({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      installation,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence: async () => prior,
+    });
+    const updated: DesktopOwnershipEvidence = {
+      ...prior,
+      desktop: { ...prior.desktop, appVersion: "26.updated", buildVersion: "6000" },
+      codex: {
+        desktopBinaryPath: installation.binaryPath,
+        desktopBinaryVersion: "codex-cli 0.updated",
+        daemonBinaryPath: installation.daemonBinaryPath ?? installation.binaryPath,
+        daemonBinaryVersion: "codex-cli 0.updated",
+      },
+    };
+    const collectEvidence = vi.fn(async () => updated);
+    const inspection = await inspectDesktopOwnership({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      codexBinaryPath: installation.binaryPath,
+      installation: {
+        ...installation,
+        appVersion: "26.updated",
+        buildVersion: "6000",
+        binaryVersion: "codex-cli 0.updated",
+        daemonBinaryVersion: "codex-cli 0.updated",
+      },
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence,
+      allowSafeRenewal: true,
+    });
+    expect(inspection).toMatchObject({ verified: true, renewed: true, code: "verified" });
+    expect(collectEvidence).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects a world-readable attestation even when its contents match", async () => {
     const paths = await fixture();
     const current = evidence(paths.socketPath);
@@ -240,6 +312,7 @@ describe("Desktop ownership attestation", () => {
       `101 1 Mon Jul 20 09:59:00 2026 ${desktopExecutable}`,
       `201 1 Mon Jul 20 10:00:00 2026 ${installation.binaryPath} app-server daemon run`,
       `301 101 Mon Jul 20 10:01:00 2026 ${installation.binaryPath} app-server proxy --sock ${paths.socketPath}`,
+      "401 1 Mon Jul 20 10:02:00 2026 /opt/tools/codex app-server",
     ].join("\n");
     const netstat = [
       netstatRow({
@@ -297,6 +370,7 @@ describe("Desktop ownership attestation", () => {
         socketPath: paths.socketPath,
         platform: "darwin",
         runCommand,
+        verifyDesktopSignature: async () => true,
       });
       expect(current).toMatchObject({
         daemon: { pid: 201 },
@@ -385,6 +459,7 @@ describe("Desktop ownership attestation", () => {
           socketPath: paths.socketPath,
           platform: "darwin",
           runCommand,
+          verifyDesktopSignature: async () => true,
         }),
       ).rejects.toMatchObject({ code: "topology-ambiguous" });
     } finally {

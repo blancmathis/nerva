@@ -82,7 +82,7 @@ function doctorCheck(id: string, status: DoctorCheck["status"], summary: string)
 }
 
 describe("macOS one-command setup", () => {
-  it("classifies the current version-skewed, multi-writer runtime as degraded", async () => {
+  it("classifies the current version-skewed, multi-writer runtime as limited", async () => {
     const test = await fixture();
     const standalone = join(test.home, ".codex", "packages", "standalone", "current", "codex");
     await mkdir(join(standalone, ".."), { recursive: true });
@@ -114,13 +114,12 @@ describe("macOS one-command setup", () => {
       ]),
     });
 
-    expect(result.installationState).toBe("degraded");
+    expect(result.installationState).toBe("limited");
     expect(result.blockers).toEqual([]);
     expect(result.nativeIntegration.desktopCodexVersion).toBe("0.146.0-alpha.3.1");
     expect(result.nativeIntegration.standaloneCodexVersion).toBe("0.145.0");
     expect(result.nativeIntegration.reasons.map((reason) => reason.code)).toEqual([
       "codex-version-mismatch",
-      "app-server-writers",
       "managed-app-server-unavailable",
       "desktop-ownership-unverified",
     ]);
@@ -203,7 +202,7 @@ describe("macOS one-command setup", () => {
       executable: "/bin/launchctl",
       arguments_: ["bootstrap", "gui/501", first.launchAgentPath],
     });
-    expect(commands).toContainEqual({
+    expect(commands).not.toContainEqual({
       executable: test.codex,
       arguments_: ["app-server", "daemon", "bootstrap", "--remote-control"],
     });
@@ -342,7 +341,7 @@ describe("macOS one-command setup", () => {
     await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("installs the bridge in degraded mode without touching Codex when versions differ", async () => {
+  it("installs the bridge in limited mode without touching Codex when versions differ", async () => {
     const test = await fixture();
     const launchAgents = join(test.home, "Library", "LaunchAgents");
     await mkdir(launchAgents, { recursive: true });
@@ -407,7 +406,7 @@ describe("macOS one-command setup", () => {
       }),
     });
 
-    expect(result.installationState).toBe("degraded");
+    expect(result.installationState).toBe("limited");
     expect(result.managedDaemonConfigured).toBe(false);
     expect(result.bridgeHealthy).toBe(true);
     expect(result.pairing.qrPayload).toContain("https://mac.example.ts.net/pair#pair=");
@@ -416,7 +415,7 @@ describe("macOS one-command setup", () => {
       executable === "/bin/launchctl" && arguments_[0] === "setenv"
     ))).toBe(false);
     expect(runCommand.mock.calls.some(([executable, arguments_]) => (
-      executable === test.codex && arguments_[0] === "app-server"
+      executable === test.codex && arguments_[0] === "app-server" && arguments_[1] === "daemon"
     ))).toBe(false);
   });
 

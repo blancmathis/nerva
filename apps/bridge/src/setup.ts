@@ -76,6 +76,7 @@ export interface SetupDependencies {
 export interface ProtocolSchemaManifest {
   readonly formatVersion: 1;
   readonly codexBinary: string;
+  readonly codexBinarySha256: string;
   readonly codexVersion: string;
   readonly generatedAt: string;
   readonly schemaSha256: string;
@@ -206,7 +207,11 @@ export async function generateProtocolSchemas(
   }
 
   const protocolCache = join(paths.cache, "app-server-schemas");
-  const destination = join(protocolCache, safeVersionDirectory(options.binaryVersion));
+  const binarySha256 = createHash("sha256").update(await readFile(options.binaryPath)).digest("hex");
+  const destination = join(
+    protocolCache,
+    `${safeVersionDirectory(options.binaryVersion)}--${binarySha256.slice(0, 16)}`,
+  );
   const manifestPath = join(destination, "manifest.json");
   if (await pathExists(manifestPath)) {
     return JSON.parse(await readFile(manifestPath, "utf8")) as ProtocolSchemaManifest;
@@ -248,6 +253,7 @@ export async function generateProtocolSchemas(
     const manifest: ProtocolSchemaManifest = {
       formatVersion: 1,
       codexBinary: options.binaryPath,
+      codexBinarySha256: binarySha256,
       codexVersion: options.binaryVersion,
       generatedAt: (options.now ?? (() => new Date()))().toISOString(),
       schemaSha256: hash.digest("hex"),

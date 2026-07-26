@@ -43,6 +43,7 @@ const relativeSchemaPathSchema = z.string().min(1).max(4_096).refine((value) => 
 const protocolSchemaManifestSchema = z.object({
   formatVersion: z.literal(1),
   codexBinary: absoluteBinaryPathSchema,
+  codexBinarySha256: z.string().regex(SHA256_PATTERN).optional(),
   codexVersion: z.string().min(1).max(512),
   generatedAt: z.iso.datetime(),
   schemaSha256: z.string().regex(SHA256_PATTERN),

@@ -13,8 +13,15 @@ import {
   type DesktopOwnershipInspection,
   type InspectDesktopOwnershipOptions,
 } from "./desktop-ownership.js";
+import {
+  probeRuntimeCompatibility,
+  type ProbeRuntimeCompatibilityOptions,
+  type RuntimeCapabilityResult,
+  type RuntimeCompatibilityResult,
+} from "./runtime-compatibility.js";
 
 export type CheckStatus = "green" | "warn" | "red";
+export type DoctorState = "ready" | "limited" | "blocked";
 
 export interface DoctorCheck {
   readonly id: string;
@@ -49,9 +56,19 @@ export interface DesktopInstallation {
 
 export interface DoctorReport {
   readonly generatedAt: string;
+  readonly state?: DoctorState;
   readonly overall: CheckStatus;
   readonly checks: readonly DoctorCheck[];
   readonly desktop?: DesktopInstallation;
+  readonly versions?: {
+    readonly desktop?: string;
+    readonly daemonCli?: string;
+    readonly daemonAppServer?: string;
+    readonly daemonManagedCodex?: string;
+    readonly userAgent?: string;
+  };
+  readonly compatibility?: RuntimeCompatibilityResult;
+  readonly capabilities?: readonly RuntimeCapabilityResult[];
   readonly safeCommands: readonly {
     readonly purpose: string;
     readonly command: string;
@@ -79,6 +96,9 @@ export interface DoctorDependencies {
   readonly inspectOwnership?: (
     options: InspectDesktopOwnershipOptions,
   ) => Promise<DesktopOwnershipInspection>;
+  readonly probeCompatibility?: (
+    options: ProbeRuntimeCompatibilityOptions,
+  ) => Promise<RuntimeCompatibilityResult>;
 }
 
 const MAX_COMMAND_OUTPUT = 512 * 1024;
@@ -661,7 +681,7 @@ async function schemaCacheCheck(
         : {
             id: "protocol-schema",
             category: "transport",
-            status: "red",
+            status: "warn",
             summary: "Cached app-server schema files fail manifest validation.",
             remediation: ["Move the Codex Pad schema cache aside, then run: npm run setup -- --generate-schemas"],
             proofBoundary: "No corrupted or version-mismatched cache is accepted.",
@@ -670,7 +690,7 @@ async function schemaCacheCheck(
       return {
         id: "protocol-schema",
         category: "transport",
-        status: "red",
+        status: "warn",
         summary: "Cached app-server schema manifest is unreadable.",
         detail: String(error),
         proofBoundary: "No unreadable cache is accepted as protocol proof.",
@@ -704,6 +724,19 @@ function overallStatus(checks: readonly DoctorCheck[]): CheckStatus {
     : checks.some((check) => check.status === "warn")
       ? "warn"
       : "green";
+}
+
+function doctorState(
+  checks: readonly DoctorCheck[],
+  compatibility: RuntimeCompatibilityResult,
+  ownership: DesktopOwnershipInspection,
+): DoctorState {
+  if (checks.some((check) => check.status === "red")) return "blocked";
+  const structuralReads = ["sessions", "models"].every((id) =>
+    compatibility.capabilities.some((capability) => capability.id === id && capability.state === "available"));
+  const coreMutations = compatibility.capabilities.some((capability) =>
+    capability.id === "exactTaskMutations" && capability.state === "available");
+  return structuralReads && coreMutations && ownership.verified ? "ready" : "limited";
 }
 
 export async function doctorCodexPad(
@@ -765,7 +798,7 @@ export async function doctorCodexPad(
   checks.push({
     id: "app-server-writers",
     category: "transport",
-    status: writers.length > 1 ? "red" : writers.length === 1 ? "warn" : "green",
+    status: writers.length > 0 ? "warn" : "green",
     summary:
       writers.length === 0
         ? "No independent stdio app-server writer was observed."
@@ -773,14 +806,7 @@ export async function doctorCodexPad(
     ...(writers.length > 0
       ? { detail: writers.map((writer) => `PID ${writer.pid}, parent ${writer.ppid}`).join("; ") }
       : {}),
-    ...(writers.length > 0
-      ? {
-          remediation: [
-            "Establish process ownership before enabling the managed daemon; never route a live thread through an arbitrary writer.",
-          ],
-        }
-      : {}),
-    proofBoundary: "Process arguments were inspected; thread ownership and shared-daemon participation are not inferred.",
+    proofBoundary: "These stdio writers are diagnostic only. They do not block the private managed socket unless an exact socket peer/topology check links them to it.",
   });
 
   const controlSocket = join(homeDirectory, ".codex", "app-server-control", "app-server-control.sock");
@@ -795,6 +821,9 @@ export async function doctorCodexPad(
     managedSocketReady && managedSocketPrivate && desktop
       ? await command(desktop.binaryPath, ["app-server", "daemon", "version"], 3_000)
       : undefined;
+  let daemonCliVersion: string | undefined;
+  let daemonAppServerVersion: string | undefined;
+  let daemonManagedCodexVersion: string | undefined;
   let managedDaemonVersionCompatible = false;
   if (daemonVersion?.exitCode === 0) {
     try {
@@ -803,6 +832,9 @@ export async function doctorCodexPad(
         const cliVersion = typeof parsed.cliVersion === "string" ? parsed.cliVersion : undefined;
         const appServerVersion = typeof parsed.appServerVersion === "string" ? parsed.appServerVersion : undefined;
         const managedCodexVersion = typeof parsed.managedCodexVersion === "string" ? parsed.managedCodexVersion : undefined;
+        daemonCliVersion = cliVersion;
+        daemonAppServerVersion = appServerVersion;
+        daemonManagedCodexVersion = managedCodexVersion;
         managedDaemonVersionCompatible = Boolean(
           cliVersion
           && appServerVersion
@@ -815,35 +847,65 @@ export async function doctorCodexPad(
       managedDaemonVersionCompatible = false;
     }
   }
-  const managedDaemonReady =
+  const managedDaemonResponsive =
     managedSocketReady
     && managedSocketPrivate
-    && daemonVersion?.exitCode === 0
-    && managedDaemonVersionCompatible;
+    && daemonVersion?.exitCode === 0;
+  const daemonBinaryPath = join(
+    environment.CODEX_HOME?.trim() || join(homeDirectory, ".codex"),
+    "packages",
+    "standalone",
+    "current",
+    "codex",
+  );
+  const compatibility = managedDaemonResponsive && desktop
+      ? await (dependencies.probeCompatibility ?? probeRuntimeCompatibility)({
+        desktopBinaryPath: desktop.binaryPath,
+        daemonBinaryPath,
+        socketPath: controlSocket,
+        cacheRoot: codexPadPaths(homeDirectory).cache,
+        attestationPath: join(codexPadPaths(homeDirectory).security, "protocol-compatibility-attestation.json"),
+        now,
+        ...(desktop.binaryVersion ? { desktopVersion: desktop.binaryVersion } : {}),
+        ...(daemonManagedCodexVersion
+          ? { daemonVersion: `codex-cli ${daemonManagedCodexVersion.replace(/^codex-cli\s+/u, "")}` }
+          : {}),
+      })
+    : {
+        state: "unavailable" as const,
+        source: "none" as const,
+        capabilities: [],
+        checkedAt: now().toISOString(),
+        detail: "The private managed daemon is not available for a read-only compatibility probe.",
+      };
   checks.push({
     id: "managed-app-server",
     category: "transport",
-    status: managedDaemonReady ? "green" : "red",
-    summary: managedDaemonReady
-      ? "Managed app-server control socket is private and responsive."
+    status: managedSocketReady && !managedSocketPrivate
+      ? "red"
+      : managedDaemonResponsive && compatibility.state !== "unavailable" ? "green" : "warn",
+    summary: managedDaemonResponsive && compatibility.state !== "unavailable"
+      ? managedDaemonVersionCompatible
+        ? "Managed app-server control socket is private, responsive and protocol-compatible."
+        : "Managed app-server versions differ, but the read-only compatibility probe passed."
       : managedSocketReady && !managedSocketPrivate
         ? "Managed app-server control socket permissions are unsafe."
-        : managedSocketReady && daemonVersion?.exitCode === 0 && !managedDaemonVersionCompatible
-          ? "Managed app-server is responsive but its Codex versions do not match."
+        : managedSocketReady && daemonVersion?.exitCode === 0
+          ? "Managed app-server is responsive, but compatibility is not attested."
           : managedSocketReady
             ? "Managed app-server control socket did not answer the installed binary."
           : "Managed app-server control socket is absent.",
     ...(daemonVersion?.exitCode === 0 && daemonVersion.stdout.trim()
       ? { detail: daemonVersion.stdout.trim() }
       : {}),
-    ...(managedDaemonReady
+    ...(managedDaemonResponsive && compatibility.state !== "unavailable"
       ? {}
       : {
           remediation: desktop
-            ? daemonVersion?.exitCode === 0 && !managedDaemonVersionCompatible
+            ? daemonVersion?.exitCode === 0
               ? [
-                  "Update the OpenAI-managed standalone Codex CLI until its managed app-server version exactly matches Codex Desktop, then bootstrap again.",
-                  "Do not restart Codex Desktop onto a version-skewed daemon.",
+                  "Generate current Desktop and daemon schemas, then rerun the read-only compatibility probe.",
+                  "Do not grant mutations from version equality alone.",
                 ]
               : [
                   `${shellQuote(desktop.binaryPath)} app-server daemon bootstrap --remote-control`,
@@ -851,7 +913,7 @@ export async function doctorCodexPad(
                 ]
             : ["Install Codex Desktop before bootstrapping its managed daemon."],
         }),
-    proofBoundary: "Socket presence does not prove Desktop was restarted onto it or that live thread co-presence is safe.",
+    proofBoundary: "The probe proves initialize plus structural reads for exact binary/schema fingerprints. It does not grant mutation authority or Desktop co-presence.",
   });
 
   const ownershipInstallation = desktop?.bundleId
@@ -865,6 +927,8 @@ export async function doctorCodexPad(
         buildVersion: desktop.buildVersion,
         binaryPath: desktop.binaryPath,
         binaryVersion: desktop.binaryVersion,
+        daemonBinaryPath,
+        daemonBinaryVersion: daemonManagedCodexVersion ?? daemonCliVersion ?? "unknown",
       }
     : undefined;
   const ownership = await (dependencies.inspectOwnership ?? inspectDesktopOwnership)({
@@ -875,11 +939,13 @@ export async function doctorCodexPad(
     ...(ownershipInstallation === undefined ? {} : { installation: ownershipInstallation }),
     platform,
     runCommand: command,
+    allowSafeRenewal: compatibility.state !== "unavailable",
+    now,
   });
   checks.push({
     id: "desktop-shared-ownership",
     category: "transport",
-    status: ownership.verified ? "green" : "red",
+    status: ownership.verified ? "green" : "warn",
     summary: ownership.summary,
     ...(ownership.canCreate
       ? { detail: "Positive co-presence evidence is available for an explicit local attestation." }
@@ -922,7 +988,7 @@ export async function doctorCodexPad(
   checks.push({
     id: "cdp-loopback",
     category: "micro",
-    status: debugging.unsafeAddress ? "red" : cdpReachable && mainTarget ? "green" : "red",
+    status: debugging.unsafeAddress ? "red" : cdpReachable && mainTarget ? "green" : "warn",
     summary: debugging.unsafeAddress
       ? `Desktop CDP address ${debugging.address ?? "unknown"} is not loopback.`
       : cdpReachable && mainTarget
@@ -1199,9 +1265,19 @@ export async function doctorCodexPad(
 
   return {
     generatedAt: now().toISOString(),
+    state: doctorState(checks, compatibility, ownership),
     overall: overallStatus(checks),
     checks,
     ...(desktop ? { desktop } : {}),
+    versions: {
+      ...(desktop?.binaryVersion ? { desktop: desktop.binaryVersion } : {}),
+      ...(daemonCliVersion ? { daemonCli: daemonCliVersion } : {}),
+      ...(daemonAppServerVersion ? { daemonAppServer: daemonAppServerVersion } : {}),
+      ...(daemonManagedCodexVersion ? { daemonManagedCodex: daemonManagedCodexVersion } : {}),
+      ...(compatibility.userAgent ? { userAgent: compatibility.userAgent } : {}),
+    },
+    compatibility,
+    capabilities: compatibility.capabilities,
     safeCommands,
     proofBoundaries: [
       "Doctor is read-only except for temporary process/HTTP activity; it never restarts Desktop or changes launchctl/global environment state.",
@@ -1214,7 +1290,13 @@ export async function doctorCodexPad(
 
 export function formatDoctorReport(report: DoctorReport): string {
   const glyph: Record<CheckStatus, string> = { green: "GREEN", warn: "WARN", red: "RED" };
-  const lines = [`Codex Pad doctor: ${glyph[report.overall]}`, ""];
+  const stateLabel: Record<DoctorState, string> = {
+    ready: "READY",
+    limited: "READY WITH LIMITATIONS",
+    blocked: "BLOCKED",
+  };
+  const state = report.state ?? (report.overall === "red" ? "blocked" : report.overall === "warn" ? "limited" : "ready");
+  const lines = [`Nerva doctor: ${stateLabel[state]} (${glyph[report.overall]})`, ""];
   for (const check of report.checks) {
     lines.push(`[${glyph[check.status]}] ${check.summary}`);
     if (check.detail) lines.push(`  ${check.detail}`);

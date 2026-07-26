@@ -25,6 +25,7 @@ Versions and SPDX expressions below are the exact resolutions in
 
 | Package | Version | SPDX license | Copyright and upstream | Use in Codex Pad |
 | --- | --- | --- | --- | --- |
+| `ajv` | `8.20.0` | `MIT` | Copyright 2015-2021 Evgeny Poberezkin; [ajv-validator/ajv](https://github.com/ajv-validator/ajv) | Validate exact generated Codex request schemas during compatibility attestation. |
 | `@fastify/static` | `10.1.2` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-static](https://github.com/fastify/fastify-static) | Serve the built local PWA. |
 | `@fastify/websocket` | `11.3.0` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket) | Authenticated snapshot and event transport. |
 | `fastify` | `5.10.0` | `MIT` | Copyright 2016-present The Fastify team; [fastify/fastify](https://github.com/fastify/fastify) | Loopback HTTP bridge and API routing. |

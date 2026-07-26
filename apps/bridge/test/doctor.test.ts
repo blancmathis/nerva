@@ -1,6 +1,7 @@
 import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createServer } from "node:net";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { doctorCodexPad, formatDoctorReport, runCommand, type CommandResult } from "../src/doctor.js";
 import { PairingStore, pairingNonceFromUrl } from "../src/pairing.js";
@@ -126,12 +127,13 @@ describe("doctorCodexPad", () => {
 
     expect(report.desktop).toMatchObject({ binaryVersion: "codex-cli 0.test" });
     expect(report.checks.find((check) => check.id === "desktop-installation")?.status).toBe("green");
-    expect(report.checks.find((check) => check.id === "managed-app-server")?.status).toBe("red");
-    expect(report.checks.find((check) => check.id === "desktop-shared-ownership")?.status).toBe("red");
-    expect(report.checks.find((check) => check.id === "cdp-loopback")?.status).toBe("red");
+    expect(report.checks.find((check) => check.id === "managed-app-server")?.status).toBe("warn");
+    expect(report.checks.find((check) => check.id === "desktop-shared-ownership")?.status).toBe("warn");
+    expect(report.checks.find((check) => check.id === "cdp-loopback")?.status).toBe("warn");
     expect(report.checks.find((check) => check.id === "micro-six-slots")?.status).toBe("warn");
     expect(report.checks.find((check) => check.id === "tailscale-funnel")?.status).toBe("red");
     expect(report.overall).toBe("red");
+    expect(report.state).toBe("blocked");
     expect(commands.some((command) => command.includes("daemon bootstrap"))).toBe(false);
     expect(commands.some((command) => command.includes("tailscale serve --bg"))).toBe(false);
     expect(formatDoctorReport(report)).toContain("Explicit commands (never run by doctor)");
@@ -168,6 +170,77 @@ describe("doctorCodexPad", () => {
 
     expect(report.checks.find((check) => check.id === "cdp-loopback")?.status).toBe("green");
     expect(report.checks.find((check) => check.id === "micro-six-slots")?.status).toBe("green");
+  });
+
+  it("treats version skew as compatible only after the read-only capability probe passes", async () => {
+    const root = await mkdtemp("/tmp/nd-");
+    const fixture = {
+      home: join(root, "h"),
+      app: join(root, "C.app"),
+      binary: join(root, "C.app", "Contents", "Resources", "codex"),
+    };
+    await mkdir(join(fixture.app, "Contents", "Resources"), { recursive: true });
+    await mkdir(fixture.home);
+    await writeFile(join(fixture.app, "Contents", "Info.plist"), "plist");
+    await writeFile(fixture.binary, "binary");
+    await chmod(fixture.binary, 0o700);
+    await setupCodexPad({ homeDirectory: fixture.home, platform: "darwin" });
+    const socketPath = join(fixture.home, ".codex", "app-server-control", "app-server-control.sock");
+    await mkdir(dirname(socketPath), { recursive: true });
+    const server = createServer();
+    await new Promise<void>((resolveListen, rejectListen) => {
+      server.once("error", rejectListen);
+      server.listen(socketPath, resolveListen);
+    });
+    await chmod(socketPath, 0o600);
+    try {
+      const report = await doctorCodexPad({
+        homeDirectory: fixture.home,
+        platform: "darwin",
+        applicationCandidates: [fixture.app],
+        environment: { PATH: "" },
+        runCommand: async (executable, arguments_) => {
+          if (executable === "/usr/bin/plutil") {
+            const key = arguments_[1];
+            if (key === "CFBundleIdentifier") return result("com.openai.codex\n");
+            if (key === "CFBundleShortVersionString") return result("26.test\n");
+            return result("6000\n");
+          }
+          if (executable === fixture.binary && arguments_[0] === "--version") return result("codex-cli 2\n");
+          if (executable === fixture.binary && arguments_[2] === "version") {
+            return result(JSON.stringify({
+              status: "running",
+              cliVersion: "2",
+              appServerVersion: "1",
+              managedCodexVersion: "1",
+            }));
+          }
+          if (executable === "/bin/ps") return result("");
+          return result("", 1);
+        },
+        fetch: async () => new Response("not found", { status: 404 }),
+        probeCompatibility: async () => ({
+          state: "limited",
+          source: "live",
+          userAgent: "Codex Desktop/1",
+          checkedAt: "2026-07-26T00:00:00.000Z",
+          detail: "Structural reads passed.",
+          capabilities: [
+            { id: "sessions", state: "available", reason: "live" },
+            { id: "models", state: "available", reason: "live" },
+            { id: "exactTaskMutations", state: "unverified", reason: "ownership missing" },
+          ],
+        }),
+      });
+      expect(report.checks.find((check) => check.id === "managed-app-server")).toMatchObject({
+        status: "green",
+        summary: "Managed app-server versions differ, but the read-only compatibility probe passed.",
+      });
+      expect(report.versions?.userAgent).toBe("Codex Desktop/1");
+      expect(report.capabilities?.find((capability) => capability.id === "sessions")?.state).toBe("available");
+    } finally {
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    }
   });
 
   it("marks Serve green only after a bounded same-origin WSS upgrade reaches the auth close", async () => {
@@ -344,7 +417,7 @@ describe("doctorCodexPad", () => {
     });
 
     expect(report.checks.find((check) => check.id === "desktop-shared-ownership")).toMatchObject({
-      status: "red",
+      status: "warn",
       detail: "Positive co-presence evidence is available for an explicit local attestation.",
     });
     expect(report.safeCommands).toContainEqual({

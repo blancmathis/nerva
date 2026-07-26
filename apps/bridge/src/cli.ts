@@ -2,7 +2,8 @@
 
 import { lstat, readFile } from "node:fs/promises";
 import { isIP } from "node:net";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   DiagramPublishRequestSchema,
@@ -377,14 +378,14 @@ Safety defaults:
   setup-mac is an explicit opt-in that configures Codex's durable managed
   app-server only after a safe preflight, installs Nerva's bridge LaunchAgent,
   and sets the exact private Serve route; it never resets Serve or Funnel or
-  restarts Desktop. A degraded native preflight still installs the safe bridge
+  restarts Desktop. A limited native preflight still installs the safe bridge
   and pairing surface while native mutations remain unavailable.
   --unsafe-lan is development-only; authentication and Origin checks remain on.`;
 
 function formatMacSetupPreflight(preflight: MacSetupPreflight): string {
   const heading = preflight.installationState === "ready"
     ? "READY"
-    : preflight.installationState === "degraded"
+    : preflight.installationState === "limited" || preflight.installationState === "degraded"
       ? "READY WITH LIMITED CODEX CONTROLS"
       : "BLOCKED";
   const lines = [`Nerva setup check: ${heading}`];
@@ -401,8 +402,8 @@ function formatMacSetupPreflight(preflight: MacSetupPreflight): string {
     lines.push(`- [${issue.code}] ${issue.detail}`);
     for (const remediation of issue.remediation) lines.push(`  Next: ${remediation}`);
   }
-  if (preflight.installationState === "degraded") {
-    lines.push("Nerva can install and pair, but app-server-backed controls will remain unavailable until doctor is green.");
+  if (preflight.installationState === "limited" || preflight.installationState === "degraded") {
+    lines.push("Nerva can install and pair. Only the capabilities listed as unavailable remain disabled; maintainers can use `npm run doctor -- --strict-native` for the full release gate.");
   }
   return lines.join("\n");
 }
@@ -640,6 +641,17 @@ export async function runCli(
             "Cannot attest Desktop ownership: installed Desktop identity/version metadata is incomplete.",
           );
         }
+        const daemonBinaryPath = join(
+          process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"),
+          "packages",
+          "standalone",
+          "current",
+          "codex",
+        );
+        const daemonVersionResult = await runCommand(daemonBinaryPath, ["--version"], 5_000);
+        if (daemonVersionResult.exitCode !== 0 || !daemonVersionResult.stdout.trim()) {
+          throw new Error("Cannot attest Desktop ownership: the managed daemon binary/version is unavailable.");
+        }
         desktopOwnership = {
           installation: {
             appPath: desktop.appPath,
@@ -648,6 +660,8 @@ export async function runCli(
             buildVersion: desktop.buildVersion,
             binaryPath: desktop.binaryPath,
             binaryVersion: desktop.binaryVersion,
+            daemonBinaryPath,
+            daemonBinaryVersion: daemonVersionResult.stdout.trim(),
           },
           runCommand,
         };
@@ -702,7 +716,8 @@ export async function runCli(
       const report = await (dependencies.doctor ?? doctorCodexPad)();
       if (hasFlag(rest, "--json")) printJson(stdout, report);
       else stdout(formatDoctorReport(report));
-      return report.overall === "red" ? 1 : 0;
+      const state = report.state ?? (report.overall === "red" ? "blocked" : report.overall === "warn" ? "limited" : "ready");
+      return state === "blocked" || (hasFlag(rest, "--strict-native") && state !== "ready") ? 1 : 0;
     }
 
     if (command === "serve" || command === "start") {
@@ -722,6 +737,7 @@ export async function runCli(
       }
       const desktop = await (dependencies.locateDesktop ?? locateDesktopInstallation)();
       const codexVersion = desktop?.binaryVersion?.trim();
+      const nativeDoctor = await (dependencies.doctor ?? doctorCodexPad)().catch(() => undefined);
       let schemaCompatibility: RuntimeSchemaCompatibility = {
         state: "unknown",
         summary: "Installed-version schema compatibility has not been verified.",
@@ -743,6 +759,18 @@ export async function runCli(
       } catch {
         // Startup remains available with fail-closed mutation gates. The
         // Capability Center exposes the exact safe regeneration command.
+      }
+      if (nativeDoctor?.compatibility && nativeDoctor.compatibility.state !== "unavailable") {
+        const available = nativeDoctor.compatibility.capabilities
+          .filter((capability) => capability.state === "available")
+          .map((capability) => capability.id);
+        schemaCompatibility = {
+          state: "current",
+          summary: `Live protocol probe ${nativeDoctor.compatibility.state}; attested capabilities: ${available.join(", ") || "none"}.`,
+          remediation: nativeDoctor.state === "ready"
+            ? null
+            : "Open Settings → System Diagnostics for the exact unavailable controls.",
+        };
       }
       let multiImageInputCapability: VerifiedMultiImageInputCapability | undefined;
       if (desktop?.binaryPath && codexVersion) {
