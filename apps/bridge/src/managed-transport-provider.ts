@@ -545,54 +545,11 @@ export class ReconnectingManagedTransport implements ThreadTransport {
     const probe = await this.#refreshOwnershipWithGeneration();
     const ownership = probe.ownership;
     if (!ownership.verified) {
-      if (finalTargetGuard === undefined) {
-        throw new ThreadTransportError(
-          "CAPABILITY_UNAVAILABLE",
-          ownership.summary,
-          { ownership: ownership.code },
-        );
-      }
-      const client = probe.client;
-      const writeAuthority = this.#writeAuthority;
-      const delegate = this.#delegate;
-      if (
-        client === null
-        || writeAuthority === null
-        || delegate === null
-        || !this.#ownershipProbeIsCurrent(client, probe.generation)
-        || client.isClosed
-      ) {
-        throw new ThreadTransportError(
-          "CAPABILITY_UNAVAILABLE",
-          "Managed app-server connection changed before exact-target dispatch.",
-        );
-      }
-      const exactTargetAuthority = await finalTargetGuard(undefined);
-      if (
-        this.#ownershipEpoch !== probe.generation
-        || this.#client !== client
-        || this.#writeAuthority !== writeAuthority
-        || this.#delegate !== delegate
-        || client.isClosed
-      ) {
-        throw new ThreadTransportError(
-          "CAPABILITY_UNAVAILABLE",
-          "Managed app-server connection changed before exact-target dispatch.",
-        );
-      }
-      const issuedWriteAuthority = writeAuthority.issue(() => {
-        this.#targetAuthorityConsumer(exactTargetAuthority);
-        if (
-          this.#ownershipEpoch !== probe.generation
-          || this.#client !== client
-          || this.#writeAuthority !== writeAuthority
-          || this.#delegate !== delegate
-          || client.isClosed
-        ) {
-          throw new Error("stale exact-target write authority");
-        }
-      });
-      return Object.freeze({ writeAuthority: issuedWriteAuthority });
+      throw new ThreadTransportError(
+        "CAPABILITY_UNAVAILABLE",
+        ownership.summary,
+        { ownership: ownership.code },
+      );
     }
     const client = probe.client;
     const writeAuthority = this.#writeAuthority;

@@ -262,7 +262,7 @@ describe("ReconnectingManagedTransport", () => {
     expect(connect).toHaveBeenCalledTimes(3);
   });
 
-  it("allows only exact-target writes when ownership is unattested", async () => {
+  it("rejects task creation and exact-target selection when ownership is unattested", async () => {
     const managed = fakeManagedClient();
     vi.spyOn(AppServerClient, "connectManaged").mockResolvedValueOnce(managed.connection);
     const targetAuthority = createExactTargetAuthorityDomain();
@@ -288,18 +288,12 @@ describe("ReconnectingManagedTransport", () => {
     await expect(
       transport.newThread({ commandId: "command-provider-guard-0001" }),
     ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
-    const exactTargetGuard = async () => targetAuthority.stateIssuer.issue(() => undefined);
-    await expect(transport.selectThread(THREAD_ID, exactTargetGuard)).resolves.toMatchObject({
-      threadId: THREAD_ID,
-      status: "idle",
+    const exactTargetGuard = vi.fn(async () => targetAuthority.stateIssuer.issue(() => undefined));
+    await expect(transport.selectThread(THREAD_ID, exactTargetGuard)).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
     });
-    await expect(transport.setReasoning({
-      commandId: "command-provider-target-0001",
-      threadId: THREAD_ID,
-      effort: "high",
-      assertTargetAuthority: exactTargetGuard,
-    })).resolves.toMatchObject({ threadId: THREAD_ID });
-    expect(managed.streamWrites).toEqual(["thread/resume", "thread/settings/update"]);
+    expect(exactTargetGuard).not.toHaveBeenCalled();
+    expect(managed.streamWrites).toEqual([]);
     await transport.close();
   });
 
