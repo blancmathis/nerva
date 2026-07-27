@@ -60,6 +60,7 @@ const commands: Command[] = [
     prompt: "Review this copy for clarity.",
   },
   { ...metadata, type: "openSession", targetThreadId: THREAD_ID },
+  { ...metadata, type: "openBrowserTab", targetThreadId: THREAD_ID, url: "https://example.test/dashboard" },
   { ...metadata, type: "runSkill", targetThreadId: THREAD_ID, skillName: "browser:control-in-app-browser" },
   { ...metadata, type: "refreshSnapshot", lastKnownSequence: 42 },
 ];
@@ -71,6 +72,13 @@ describe("CommandSchema", () => {
 
   it("requires a canonical commandId", () => {
     expect(CommandSchema.safeParse({ ...commands[0], commandId: "not-unique" }).success).toBe(false);
+  });
+
+  it("keeps Browser opening exact-target and rejects unsafe addresses", () => {
+    const command = commands.find((candidate) => candidate.type === "openBrowserTab")!;
+    expect(CommandSchema.safeParse({ ...command, targetThreadId: TURN_ID }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...command, url: "https://user:secret@example.test/" }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...command, url: "file:///private/tmp/page.html" }).success).toBe(false);
   });
 
   it("accepts an ordered v2 board batch and rejects duplicate filenames", () => {

@@ -251,6 +251,11 @@ async function setup(
     openBrowserTabs: async (_threadId) => ({
       tabs: [],
       detail: "Open Mac tabs are unavailable in the injected bridge fixture.",
+      capabilities: {
+        discovery: { available: true, reason: null },
+        open: { available: true, reason: null },
+        control: { available: true, reason: null },
+      },
     }),
     logger,
   });

@@ -1,6 +1,7 @@
 import {
   PencilPointerTracker,
   applySceneOperation,
+  boundsContainPoint,
   createEraserElement,
   createHistory,
   createImageElement,
@@ -9,10 +10,15 @@ import {
   createStrokeElement,
   createTextElement,
   deserializeScene,
+  elementsIntersectingBounds,
+  expandSelectionForErasers,
+  getElementBounds,
   getSceneBounds,
   historyReducer,
   pointerSamples,
   serializeScene,
+  topmostElementAtPoint,
+  transformElements,
   type BackgroundMode,
   type Bounds,
   type Scene,
@@ -96,7 +102,6 @@ import {
   sameDrawingTarget,
   type DrawingTarget,
 } from "./drawing-target";
-import { DiagramOverlay } from "./DiagramOverlay";
 import {
   addDiagramEdge,
   addDiagramNode,
@@ -202,12 +207,35 @@ export interface DrawingCanvasEditorProps {
   readOnly?: boolean;
 }
 
-type Tool = "diagram" | "pen" | "marker" | "eraser" | "arrow" | "rectangle" | "ellipse" | "text" | "pan";
+type Tool = "select" | "pen" | "marker" | "eraser" | "arrow" | "rectangle" | "ellipse" | "text" | "pan";
 type DiagramInspectorSection = "style" | "links" | "more";
+
+type SelectionKey = `scene:${string}` | `diagram:${string}`;
+
+interface SelectionPreview {
+  readonly scene: Scene;
+  readonly diagram: DiagramDocument | null;
+}
+
+interface SelectionGesture {
+  readonly pointerId: number;
+  readonly mode: "move" | "resize" | "lasso";
+  readonly start: ScenePoint;
+  readonly originalScene: Scene;
+  readonly originalDiagram: DiagramDocument | null;
+  readonly keys: ReadonlySet<SelectionKey>;
+  bounds: Bounds | null;
+  changed: boolean;
+}
+
+interface SelectionTransactionHistory {
+  readonly past: readonly { readonly scene: boolean; readonly diagram: boolean }[];
+  readonly future: readonly { readonly scene: boolean; readonly diagram: boolean }[];
+}
 
 interface DrawInteraction {
   pointerId: number;
-  tool: Exclude<Tool, "diagram" | "text" | "pan">;
+  tool: Exclude<Tool, "select" | "text" | "pan">;
   start: ScenePoint;
   points: ScenePoint[];
 }
@@ -336,7 +364,7 @@ function useContainedDialog({
 }
 
 const TOOLS: readonly { id: Tool; label: string; short: string }[] = [
-  { id: "diagram", label: "Edit diagram structure", short: "Diagram" },
+  { id: "select", label: "Select and move board content", short: "Select" },
   { id: "pen", label: "Pen", short: "Pen" },
   { id: "marker", label: "Highlighter", short: "Mark" },
   { id: "eraser", label: "Eraser", short: "Erase" },
@@ -344,7 +372,7 @@ const TOOLS: readonly { id: Tool; label: string; short: string }[] = [
   { id: "rectangle", label: "Rectangle", short: "Rect" },
   { id: "ellipse", label: "Ellipse", short: "Oval" },
   { id: "text", label: "Text label", short: "Text" },
-  { id: "pan", label: "Pan canvas", short: "Move" },
+  { id: "pan", label: "Pan canvas", short: "Hand" },
 ] as const;
 
 const COLORS = [
@@ -503,14 +531,128 @@ function commandId(): string {
   return createUuidV4();
 }
 
+function sceneSelectionKey(id: string): SelectionKey {
+  return `scene:${id}`;
+}
+
+function diagramSelectionKey(id: string): SelectionKey {
+  return `diagram:${id}`;
+}
+
+function selectionId(key: SelectionKey): string {
+  return key.slice(key.indexOf(":") + 1);
+}
+
+function boundsFromSelection(
+  scene: Scene,
+  diagram: DiagramDocument | null,
+  keys: ReadonlySet<SelectionKey>,
+): Bounds | null {
+  const bounds: Bounds[] = [];
+  for (const key of keys) {
+    const id = selectionId(key);
+    if (key.startsWith("scene:")) {
+      const element = scene.elements.find((candidate) => candidate.id === id);
+      if (element) bounds.push(getElementBounds(element));
+    } else {
+      const node = diagram?.nodes.find((candidate) => candidate.id === id);
+      if (node) bounds.push({
+        minX: node.x,
+        minY: node.y,
+        maxX: node.x + node.width,
+        maxY: node.y + node.height,
+        width: node.width,
+        height: node.height,
+      });
+    }
+  }
+  if (bounds.length === 0) return null;
+  const minX = Math.min(...bounds.map((item) => item.minX));
+  const minY = Math.min(...bounds.map((item) => item.minY));
+  const maxX = Math.max(...bounds.map((item) => item.maxX));
+  const maxY = Math.max(...bounds.map((item) => item.maxY));
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function pointerScenePoint(
+  event: Pick<ReactPointerEvent<HTMLElement>, "clientX" | "clientY" | "pointerType" | "pressure" | "tiltX" | "tiltY" | "timeStamp">,
+  canvas: HTMLCanvasElement,
+  scene: Scene,
+  view: CanvasView,
+): ScenePoint {
+  const transform = screenTransform(canvas, scene, view);
+  return {
+    x: (event.clientX - transform.panX) / transform.zoom,
+    y: (event.clientY - transform.panY) / transform.zoom,
+    pressure: event.pressure || 0.5,
+    tiltX: event.tiltX || 0,
+    tiltY: event.tiltY || 0,
+    time: event.timeStamp,
+    pointerType: event.pointerType === "pen" || event.pointerType === "touch" ? event.pointerType : "mouse",
+  };
+}
+
+function lassoBounds(start: ScenePoint, end: ScenePoint): Bounds {
+  const minX = Math.min(start.x, end.x);
+  const minY = Math.min(start.y, end.y);
+  const maxX = Math.max(start.x, end.x);
+  const maxY = Math.max(start.y, end.y);
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function diagramNodeIdFromRenderedElement(id: string, diagramId: string): string | null {
+  const prefix = `diagram:${diagramId}:`;
+  if (!id.startsWith(prefix)) return null;
+  const remainder = id.slice(prefix.length);
+  if (remainder.startsWith("node-label:")) return remainder.slice("node-label:".length);
+  if (remainder.startsWith("node:")) return remainder.slice("node:".length);
+  return null;
+}
+
+function worldBoundsStyle(
+  canvas: HTMLCanvasElement | null,
+  scene: Scene,
+  view: CanvasView,
+  bounds: Bounds | null,
+): React.CSSProperties | undefined {
+  if (!canvas || !bounds) return undefined;
+  const metrics = measureCanvas(canvas, scene);
+  const scale = metrics.fitScale * view.zoom;
+  return {
+    left: metrics.width / 2 + (bounds.minX - view.centerX) * scale,
+    top: metrics.height / 2 + (bounds.minY - view.centerY) * scale,
+    width: Math.max(2, bounds.width * scale),
+    height: Math.max(2, bounds.height * scale),
+  };
+}
+
+function fittedViewForScene(
+  canvas: HTMLCanvasElement,
+  scene: Scene,
+  fallback: CanvasView,
+): CanvasView {
+  const bounds = getSceneBounds(scene);
+  const metrics = measureCanvas(canvas, scene);
+  if (metrics.width <= 0 || metrics.height <= 0) return fallback;
+  const desiredScale = Math.min(
+    (metrics.width * 0.84) / Math.max(1, bounds.width),
+    (metrics.height * 0.84) / Math.max(1, bounds.height),
+  );
+  return {
+    centerX: (bounds.minX + bounds.maxX) / 2,
+    centerY: (bounds.minY + bounds.maxY) / 2,
+    zoom: clamp(desiredScale / metrics.fitScale, MIN_ZOOM, MAX_ZOOM),
+  };
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
 
 function toolIcon(tool: Tool): DrawingIconName {
   switch (tool) {
-    case "diagram":
-      return "diagram";
+    case "select":
+      return "select";
     case "pen":
       return "pen";
     case "marker":
@@ -684,6 +826,13 @@ export function DrawingStudio({
   const [pencilOnly, setPencilOnly] = useState(true);
   const [view, setView] = useState<CanvasView>(INITIAL_VIEW);
   const [drawingPreview, setDrawingPreview] = useState<DrawingPreview>(null);
+  const [selection, setSelection] = useState<ReadonlySet<SelectionKey>>(() => new Set());
+  const [selectionPreview, setSelectionPreview] = useState<SelectionPreview | null>(null);
+  const [activeLasso, setActiveLasso] = useState<Bounds | null>(null);
+  const [selectionTransactions, setSelectionTransactions] = useState<SelectionTransactionHistory>({
+    past: [],
+    future: [],
+  });
   const [canvasRevision, setCanvasRevision] = useState(0);
   const [draftReady, setDraftReady] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
@@ -732,6 +881,7 @@ export function DrawingStudio({
   const importCancelRef = useRef<HTMLButtonElement | null>(null);
   const wasOpenRef = useRef(false);
   const drawInteractionRef = useRef<DrawInteraction | null>(null);
+  const selectionGestureRef = useRef<SelectionGesture | null>(null);
   const gesturePointersRef = useRef(new Map<number, { x: number; y: number }>());
   const allPointersRef = useRef(new Map<number, TrackedCanvasPointer>());
   const gestureStartRef = useRef<GestureAnchor | null>(null);
@@ -808,9 +958,11 @@ export function DrawingStudio({
 
   const scene = history.present;
   const diagram = diagramHistory.present;
+  const displayedScene = selectionPreview?.scene ?? scene;
+  const displayedDiagram = selectionPreview?.diagram ?? diagram;
   const renderedScene = useMemo(
-    () => mergeDiagramIntoScene(scene, diagram),
-    [diagram, scene],
+    () => mergeDiagramIntoScene(displayedScene, displayedDiagram),
+    [displayedDiagram, displayedScene],
   );
   const exportDescription = useMemo(() => sendSheetOpen
     ? describeDrawingBoardExport(
@@ -921,11 +1073,14 @@ export function DrawingStudio({
   const resetPointerState = useCallback(() => {
     trackerRef.current?.releaseAll();
     drawInteractionRef.current = null;
+    selectionGestureRef.current = null;
     gesturePointersRef.current.clear();
     allPointersRef.current.clear();
     gestureStartRef.current = null;
     penActiveRef.current = false;
     setDrawingPreview(null);
+    setSelectionPreview(null);
+    setActiveLasso(null);
   }, []);
 
   const clearDeliveryBinding = useCallback((threadId: string) => {
@@ -1039,11 +1194,15 @@ export function DrawingStudio({
       setConnectTargetNodeId("");
       setDiagramInspectorOpen(false);
       setDiagramInspectorSection("style");
+      setSelection(new Set());
+      setSelectionTransactions({ past: [], future: [] });
     } else if (!open && wasOpenRef.current) {
       studioGenerationRef.current += 1;
       resetPointerState();
       dispatchHistory({ type: "reset", scene: freshHistory().present });
       dispatchDiagramHistory({ type: "reset", diagram: null });
+      setSelection(new Set());
+      setSelectionTransactions({ past: [], future: [] });
       setInstruction("");
       setDraftReady(false);
       setDisplayedTarget(null);
@@ -1149,9 +1308,21 @@ export function DrawingStudio({
         if (restoredDiagram) {
           dispatchDiagramHistory({ type: "reset", diagram: restoredDiagram });
           markDiagramRevisionSeen(restoredDiagram);
-          setTool("diagram");
+          setTool("select");
           setSelectedDiagramNodeId(restoredDiagram.nodes[0]?.id ?? null);
+          setSelection(restoredDiagram.nodes[0]
+            ? new Set([diagramSelectionKey(restoredDiagram.nodes[0].id)])
+            : new Set());
+          setSelectionTransactions({ past: [], future: [] });
           setDiagramInspectorOpen(false);
+          const canvas = canvasRef.current;
+          if (canvas) {
+            setView((current) => fittedViewForScene(
+              canvas,
+              mergeDiagramIntoScene(restoredScene, restoredDiagram),
+              current,
+            ));
+          }
           setDraftMessage(draft?.savedWorkingCopy
             ? "Saved Drawing opened as an independent local working copy"
             : "Collaborative diagram draft restored on this iPad");
@@ -1159,12 +1330,26 @@ export function DrawingStudio({
           restoredDiagram = latestPublished;
           dispatchDiagramHistory({ type: "reset", diagram: latestPublished });
           markDiagramRevisionSeen(latestPublished);
-          setTool("diagram");
+          setTool("select");
           setSelectedDiagramNodeId(latestPublished.nodes[0]?.id ?? null);
+          setSelection(latestPublished.nodes[0]
+            ? new Set([diagramSelectionKey(latestPublished.nodes[0].id)])
+            : new Set());
+          setSelectionTransactions({ past: [], future: [] });
           setDiagramInspectorOpen(false);
+          const canvas = canvasRef.current;
+          if (canvas) {
+            setView((current) => fittedViewForScene(
+              canvas,
+              mergeDiagramIntoScene(restoredScene, latestPublished),
+              current,
+            ));
+          }
           setDraftMessage(`Diagram from Codex ready · revision ${latestPublished.revision}`);
         } else {
           dispatchDiagramHistory({ type: "reset", diagram: null });
+          setSelection(new Set());
+          setSelectionTransactions({ past: [], future: [] });
           if (latestPublished && latestIsUnseen) setIncomingDiagram(latestPublished);
         }
         setDiagramDirty(false);
@@ -1220,7 +1405,16 @@ export function DrawingStudio({
     setConnectTargetNodeId("");
     setDiagramInspectorOpen(false);
     setDiagramInspectorSection("style");
-    setTool("diagram");
+    setTool("select");
+    setSelection(next.nodes[0] ? new Set([diagramSelectionKey(next.nodes[0].id)]) : new Set());
+    const canvas = canvasRef.current;
+    if (canvas) {
+      setView((current) => fittedViewForScene(
+        canvas,
+        mergeDiagramIntoScene(sceneRef.current, next),
+        current,
+      ));
+    }
     setExportPreview(null);
     setLocalError(null);
   }, []);
@@ -1267,19 +1461,6 @@ export function DrawingStudio({
     };
   }, [diagramDirty, displayedTarget, draftReady, open, openPublishedDiagram]);
 
-  const previewDiagram = useCallback((next: DiagramDocument) => {
-    diagramRef.current = next;
-    dispatchDiagramHistory({ type: "replace", diagram: next });
-    setExportPreview(null);
-  }, []);
-
-  const recordDiagramChange = useCallback((previous: DiagramDocument) => {
-    dispatchDiagramHistory({ type: "record", previous });
-    setDiagramDirty(true);
-    setDiagramMessage("Changes saved on this iPad · sync when ready");
-    setExportPreview(null);
-  }, []);
-
   const commitDiagramChange = useCallback((next: DiagramDocument) => {
     diagramRef.current = next;
     dispatchDiagramHistory({ type: "commit", diagram: next });
@@ -1287,14 +1468,42 @@ export function DrawingStudio({
     setDiagramMessage("Changes saved on this iPad · sync when ready");
     setExportPreview(null);
     setLocalError(null);
+    setSelectionTransactions({ past: [], future: [] });
   }, []);
 
-  const selectDiagramNode = useCallback((nodeId: string) => {
-    setSelectedDiagramNodeId(nodeId);
-    setConnectTargetNodeId("");
-    setDiagramInspectorSection("style");
-    setDiagramInspectorOpen(true);
-  }, []);
+  const undoSelectionTransaction = useCallback(() => {
+    const transaction = selectionTransactions.past.at(-1);
+    if (!transaction) return false;
+    if (transaction.scene) dispatchHistory({ type: "undo" });
+    if (transaction.diagram) {
+      dispatchDiagramHistory({ type: "undo" });
+      setDiagramDirty(true);
+      setDiagramMessage("Changes saved on this iPad · sync when ready");
+    }
+    setSelectionTransactions((current) => ({
+      past: current.past.slice(0, -1),
+      future: [transaction, ...current.future].slice(0, 100),
+    }));
+    setExportPreview(null);
+    return true;
+  }, [selectionTransactions.past]);
+
+  const redoSelectionTransaction = useCallback(() => {
+    const transaction = selectionTransactions.future[0];
+    if (!transaction) return false;
+    if (transaction.scene) dispatchHistory({ type: "redo" });
+    if (transaction.diagram) {
+      dispatchDiagramHistory({ type: "redo" });
+      setDiagramDirty(true);
+      setDiagramMessage("Changes saved on this iPad · sync when ready");
+    }
+    setSelectionTransactions((current) => ({
+      past: [...current.past.slice(-99), transaction],
+      future: current.future.slice(1),
+    }));
+    setExportPreview(null);
+    return true;
+  }, [selectionTransactions.future]);
 
   const syncDiagram = useCallback(async (): Promise<DiagramDocument | null> => {
     const current = diagramRef.current;
@@ -1459,16 +1668,18 @@ export function DrawingStudio({
       if (editorLocked) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        if (tool === "diagram" && diagram) {
+        if (tool === "select" && (event.shiftKey ? redoSelectionTransaction() : undoSelectionTransaction())) {
+          return;
+        }
+        if (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))) {
           dispatchDiagramHistory({ type: event.shiftKey ? "redo" : "undo" });
           setDiagramDirty(true);
-        } else {
-          dispatchHistory({ type: event.shiftKey ? "redo" : "undo" });
-        }
+        } else dispatchHistory({ type: event.shiftKey ? "redo" : "undo" });
         setExportPreview(null);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
         event.preventDefault();
-        if (tool === "diagram" && diagram) {
+        if (tool === "select" && redoSelectionTransaction()) return;
+        if (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))) {
           dispatchDiagramHistory({ type: "redo" });
           setDiagramDirty(true);
         } else {
@@ -1479,7 +1690,7 @@ export function DrawingStudio({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearPending, diagram, editorLocked, exportPreview, open, tool]);
+  }, [clearPending, diagram, editorLocked, exportPreview, open, redoSelectionTransaction, selection, tool, undoSelectionTransaction]);
 
   useEffect(() => () => trackerRef.current?.releaseAll(), []);
 
@@ -1546,11 +1757,161 @@ export function DrawingStudio({
       const operation = { type: "add" as const, element };
       sceneRef.current = applySceneOperation(sceneRef.current, operation);
       dispatchHistory({ type: "commit", operation });
+      setSelectionTransactions({ past: [], future: [] });
       setExportPreview(null);
       setLocalError(null);
     },
     [color, size],
   );
+
+  const previewSelectionGesture = useCallback((gesture: SelectionGesture, point: ScenePoint) => {
+    if (gesture.mode === "lasso") {
+      const nextBounds = lassoBounds(gesture.start, point);
+      gesture.bounds = nextBounds;
+      setActiveLasso(nextBounds);
+      gesture.changed = Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > 4;
+      return;
+    }
+    const bounds = gesture.bounds;
+    if (!bounds) return;
+    let deltaX = point.x - gesture.start.x;
+    let deltaY = point.y - gesture.start.y;
+    let scaleX = 1;
+    let scaleY = 1;
+    if (gesture.mode === "resize") {
+      const width = Math.max(1, bounds.width);
+      const height = Math.max(1, bounds.height);
+      const requestedScale = Math.max(0.05, Math.max(
+        (point.x - bounds.minX) / width,
+        (point.y - bounds.minY) / height,
+      ));
+      const selectedDiagramNodes = gesture.originalDiagram?.nodes.filter(
+        (node) => gesture.keys.has(diagramSelectionKey(node.id)),
+      ) ?? [];
+      const minimumScale = selectedDiagramNodes.reduce(
+        (minimum, node) => Math.max(minimum, 120 / node.width, 64 / node.height),
+        0.05,
+      );
+      const maximumScale = selectedDiagramNodes.reduce(
+        (maximum, node) => Math.min(maximum, 520 / node.width, 260 / node.height),
+        Number.POSITIVE_INFINITY,
+      );
+      const scale = clamp(requestedScale, minimumScale, maximumScale);
+      scaleX = scale;
+      scaleY = scale;
+      deltaX = 0;
+      deltaY = 0;
+    }
+    const sceneIds = new Set(
+      [...gesture.keys]
+        .filter((key) => key.startsWith("scene:"))
+        .map(selectionId),
+    );
+    const replacements = transformElements(gesture.originalScene, sceneIds, {
+      origin: { x: bounds.minX, y: bounds.minY },
+      scaleX,
+      scaleY,
+      deltaX,
+      deltaY,
+    });
+    const nextScene = replacements.length > 0
+      ? applySceneOperation(gesture.originalScene, { type: "replaceElements", elements: replacements })
+      : gesture.originalScene;
+    const nextDiagram = gesture.originalDiagram === null
+      ? null
+      : gesture.originalDiagram.nodes.reduce((current, node) => {
+          if (!gesture.keys.has(diagramSelectionKey(node.id))) return current;
+          return updateDiagramNode(current, node.id, {
+            x: bounds.minX + (node.x - bounds.minX) * scaleX + deltaX,
+            y: bounds.minY + (node.y - bounds.minY) * scaleY + deltaY,
+            width: node.width * scaleX,
+            height: node.height * scaleY,
+          });
+        }, gesture.originalDiagram);
+    gesture.changed = Math.abs(deltaX) > 0.01
+      || Math.abs(deltaY) > 0.01
+      || Math.abs(scaleX - 1) > 0.001;
+    setSelectionPreview({ scene: nextScene, diagram: nextDiagram });
+  }, []);
+
+  const finishSelectionGesture = useCallback((cancelled: boolean) => {
+    const gesture = selectionGestureRef.current;
+    if (!gesture) return;
+    selectionGestureRef.current = null;
+    if (gesture.mode === "lasso") {
+      const bounds = gesture.bounds;
+      setActiveLasso(null);
+      if (cancelled || !bounds || !gesture.changed) {
+        setSelection(new Set());
+        return;
+      }
+      const directSceneIds = new Set(
+        elementsIntersectingBounds(gesture.originalScene, bounds).map((element) => element.id),
+      );
+      const sceneIds = expandSelectionForErasers(gesture.originalScene, directSceneIds);
+      const keys = new Set<SelectionKey>([...sceneIds].map(sceneSelectionKey));
+      for (const node of gesture.originalDiagram?.nodes ?? []) {
+        const nodeBounds: Bounds = {
+          minX: node.x,
+          minY: node.y,
+          maxX: node.x + node.width,
+          maxY: node.y + node.height,
+          width: node.width,
+          height: node.height,
+        };
+        if (
+          nodeBounds.maxX >= bounds.minX
+          && nodeBounds.minX <= bounds.maxX
+          && nodeBounds.maxY >= bounds.minY
+          && nodeBounds.minY <= bounds.maxY
+        ) keys.add(diagramSelectionKey(node.id));
+      }
+      setSelection(keys);
+      const selectedDiagramKey = [...keys].find((key) => key.startsWith("diagram:"));
+      setSelectedDiagramNodeId(selectedDiagramKey ? selectionId(selectedDiagramKey) : null);
+      setDiagramInspectorOpen(false);
+      return;
+    }
+    const preview = selectionPreview;
+    setSelectionPreview(null);
+    if (cancelled) return;
+    if (!gesture.changed) {
+      if ([...gesture.keys].some((key) => key.startsWith("diagram:"))) {
+        setDiagramInspectorOpen(true);
+      }
+      return;
+    }
+    if (!preview) return;
+    const sceneIds = new Set(
+      [...gesture.keys].filter((key) => key.startsWith("scene:")).map(selectionId),
+    );
+    const replacements = preview.scene.elements.filter((element) => sceneIds.has(element.id));
+    const changedScene = replacements.length > 0;
+    const changedDiagram = Boolean(
+      preview.diagram && gesture.originalDiagram && preview.diagram !== gesture.originalDiagram,
+    );
+    if (changedScene) {
+      sceneRef.current = applySceneOperation(sceneRef.current, {
+        type: "replaceElements",
+        elements: replacements,
+      });
+      dispatchHistory({ type: "commit", operation: { type: "replaceElements", elements: replacements } });
+    }
+    if (preview.diagram && changedDiagram) {
+      diagramRef.current = preview.diagram;
+      dispatchDiagramHistory({ type: "commit", diagram: preview.diagram });
+      setDiagramDirty(true);
+      setDiagramMessage("Changes saved on this iPad · sync when ready");
+    }
+    if (changedScene || changedDiagram) {
+      setSelectionTransactions((current) => ({
+        past: [...current.past.slice(-99), { scene: changedScene, diagram: changedDiagram }],
+        future: [],
+      }));
+    }
+    setExportPreview(null);
+    setLocalError(null);
+  }, [selectionPreview]);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1564,7 +1925,7 @@ export function DrawingStudio({
         clearTouchPointersForPen(event, allPointersRef.current, gesturePointersRef.current);
         gestureStartRef.current = null;
       }
-      if (pencilOnly && event.pointerType === "touch") {
+      if (pencilOnly && event.pointerType === "touch" && tool !== "select") {
         if (penActiveRef.current) return;
         beginTwoFingerPencilNavigation(
           event,
@@ -1575,8 +1936,7 @@ export function DrawingStudio({
         return;
       }
       if (event.pointerType === "touch" && penActiveRef.current) return;
-      if (tool === "diagram") return;
-      if (pencilOnly && event.pointerType !== "pen") {
+      if (pencilOnly && event.pointerType !== "pen" && tool !== "select") {
         if (tool === "pan" && event.pointerType === "mouse") beginGesture(event);
         return;
       }
@@ -1593,6 +1953,9 @@ export function DrawingStudio({
         trackerRef.current?.releaseAll();
         drawInteractionRef.current = null;
         setDrawingPreview(null);
+        selectionGestureRef.current = null;
+        setSelectionPreview(null);
+        setActiveLasso(null);
         for (const [pointerId, point] of existingTouches) {
           gesturePointersRef.current.set(pointerId, { x: point.x, y: point.y });
         }
@@ -1608,6 +1971,60 @@ export function DrawingStudio({
       const canvas = canvasRef.current;
       if (!canvas) return;
       const transform = screenTransform(canvas, scene, view);
+      if (tool === "select") {
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* WebKit can reject palm capture. */ }
+        const start = pointerScenePoint(event, canvas, renderedScene, view);
+        const hit = topmostElementAtPoint(renderedScene, start, 10 / Math.max(transform.zoom, 0.001));
+        const diagramNodeId = hit && diagram
+          ? diagramNodeIdFromRenderedElement(hit.id, diagram.diagramId)
+          : null;
+        let key: SelectionKey | null = null;
+        if (diagramNodeId) {
+          key = diagramSelectionKey(diagramNodeId);
+          setSelectedDiagramNodeId(diagramNodeId);
+          setConnectTargetNodeId("");
+          setDiagramInspectorSection("style");
+        } else if (hit && scene.elements.some((element) => element.id === hit.id)) {
+          key = sceneSelectionKey(hit.id);
+          setSelectedDiagramNodeId(null);
+          setDiagramInspectorOpen(false);
+        }
+        const currentSelectionBounds = boundsFromSelection(scene, diagram, selection);
+        const moveExistingSelection = key === null
+          && selection.size > 0
+          && currentSelectionBounds !== null
+          && boundsContainPoint(currentSelectionBounds, start, 4 / Math.max(transform.zoom, 0.001));
+        let keys = selection;
+        if (key && !selection.has(key)) {
+          if (key.startsWith("scene:")) {
+            const expanded = expandSelectionForErasers(scene, new Set([selectionId(key)]));
+            keys = new Set([...expanded].map(sceneSelectionKey));
+          } else {
+            keys = new Set([key]);
+          }
+          setSelection(keys);
+        }
+        const bounds = key || moveExistingSelection
+          ? boundsFromSelection(scene, diagram, keys)
+          : null;
+        selectionGestureRef.current = {
+          pointerId: event.pointerId,
+          mode: key || moveExistingSelection ? "move" : "lasso",
+          start,
+          originalScene: scene,
+          originalDiagram: diagram,
+          keys: key || moveExistingSelection ? keys : new Set(),
+          bounds,
+          changed: false,
+        };
+        if (!key && !moveExistingSelection) {
+          setSelection(new Set());
+          setSelectedDiagramNodeId(null);
+          setDiagramInspectorOpen(false);
+          setActiveLasso(lassoBounds(start, start));
+        }
+        return;
+      }
       if (tool === "text") {
         event.preventDefault();
         const point = pointerSamples(event.nativeEvent, transform)[0];
@@ -1648,7 +2065,7 @@ export function DrawingStudio({
       drawInteractionRef.current = interaction;
       setDrawingPreview(toolPreview(interaction, color, size));
     },
-    [beginGesture, color, draftReady, editorLocked, pencilOnly, resetGestureStart, scene, size, textValue, tool, view],
+    [beginGesture, color, diagram, draftReady, editorLocked, pencilOnly, renderedScene, resetGestureStart, scene, selection, size, textValue, tool, view],
   );
 
   const onPointerMove = useCallback(
@@ -1666,6 +2083,14 @@ export function DrawingStudio({
         updateGesture();
         return;
       }
+      const selectionGesture = selectionGestureRef.current;
+      if (selectionGesture?.pointerId === event.pointerId) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        event.preventDefault();
+        previewSelectionGesture(selectionGesture, pointerScenePoint(event, canvas, renderedScene, view));
+        return;
+      }
       const interaction = drawInteractionRef.current;
       const canvas = canvasRef.current;
       if (!interaction || interaction.pointerId !== event.pointerId || !canvas) return;
@@ -1677,7 +2102,7 @@ export function DrawingStudio({
       interaction.points.push(...tracked.points);
       setDrawingPreview(toolPreview(interaction, color, size));
     },
-    [color, scene, size, updateGesture, view],
+    [color, previewSelectionGesture, renderedScene, scene, size, updateGesture, view],
   );
 
   const endPointer = useCallback(
@@ -1696,6 +2121,10 @@ export function DrawingStudio({
         }
         gesturePointersRef.current.delete(event.pointerId);
         resetGestureStart();
+        return;
+      }
+      if (selectionGestureRef.current?.pointerId === event.pointerId) {
+        finishSelectionGesture(cancelled);
         return;
       }
       const interaction = drawInteractionRef.current;
@@ -1719,7 +2148,7 @@ export function DrawingStudio({
       drawInteractionRef.current = null;
       setDrawingPreview(null);
     },
-    [commitInteraction, pencilOnly, resetGestureStart, scene, view],
+    [commitInteraction, finishSelectionGesture, pencilOnly, resetGestureStart, scene, view],
   );
 
   const changeBackground = useCallback((background: BackgroundMode) => {
@@ -1746,9 +2175,24 @@ export function DrawingStudio({
         // photo with the latest scene instead of the render that opened the
         // picker, otherwise deleted marks can be restored from a stale closure.
         const currentScene = sceneRef.current;
-        const frame = fitImageInside(prepared, currentScene.viewport);
+        const canvas = canvasRef.current;
+        const currentView = viewRef.current;
+        const metrics = canvas ? measureCanvas(canvas, currentScene) : null;
+        const worldWidth = metrics
+          ? metrics.width / Math.max(0.0001, metrics.fitScale * currentView.zoom)
+          : currentScene.viewport.width;
+        const worldHeight = metrics
+          ? metrics.height / Math.max(0.0001, metrics.fitScale * currentView.zoom)
+          : currentScene.viewport.height;
+        const visibleFrame = fitImageInside(prepared, { width: worldWidth, height: worldHeight }, 0.72);
+        const frame = {
+          ...visibleFrame,
+          x: currentView.centerX - worldWidth / 2 + visibleFrame.x,
+          y: currentView.centerY - worldHeight / 2 + visibleFrame.y,
+        };
+        const imageId = elementId();
         const image = createImageElement({
-          id: elementId(),
+          id: imageId,
           ...frame,
           source: prepared.source,
           isBackground: true,
@@ -1769,7 +2213,10 @@ export function DrawingStudio({
           scene: nextScene,
         });
         setExportPreview(null);
-        setDraftMessage(`${file.name || "Image"} added behind your annotations`);
+        setSelection(new Set([sceneSelectionKey(imageId)]));
+        setSelectionTransactions({ past: [], future: [] });
+        setTool("select");
+        setDraftMessage(`${file.name || "Image"} added · drag to place it`);
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : "The image could not be imported.");
       }
@@ -1788,6 +2235,9 @@ export function DrawingStudio({
     setDiagramInspectorOpen(false);
     setDiagramInspectorSection("style");
     setTool("pen");
+    setSelection(new Set());
+    setSelectionPreview(null);
+    setSelectionTransactions({ past: [], future: [] });
     sceneRef.current = applySceneOperation(sceneRef.current, { type: "clear" });
     dispatchHistory({ type: "commit", operation: { type: "clear" } });
     setInstruction("");
@@ -2145,6 +2595,8 @@ export function DrawingStudio({
       setView(restored.camera ?? INITIAL_VIEW);
       setInstruction(restored.instruction);
       setPencilOnly(restored.pencilOnly);
+      setSelection(new Set());
+      setSelectionPreview(null);
       if (restored.diagramJson) {
         const parsed = DiagramDocumentSchema.safeParse(JSON.parse(restored.diagramJson));
         dispatchDiagramHistory({ type: "reset", diagram: parsed.success ? parsed.data : null });
@@ -2195,6 +2647,15 @@ export function DrawingStudio({
       zoom: clamp(desiredScale / metrics.fitScale, MIN_ZOOM, MAX_ZOOM),
     });
   }, [renderedScene]);
+
+  const selectedBoardBounds = boundsFromSelection(displayedScene, displayedDiagram, selection);
+  const selectedBoardStyle = worldBoundsStyle(
+    canvasRef.current,
+    renderedScene,
+    view,
+    selectedBoardBounds,
+  );
+  const lassoStyle = worldBoundsStyle(canvasRef.current, renderedScene, view, activeLasso);
 
   if (!open) return null;
 
@@ -2259,7 +2720,6 @@ export function DrawingStudio({
       <div
         className={[
           "drawing-studio__workspace",
-          diagram && tool === "diagram" ? "is-diagram-mode" : "",
           diagramInspectorOpen ? "has-diagram-inspector" : "",
         ].filter(Boolean).join(" ")}
       >
@@ -2273,11 +2733,8 @@ export function DrawingStudio({
                 aria-pressed={tool === item.id}
                 aria-label={item.label}
                 onClick={() => {
-                  if (item.id === "diagram" && !diagram) {
-                    setDiagramPickerOpen(true);
-                    return;
-                  }
                   setTool(item.id);
+                  if (item.id !== "select") setSelection(new Set());
                 }}
                 disabled={editorLocked}
               >
@@ -2329,7 +2786,8 @@ export function DrawingStudio({
             <button
               type="button"
               onClick={() => {
-                if (tool === "diagram" && diagram) {
+                if (tool === "select" && undoSelectionTransaction()) return;
+                if (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))) {
                   dispatchDiagramHistory({ type: "undo" });
                   setDiagramDirty(true);
                 } else {
@@ -2338,16 +2796,18 @@ export function DrawingStudio({
                 setExportPreview(null);
               }}
               disabled={(
-                tool === "diagram" && diagram
+                selectionTransactions.past.length === 0
+                && (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))
                   ? diagramHistory.past.length === 0
-                  : history.past.length === 0
+                  : history.past.length === 0)
               ) || editorLocked}
               aria-label="Undo"
             ><DrawingIcon name="undo" /><span>Undo</span></button>
             <button
               type="button"
               onClick={() => {
-                if (tool === "diagram" && diagram) {
+                if (tool === "select" && redoSelectionTransaction()) return;
+                if (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))) {
                   dispatchDiagramHistory({ type: "redo" });
                   setDiagramDirty(true);
                 } else {
@@ -2356,9 +2816,10 @@ export function DrawingStudio({
                 setExportPreview(null);
               }}
               disabled={(
-                tool === "diagram" && diagram
+                selectionTransactions.future.length === 0
+                && (tool === "select" && diagram && selection.size > 0 && [...selection].some((key) => key.startsWith("diagram:"))
                   ? diagramHistory.future.length === 0
-                  : history.future.length === 0
+                  : history.future.length === 0)
               ) || editorLocked}
               aria-label="Redo"
             ><DrawingIcon name="redo" /><span>Redo</span></button>
@@ -2472,7 +2933,6 @@ export function DrawingStudio({
             className={[
               "drawing-canvas-frame",
               `background-${scene.background.mode}`,
-              diagram && tool === "diagram" ? "has-diagram-controls" : "",
               diagramInspectorOpen ? "has-diagram-inspector" : "",
             ].filter(Boolean).join(" ")}
           >
@@ -2491,19 +2951,51 @@ export function DrawingStudio({
               onLostPointerCapture={(event) => endPointer(event, false)}
               onContextMenu={(event) => event.preventDefault()}
             />
-            {diagram && (
-              <DiagramOverlay
-                diagram={diagram}
-                scene={scene}
-                view={view}
-                canvasRef={canvasRef}
-                active={tool === "diagram"}
-                readOnly={editorLocked}
-                selectedNodeId={selectedDiagramNodeId}
-                onSelectNode={selectDiagramNode}
-                onPreview={previewDiagram}
-                onCommit={recordDiagramChange}
-              />
+            {tool === "select" && selectedBoardBounds && (
+              <div
+                className="drawing-selection"
+                style={selectedBoardStyle ?? { left: 0, top: 0, width: 44, height: 44 }}
+                aria-label={`${selection.size} selected board ${selection.size === 1 ? "item" : "items"}`}
+              >
+                <span className="drawing-selection__label">
+                  {selection.size === 1 ? "Selected" : `${selection.size} selected`}
+                </span>
+                <button
+                  type="button"
+                  className="drawing-selection__resize"
+                  aria-label="Resize selected board content"
+                  onPointerDown={(event) => {
+                    if (editorLocked || !selectedBoardBounds) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* WebKit can reject capture. */ }
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    selectionGestureRef.current = {
+                      pointerId: event.pointerId,
+                      mode: "resize",
+                      start: pointerScenePoint(event, canvas, renderedScene, view),
+                      originalScene: scene,
+                      originalDiagram: diagram,
+                      keys: selection,
+                      bounds: selectedBoardBounds,
+                      changed: false,
+                    };
+                  }}
+                  onPointerMove={(event) => {
+                    const gesture = selectionGestureRef.current;
+                    const canvas = canvasRef.current;
+                    if (!gesture || gesture.pointerId !== event.pointerId || !canvas) return;
+                    previewSelectionGesture(gesture, pointerScenePoint(event, canvas, renderedScene, view));
+                  }}
+                  onPointerUp={() => finishSelectionGesture(false)}
+                  onPointerCancel={() => finishSelectionGesture(true)}
+                  onLostPointerCapture={() => finishSelectionGesture(false)}
+                />
+              </div>
+            )}
+            {tool === "select" && activeLasso && (
+              <div className="drawing-lasso" style={lassoStyle ?? { left: 0, top: 0, width: 1, height: 1 }} aria-hidden="true" />
             )}
             {minimapVisible && (
               <DrawingMinimap
@@ -2534,33 +3026,42 @@ export function DrawingStudio({
                 </span>
               </button>
             )}
-            {diagram && tool === "diagram" && (
+            {diagram && (
               <>
                 <section
-                  className={`drawing-diagram-dock${diagramInspectorOpen ? " has-inspector" : ""}`}
-                  aria-label="Diagram quick controls"
+                  className={`drawing-graph-chip${diagramInspectorOpen ? " has-inspector" : ""}`}
+                  aria-label="Graph controls"
                 >
-                  <div className="drawing-diagram-dock__identity">
+                  <button
+                    type="button"
+                    className="drawing-graph-chip__identity"
+                    onClick={() => setDiagramPickerOpen(true)}
+                    aria-label={`Open graphs. Current graph ${diagram.title}`}
+                  >
                     <span aria-hidden="true"><DrawingIcon name="diagram" /></span>
                     <span>
                       <strong>{diagram.title}</strong>
                       <small>
                         {diagram.nodes.length} {diagram.nodes.length === 1 ? "block" : "blocks"}
                         {" · "}r{diagram.revision}
-                        {" · "}{diagramDirty ? "Saved on iPad" : "Synced"}
                       </small>
                     </span>
-                  </div>
-                  <div className="drawing-diagram-dock__actions">
+                  </button>
+                  <div className="drawing-graph-chip__actions">
                     <button
                       type="button"
                       aria-label="Add diagram block"
                       disabled={diagram.nodes.length >= 256 || editorLocked}
                       onClick={() => {
                         const nodeId = `node_${createUuidV4().replaceAll("-", "").slice(0, 12)}`;
-                        const next = addDiagramNode(diagram, nodeId);
+                        const next = addDiagramNode(diagram, nodeId, {
+                          centerX: view.centerX,
+                          centerY: view.centerY,
+                        });
                         commitDiagramChange(next);
                         setSelectedDiagramNodeId(nodeId);
+                        setSelection(new Set([diagramSelectionKey(nodeId)]));
+                        setTool("select");
                         setDiagramInspectorSection("style");
                         setDiagramInspectorOpen(true);
                       }}
@@ -2582,22 +3083,13 @@ export function DrawingStudio({
                       ><DrawingIcon name="sync" /><span>{diagramSyncing ? "Syncing…" : "Sync revision"}</span></button>
                     ) : (
                       <span
-                        className="drawing-diagram-dock__synced"
+                        className="drawing-graph-chip__synced"
                         role="status"
                         aria-label="Diagram synced"
                       >
                         <i aria-hidden="true" /> Synced
                       </span>
                     )}
-                    <button
-                      type="button"
-                      className="drawing-diagram-dock__draw"
-                      aria-label="Draw on top"
-                      onClick={() => {
-                        setDiagramInspectorOpen(false);
-                        setTool("pen");
-                      }}
-                    ><DrawingIcon name="pen" /><span>Draw</span></button>
                   </div>
                 </section>
 
@@ -2619,6 +3111,7 @@ export function DrawingStudio({
                           onClick={() => {
                             setDiagramInspectorOpen(false);
                             setTool("pen");
+                            setSelection(new Set());
                           }}
                         >
                           <DrawingIcon name="pen" />

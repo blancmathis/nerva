@@ -75,7 +75,7 @@ test("rendered Nerva surfaces have no serious or critical axe violations", async
   }]);
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toBeVisible();
-  await page.getByRole("button", { name: "Edit diagram block Codex proposes" }).click();
+  await page.getByRole("button", { name: "Edit selected diagram block" }).click();
   await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page, "Drawing with collaborative diagram");
   await page.getByRole("button", { name: "Close drawing studio" }).click();

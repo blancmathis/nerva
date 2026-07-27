@@ -11,6 +11,7 @@ export type DrawingIconName =
   | "pan"
   | "pen"
   | "rectangle"
+  | "select"
   | "redo"
   | "refresh"
   | "sync"
@@ -45,6 +46,13 @@ export function DrawingIcon({ name, className }: DrawingIconProps) {
   };
 
   switch (name) {
+    case "select":
+      return (
+        <svg {...shared}>
+          <path d="m5.25 3.75 12.8 8.1-6.1 1.35-3.2 5.3-3.5-14.75Z" />
+          <path d="m12 13.2 4.1 5.1" />
+        </svg>
+      );
     case "diagram":
       return (
         <svg {...shared}>

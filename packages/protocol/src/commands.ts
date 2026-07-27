@@ -323,6 +323,41 @@ export const OpenSessionCommandSchema = z
     }
   });
 
+export const OpenBrowserTabCommandSchema = z
+  .object({
+    ...CommandMetadataShape,
+    type: z.literal("openBrowserTab"),
+    targetThreadId: ThreadIdSchema,
+    expectedThreadId: ThreadIdSchema,
+    url: z.string().trim().min(1).max(2_048).url(),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.targetThreadId !== command.expectedThreadId) {
+      context.addIssue({
+        code: "custom",
+        message: "targetThreadId must match expectedThreadId",
+        path: ["targetThreadId"],
+      });
+    }
+    try {
+      const url = new URL(command.url);
+      if (
+        (url.protocol !== "http:" && url.protocol !== "https:")
+        || url.username !== ""
+        || url.password !== ""
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "url must be an HTTP(S) address without embedded credentials",
+          path: ["url"],
+        });
+      }
+    } catch {
+      // The URL schema already reports malformed values.
+    }
+  });
+
 export const RunSkillCommandSchema = z
   .object({
     ...CommandMetadataShape,
@@ -363,6 +398,7 @@ export const CommandSchema = z.union([
   SendReviewCommandSchema,
   RunLibraryCommandSchema,
   OpenSessionCommandSchema,
+  OpenBrowserTabCommandSchema,
   RunSkillCommandSchema,
   RefreshSnapshotCommandSchema,
 ]);
@@ -467,6 +503,7 @@ export type AcknowledgeCompletionCommand = z.infer<typeof AcknowledgeCompletionC
 export type SendReviewCommand = z.infer<typeof SendReviewCommandSchema>;
 export type RunLibraryCommand = z.infer<typeof RunLibraryCommandSchema>;
 export type OpenSessionCommand = z.infer<typeof OpenSessionCommandSchema>;
+export type OpenBrowserTabCommand = z.infer<typeof OpenBrowserTabCommandSchema>;
 export type RunSkillCommand = z.infer<typeof RunSkillCommandSchema>;
 export type RefreshSnapshotCommand = z.infer<typeof RefreshSnapshotCommandSchema>;
 export type Command = z.infer<typeof CommandSchema>;

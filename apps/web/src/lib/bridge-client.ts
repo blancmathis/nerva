@@ -28,6 +28,7 @@ import {
   type DiagramDocument,
   type DiagramUpdateRequest,
   type NativeSessionsResponse,
+  type OpenBrowserTabCommand,
   type PairedDevicesResponse,
   type ProductState,
   type RuntimeDiagnostics,
@@ -116,6 +117,16 @@ export interface OpenBrowserTab {
 export interface OpenBrowserTabsResult {
   readonly tabs: readonly OpenBrowserTab[];
   readonly detail: string;
+  readonly capabilities: {
+    readonly discovery: BrowserCapability;
+    readonly open: BrowserCapability;
+    readonly control: BrowserCapability;
+  };
+}
+
+export interface BrowserCapability {
+  readonly available: boolean;
+  readonly reason: string | null;
 }
 
 export type BrowserTabControl =
@@ -246,7 +257,24 @@ function openBrowserTabsFrom(value: unknown): OpenBrowserTabsResult | null {
       reason: source.reason as string | null,
     }];
   });
-  return tabs.length === data.tabs.length ? { tabs, detail: data.detail } : null;
+  const capability = (candidate: unknown): BrowserCapability | null => {
+    const source = sourceRecord(candidate);
+    return typeof source.available === "boolean" && (source.reason === null || typeof source.reason === "string")
+      ? { available: source.available, reason: source.reason as string | null }
+      : null;
+  };
+  const capabilitiesSource = sourceRecord(data.capabilities);
+  const discovery = capability(capabilitiesSource.discovery);
+  const open = capability(capabilitiesSource.open);
+  const control = capability(capabilitiesSource.control);
+  const capabilities = discovery !== null && open !== null && control !== null
+    ? { discovery, open, control }
+    : {
+        discovery: { available: true, reason: null },
+        open: { available: tabs.length > 0, reason: tabs.length > 0 ? null : "Open a Codex Browser page on the Mac first." },
+        control: { available: true, reason: null },
+      };
+  return tabs.length === data.tabs.length ? { tabs, detail: data.detail, capabilities } : null;
 }
 
 function browserTabFrameDataFrom(value: unknown, expectedTabId: string): BrowserTabFrame | null {
@@ -781,6 +809,22 @@ export class BridgeClient {
       throw new BridgeHttpError(response.status, messageFrom(body, "Open Mac tabs could not be loaded"));
     }
     return result;
+  }
+
+  async openBrowserTab(threadId: string, url: string): Promise<CommandAck> {
+    if (this.latestBridgeInstanceId === null || this.latestSeq < 0) {
+      return failedAck(createUuidV4(), {}, "A current bridge snapshot is required before opening a site.");
+    }
+    const command: OpenBrowserTabCommand = {
+      type: "openBrowserTab",
+      commandId: createUuidV4(),
+      expectedBridgeInstanceId: this.latestBridgeInstanceId,
+      expectedSequence: this.latestSeq,
+      expectedThreadId: threadId,
+      targetThreadId: threadId,
+      url,
+    };
+    return this.command(command);
   }
 
   async fetchBrowserTabFrame(threadId: string, tabId: string): Promise<BrowserTabFrame> {

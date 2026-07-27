@@ -153,6 +153,7 @@ export type SceneOperation =
   | { readonly type: "add"; readonly element: SceneElement; readonly index?: number }
   | { readonly type: "remove"; readonly elementId: string }
   | { readonly type: "replaceElement"; readonly element: SceneElement }
+  | { readonly type: "replaceElements"; readonly elements: readonly SceneElement[] }
   | { readonly type: "clear" }
   | { readonly type: "restoreElements"; readonly elements: readonly SceneElement[] }
   | { readonly type: "setView"; readonly view: ViewTransform }

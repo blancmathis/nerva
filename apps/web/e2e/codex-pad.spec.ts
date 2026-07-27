@@ -588,7 +588,7 @@ test("shows only the Codex Browser pages attached to the exact Session", async (
   await expect(hub).not.toContainText("Component lab");
 });
 
-test("opens a typed address in a proven Codex tab and keeps global favorites", async ({ page }) => {
+test("opens a typed address as a new exact-task Codex Browser page and keeps global favorites", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: /^Site/ }).click();
@@ -600,9 +600,33 @@ test("opens a typed address in a proven Codex tab and keeps global favorites", a
   await expect(hub.locator(".cp-favorite-list")).toContainText("example.test");
   await expect.poll(() => bridge.siteFavorites).toHaveLength(1);
 
-  await hub.getByRole("button", { name: "Go", exact: true }).click();
+  await hub.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("region", { name: "Live site workspace" })).toBeVisible();
-  await expect.poll(() => bridge.browserControls.at(-1)).toMatchObject({ type: "navigate", url: "https://example.test/dashboard" });
+  await expect.poll(() => bridge.commands.at(-1)).toMatchObject({
+    type: "openBrowserTab",
+    targetThreadId: THREADS[0]!.id,
+    url: "https://example.test/dashboard",
+  });
+  expect(bridge.browserControls).not.toContainEqual(expect.objectContaining({ type: "navigate" }));
+});
+
+test("opens the first Browser page for a task that has no existing site", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Bridge hardening/ }).click();
+  await page.getByRole("button", { name: /^Site/ }).click();
+
+  const hub = page.getByRole("main", { name: "Sites" });
+  await expect(hub).toContainText("No Browser pages");
+  await hub.getByPlaceholder("Enter a URL or domain").fill("https://empty-task.example.test/");
+  await expect(hub.getByRole("button", { name: "Open", exact: true })).toBeEnabled();
+  await hub.getByRole("button", { name: "Open", exact: true }).click();
+
+  await expect(page.getByRole("region", { name: "Live site workspace" })).toBeVisible();
+  await expect.poll(() => bridge.commands.at(-1)).toMatchObject({
+    type: "openBrowserTab",
+    targetThreadId: THREADS[1]!.id,
+    url: "https://empty-task.example.test/",
+  });
 });
 
 test("records a confirmed touch flow, marks an issue, reviews it, and sends one exact QA report", async ({ page }) => {
@@ -1060,13 +1084,14 @@ test("round-trips one exact-task agent diagram through structural touch edits an
   await expect(page.getByRole("status", { name: "Diagram synced" })).toContainText("Synced");
   const sketchCanvas = page.getByRole("img", { name: /^Sketch canvas/ });
   const canvasBeforeInspector = await sketchCanvas.boundingBox();
-  const diagramDock = await page.locator(".drawing-diagram-dock").boundingBox();
-  if (!canvasBeforeInspector || !diagramDock) throw new Error("Diagram canvas and dock need measurable bounds");
-  expect(canvasBeforeInspector.y + canvasBeforeInspector.height).toBeLessThanOrEqual(diagramDock.y + 2);
-  const firstNode = page.locator(".diagram-node-hitbox").first();
+  const graphChip = await page.locator(".drawing-graph-chip").boundingBox();
+  if (!canvasBeforeInspector || !graphChip) throw new Error("Graph canvas and chip need measurable bounds");
+  expect(graphChip.height).toBeLessThanOrEqual(62);
+  expect(canvasBeforeInspector.y + canvasBeforeInspector.height).toBeGreaterThanOrEqual(graphChip.y + graphChip.height - 2);
+  const firstNode = page.locator(".drawing-selection");
   const box = await firstNode.boundingBox();
   if (!box) throw new Error("Diagram node has no rendered bounds");
-  await firstNode.dispatchEvent("pointerdown", {
+  await sketchCanvas.dispatchEvent("pointerdown", {
     pointerId: 301,
     pointerType: "touch",
     isPrimary: true,
@@ -1075,7 +1100,7 @@ test("round-trips one exact-task agent diagram through structural touch edits an
     clientX: box.x + box.width * .5,
     clientY: box.y + box.height * .5,
   });
-  await firstNode.dispatchEvent("pointermove", {
+  await sketchCanvas.dispatchEvent("pointermove", {
     pointerId: 301,
     pointerType: "touch",
     isPrimary: true,
@@ -1084,7 +1109,7 @@ test("round-trips one exact-task agent diagram through structural touch edits an
     clientX: box.x + box.width * .5 + 38,
     clientY: box.y + box.height * .5 + 21,
   });
-  await firstNode.dispatchEvent("pointerup", {
+  await sketchCanvas.dispatchEvent("pointerup", {
     pointerId: 301,
     pointerType: "touch",
     isPrimary: true,
@@ -1094,6 +1119,39 @@ test("round-trips one exact-task agent diagram through structural touch edits an
     clientY: box.y + box.height * .5 + 21,
   });
   await expect(page.getByRole("button", { name: "Sync revision" })).toBeEnabled();
+  const movedBounds = await firstNode.boundingBox();
+  const resizeHandle = page.getByRole("button", { name: "Resize selected board content" });
+  const resizeBounds = await resizeHandle.boundingBox();
+  if (!movedBounds || !resizeBounds) throw new Error("Selected graph block needs a tactile resize handle");
+  await resizeHandle.dispatchEvent("pointerdown", {
+    pointerId: 302,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: resizeBounds.x + resizeBounds.width / 2,
+    clientY: resizeBounds.y + resizeBounds.height / 2,
+  });
+  await resizeHandle.dispatchEvent("pointermove", {
+    pointerId: 302,
+    pointerType: "touch",
+    isPrimary: true,
+    button: -1,
+    buttons: 1,
+    clientX: resizeBounds.x + resizeBounds.width / 2 + 34,
+    clientY: resizeBounds.y + resizeBounds.height / 2 + 20,
+  });
+  await resizeHandle.dispatchEvent("pointerup", {
+    pointerId: 302,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: resizeBounds.x + resizeBounds.width / 2 + 34,
+    clientY: resizeBounds.y + resizeBounds.height / 2 + 20,
+  });
+  await expect.poll(async () => (await firstNode.boundingBox())?.width ?? 0).toBeGreaterThan(movedBounds.width + 4);
+  await page.getByRole("button", { name: "Edit selected diagram block" }).click();
   await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
   const inspector = page.locator(".drawing-diagram-panel");
   const viewport = page.viewportSize();
@@ -1149,9 +1207,9 @@ test("keeps every drawing tool illustration optically centered and unclipped", a
   }]);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
-  await expect(page.getByRole("button", { name: "Draw on top" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select and move board content" })).toHaveAttribute("aria-pressed", "true");
 
-  const dockMetrics = await page.locator(".drawing-diagram-dock button").evaluateAll((buttons) => (
+  const dockMetrics = await page.locator(".drawing-graph-chip__actions button").evaluateAll((buttons) => (
     buttons.map((button) => {
       const bounds = button.getBoundingClientRect();
       const icon = button.querySelector(".drawing-icon")?.getBoundingClientRect();
@@ -1177,7 +1235,7 @@ test("keeps every drawing tool illustration optically centered and unclipped", a
     expect(Math.abs(metric.centerY), `${metric.name} vertical optical center`).toBeLessThanOrEqual(1);
   }
 
-  await page.getByRole("button", { name: "Draw on top" }).click();
+  await page.getByRole("button", { name: "Pen", exact: true }).click();
   const toolMetrics = await page.locator(".drawing-tool").evaluateAll((buttons) => (
     buttons.map((button) => {
       const bounds = button.getBoundingClientRect();
@@ -1421,6 +1479,86 @@ test("keeps a Pencil drawing globally and reopens an independent working copy", 
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("independent local working copy");
 });
 
+test("moves freehand ink directly with the board Select tool", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  await drawPenStroke(canvas);
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Select and move board content" }).click();
+  await expect(page.getByRole("button", { name: "Select and move board content" })).toHaveAttribute("aria-pressed", "true");
+
+  const canvasBounds = await canvas.boundingBox();
+  if (!canvasBounds) throw new Error("Sketch canvas needs measurable bounds");
+  const startX = canvasBounds.x + canvasBounds.width * .24;
+  const startY = canvasBounds.y + canvasBounds.height * .31;
+  const endX = canvasBounds.x + canvasBounds.width * .73;
+  const endY = canvasBounds.y + canvasBounds.height * .63;
+  await canvas.dispatchEvent("pointerdown", {
+    pointerId: 401,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: startX,
+    clientY: startY,
+  });
+  await canvas.dispatchEvent("pointermove", {
+    pointerId: 401,
+    pointerType: "touch",
+    isPrimary: true,
+    button: -1,
+    buttons: 1,
+    clientX: endX,
+    clientY: endY,
+  });
+  await expect(page.locator(".drawing-lasso")).toBeVisible();
+  await canvas.dispatchEvent("pointerup", {
+    pointerId: 401,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: endX,
+    clientY: endY,
+  });
+  const selection = page.locator(".drawing-selection");
+  await expect(selection).toBeVisible();
+  const before = await selection.boundingBox();
+  if (!before) throw new Error("Freehand selection needs measurable bounds");
+
+  await canvas.dispatchEvent("pointerdown", {
+    pointerId: 402,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: before.x + before.width / 2,
+    clientY: before.y + before.height / 2,
+  });
+  await canvas.dispatchEvent("pointermove", {
+    pointerId: 402,
+    pointerType: "touch",
+    isPrimary: true,
+    button: -1,
+    buttons: 1,
+    clientX: before.x + before.width / 2 + 52,
+    clientY: before.y + before.height / 2 + 31,
+  });
+  await canvas.dispatchEvent("pointerup", {
+    pointerId: 402,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: before.x + before.width / 2 + 52,
+    clientY: before.y + before.height / 2 + 31,
+  });
+  await expect.poll(async () => (await selection.boundingBox())?.x ?? 0).toBeGreaterThan(before.x + 20);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
 test("keeps cleared marks deleted when Photo imports a new background", async ({ page }) => {
   await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
@@ -1440,7 +1578,39 @@ test("keeps cleared marks deleted when Photo imports a new background", async ({
     mimeType: "image/png",
     buffer: Buffer.from(PNG_1X1, "base64"),
   });
-  await expect(page.getByText("replacement.png added behind your annotations")).toBeVisible();
+  await expect(page.getByText("replacement.png added · drag to place it")).toBeVisible();
+  const selection = page.locator(".drawing-selection");
+  const selectionBox = await selection.boundingBox();
+  const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  if (!selectionBox) throw new Error("Imported image selection needs measurable bounds");
+  await canvas.dispatchEvent("pointerdown", {
+    pointerId: 411,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: selectionBox.x + selectionBox.width / 2,
+    clientY: selectionBox.y + selectionBox.height / 2,
+  });
+  await canvas.dispatchEvent("pointermove", {
+    pointerId: 411,
+    pointerType: "touch",
+    isPrimary: true,
+    button: -1,
+    buttons: 1,
+    clientX: selectionBox.x + selectionBox.width / 2 + 54,
+    clientY: selectionBox.y + selectionBox.height / 2 + 27,
+  });
+  await canvas.dispatchEvent("pointerup", {
+    pointerId: 411,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: selectionBox.x + selectionBox.width / 2 + 54,
+    clientY: selectionBox.y + selectionBox.height / 2 + 27,
+  });
+  await expect.poll(async () => (await selection.boundingBox())?.x ?? 0).toBeGreaterThan(selectionBox.x + 20);
   await page.getByRole("button", { name: "Close drawing studio" }).click();
 
   await expect.poll(() => page.evaluate(async (threadId) => {
@@ -1461,8 +1631,12 @@ test("keeps cleared marks deleted when Photo imports a new background", async ({
       read.onerror = () => reject(read.error);
     });
     database.close();
-    return stored.map((record) => typeof record.json === "string" ? (JSON.parse(record.json) as { kind?: unknown }).kind : null);
-  }, THREADS[0].id)).toEqual(["image"]);
+    return stored.map((record) => typeof record.json === "string"
+      ? (JSON.parse(record.json) as { kind?: unknown; x?: unknown })
+      : null);
+  }, THREADS[0].id)).toEqual([
+    expect.objectContaining({ kind: "image", x: expect.any(Number) }),
+  ]);
 });
 
 test("attaches a drawing to the Mac composer without text even when a skill is armed", async ({ page }) => {

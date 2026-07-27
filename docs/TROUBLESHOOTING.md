@@ -307,7 +307,11 @@ Test fast and slow strokes on physical hardware and record iPad, Pencil, iPadOS,
 
 ## A Site is missing or unavailable
 
-`Sites` always opens one unified list containing only the current Session's proven HTTP(S) pages from Codex Browser on the Mac. It does not read Safari, Chrome or another browser profile, does not merge the legacy registered-site catalog, and never falls back to pages from another task. If a page is missing, open the exact task on the Mac, confirm the page is visibly open inside that task's Codex Browser, then tap **Refresh**. A duplicate or ambiguous mapping is intentionally omitted.
+`Sites` always opens one unified list containing only the current Session's proven HTTP(S) pages from Codex Browser on the Mac. It does not read Safari, Chrome or another browser profile, does not merge the legacy registered-site catalog, and never falls back to pages from another task. If a page is missing, tap **Refresh**. Identical URLs are valid separate pages; only an ambiguous webview-to-target proof remains unavailable.
+
+If the task has no page, type an HTTP(S) address and tap **Open**. Nerva asks Codex to create a new Browser page for that exact task; it does not replace the current page or create an unmanaged CDP target. If Codex requires a site permission, approve it on the Mac and leave Sites open while the inventory refreshes.
+
+After a Codex update, `This Codex build changed its Browser integration` means the private adapter no longer matches the observed structure. Nerva intentionally disables discovery and opening instead of guessing. Update Nerva or inspect **Settings → System Diagnostics**; re-pairing cannot repair an adapter mismatch.
 
 Discovery requires one verified loopback Codex renderer and debugger sockets that resolve back to that same listener. When an exact Desktop process identity is available, the listener generation is re-attested around the inventory read. The PWA receives only an opaque tab ID, sanitized title and URL without credentials, query, fragment or debugger address.
 

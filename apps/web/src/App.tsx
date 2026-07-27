@@ -1490,10 +1490,9 @@ function App() {
             favorites={preferences.siteFavorites}
             fetchBrowserTabs={bridge.fetchOpenBrowserTabs}
             onOpenTab={(tab) => { setActiveBrowserTab(tab); setView("site"); }}
-            onNavigateTab={async (tab, url) => {
-              const next = await bridge.controlBrowserTab(viewedSession.threadId, tab.id, { type: "navigate", url });
-              setActiveBrowserTab({ ...tab, title: next.title, url: next.url });
-              setView("site");
+            onOpenAddress={async (url) => {
+              const ack = await bridge.openBrowserTab(viewedSession.threadId, url);
+              if (!ack.ok && !ack.pending) throw new Error(ack.message);
             }}
             onFavoritesChange={(siteFavorites) => updatePreferences({ ...preferences, siteFavorites })}
             onBack={() => setView("session")}
@@ -1508,6 +1507,23 @@ function App() {
             fetchFrame={bridge.fetchBrowserTabFrame}
             controlTab={bridge.controlBrowserTab}
             recordTabAction={bridge.recordBrowserTabAction}
+            onOpenAddress={async (url) => {
+              const before = await bridge.fetchOpenBrowserTabs(viewedSession.threadId);
+              const previousIds = new Set(before.tabs.map((tab) => tab.id));
+              const ack = await bridge.openBrowserTab(viewedSession.threadId, url);
+              if (!ack.ok && !ack.pending) throw new Error(ack.message);
+              const deadline = Date.now() + 10_000;
+              while (Date.now() <= deadline) {
+                const current = await bridge.fetchOpenBrowserTabs(viewedSession.threadId);
+                const created = current.tabs.filter((tab) => !previousIds.has(tab.id) && tab.controllable);
+                if (created.length === 1) {
+                  setActiveBrowserTab(created[0]!);
+                  return created[0]!;
+                }
+                await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+              }
+              throw new Error("The new Codex Browser page could not be identified uniquely. Check the Mac before trying again.");
+            }}
             onSendAnnotation={sendSiteAnnotation}
             onSendRecording={sendSiteQaRecording}
             favorites={preferences.siteFavorites}

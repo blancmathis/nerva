@@ -25,6 +25,7 @@ export interface ProtocolCommandExecutorOptions {
   logger?: Pick<Console, "warn">;
   normalizeSketch?: typeof validateAndNormalizeSketch;
   normalizeReview?: typeof validateAndNormalizeReview;
+  openBrowserTab?: (threadId: string, url: string) => Promise<void>;
 }
 
 export class ProtocolCommandError extends Error {
@@ -50,6 +51,7 @@ export class ProtocolCommandExecutor {
   readonly logger: Pick<Console, "warn">;
   readonly normalizeSketch: typeof validateAndNormalizeSketch;
   readonly normalizeReview: typeof validateAndNormalizeReview;
+  readonly openBrowserTab?: (threadId: string, url: string) => Promise<void>;
   readonly #heldMicroActions = new Map<string, {
     readonly threadId: string;
     readonly agentSlot: number;
@@ -68,6 +70,7 @@ export class ProtocolCommandExecutor {
     this.logger = options.logger ?? console;
     this.normalizeSketch = options.normalizeSketch ?? validateAndNormalizeSketch;
     this.normalizeReview = options.normalizeReview ?? validateAndNormalizeReview;
+    if (options.openBrowserTab !== undefined) this.openBrowserTab = options.openBrowserTab;
   }
 
   async cleanupUpload(kind: "sketch" | "review", cleanup: () => Promise<void>): Promise<void> {
@@ -465,6 +468,19 @@ export class ProtocolCommandExecutor {
         this.state.assertSequence(command.expectedSequence);
         await this.sessions.openSession(command.targetThreadId);
         return result(this.state.current().sequence, command.targetThreadId, "Exact Codex session opened on the Mac");
+      }
+      case "openBrowserTab": {
+        this.state.assertExactTarget(command.expectedSequence, command.targetThreadId, true);
+        if (this.openBrowserTab === undefined) {
+          throw new ProtocolCommandError(
+            "CAPABILITY_UNAVAILABLE",
+            "Opening Codex Browser pages is unavailable for this Codex build.",
+            409,
+          );
+        }
+        await this.openBrowserTab(command.targetThreadId, command.url);
+        this.state.assertExactTarget(this.state.current().sequence, command.targetThreadId, true);
+        return result(this.state.current().sequence, command.targetThreadId, "New Codex Browser page opened for the exact task");
       }
       case "refreshSnapshot": {
         const snapshot = await this.state.refresh();

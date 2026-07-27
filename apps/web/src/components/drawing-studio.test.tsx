@@ -125,7 +125,7 @@ describe("DrawingStudio routing", () => {
     );
 
     expect(await screen.findByText("Agent round trip")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Draw on top" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Select and move board content" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Edit selected diagram block" }));
     const blockLabel = screen.getByRole("textbox", { name: "Selected block" });
     fireEvent.change(blockLabel, { target: { value: "Codex proposes a flow" } });
@@ -297,7 +297,8 @@ describe("DrawingStudio routing", () => {
     fireEvent.change(inputs[1]!, {
       target: { files: [new File([png], "replacement.png", { type: "image/png" })] },
     });
-    await screen.findByText("replacement.png added behind your annotations");
+    await screen.findByText("replacement.png added · drag to place it");
+    expect(screen.getByRole("button", { name: "Select and move board content" })).toHaveAttribute("aria-pressed", "true");
 
     view.unmount();
     await waitFor(async () => {

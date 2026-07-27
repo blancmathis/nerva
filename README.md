@@ -36,7 +36,7 @@
 Architecture is rarely one final diagram. Nerva lets each exact task publish and evolve multiple structured graphs, reopen them as working boards, and combine them with freehand Pencil annotations.
 
 1. **Codex publishes the graph you need.** Each exact task can keep multiple structured diagrams for different systems, flows, or decisions.
-2. **You choose and reshape it on the iPad.** Move blocks, edit labels and links, reorganize the architecture, then annotate freely with Apple Pencil.
+2. **You choose and reshape it on the iPad.** Work directly on one infinite board: move or resize graph blocks, ink, photos and shapes; edit labels and links; reorganize the architecture; then annotate freely with Apple Pencil.
 3. **Nerva syncs the exact revision.** Structured edits and freehand ink remain separate, so neither side silently overwrites the other.
 4. **Codex continues from your changes.** It can read the revisioned graph instead of reconstructing your intent from another paragraph.
 

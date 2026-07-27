@@ -10,7 +10,7 @@ interface SiteHubPageProps {
   readonly favorites: readonly SiteFavorite[];
   readonly fetchBrowserTabs: (threadId: string) => Promise<OpenBrowserTabsResult>;
   readonly onOpenTab: (tab: OpenBrowserTab) => void;
-  readonly onNavigateTab: (tab: OpenBrowserTab, url: string) => Promise<void>;
+  readonly onOpenAddress: (url: string) => Promise<void>;
   readonly onFavoritesChange: (favorites: readonly SiteFavorite[]) => void;
   readonly onBack: () => void;
 }
@@ -58,7 +58,7 @@ export function SiteHubPage({
   favorites,
   fetchBrowserTabs,
   onOpenTab,
-  onNavigateTab,
+  onOpenAddress,
   onFavoritesChange,
   onBack,
 }: SiteHubPageProps) {
@@ -67,9 +67,13 @@ export function SiteHubPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
-  const [targetTabId, setTargetTabId] = useState("");
   const [opening, setOpening] = useState(false);
   const [query, setQuery] = useState("");
+  const [capabilities, setCapabilities] = useState<OpenBrowserTabsResult["capabilities"]>({
+    discovery: { available: true, reason: null },
+    open: { available: true, reason: null },
+    control: { available: true, reason: null },
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -78,9 +82,7 @@ export function SiteHubPage({
       const result = await fetchBrowserTabs(threadId);
       setTabs(result.tabs);
       setDetail(result.detail);
-      setTargetTabId((current) => result.tabs.some((tab) => tab.id === current && tab.controllable)
-        ? current
-        : result.tabs.find((tab) => tab.controllable)?.id ?? "");
+      setCapabilities(result.capabilities);
     } catch (caught) {
       setTabs([]);
       setError(caught instanceof Error ? caught.message : "Open pages could not be loaded.");
@@ -96,7 +98,6 @@ export function SiteHubPage({
     document.querySelector<HTMLElement>(".cp-app-content")?.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, []);
 
-  const selectedTab = tabs.find((tab) => tab.id === targetTabId && tab.controllable) ?? null;
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleTabs = useMemo(() => normalizedQuery === "" ? tabs : tabs.filter((tab) => (
     tab.title.toLocaleLowerCase().includes(normalizedQuery) || tab.url.toLocaleLowerCase().includes(normalizedQuery)
@@ -106,12 +107,27 @@ export function SiteHubPage({
   )), [favorites, normalizedQuery]);
 
   async function openAddress(value: string) {
-    if (!selectedTab || opening) return;
+    if (opening || !capabilities.open.available) return;
     setOpening(true);
     setError(null);
     try {
       const normalized = normalizeSiteAddress(value);
-      await onNavigateTab(selectedTab, normalized);
+      const previousIds = new Set(tabs.map((tab) => tab.id));
+      await onOpenAddress(normalized);
+      const deadline = Date.now() + 10_000;
+      while (Date.now() <= deadline) {
+        const result = await fetchBrowserTabs(threadId);
+        setTabs(result.tabs);
+        setDetail(result.detail);
+        setCapabilities(result.capabilities);
+        const created = result.tabs.filter((tab) => !previousIds.has(tab.id));
+        if (created.length === 1 && created[0]!.controllable) {
+          onOpenTab(created[0]!);
+          return;
+        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+      }
+      setError("The page was requested in Codex, but Nerva could not confirm a unique controllable page. Check the Mac before trying again.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The site could not be opened.");
     } finally {
@@ -149,13 +165,12 @@ export function SiteHubPage({
       <form className="cp-site-address" onSubmit={(event) => { event.preventDefault(); void openAddress(address); }}>
         <span className="cp-site-address__icon"><GlobeIcon /></span>
         <label><span className="sr-only">Site address</span><input inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={address} placeholder="Enter a URL or domain" onChange={(event) => setAddress(event.target.value)} /></label>
-        <label className="cp-site-address__target"><span>Open in</span><select aria-label="Codex Browser page to navigate" value={targetTabId} onChange={(event) => setTargetTabId(event.target.value)}>{tabs.filter((tab) => tab.controllable).map((tab) => <option key={tab.id} value={tab.id}>{tab.title || displayLocation(tab.url)}</option>)}</select></label>
         <button type="button" className="cp-site-address__favorite" disabled={!address.trim()} aria-label="Add address to favorites" onClick={() => addFavorite(address)}>☆</button>
-        <button type="submit" className="cp-site-address__go" disabled={!selectedTab || !address.trim() || opening}>{opening ? "Opening…" : "Go"}</button>
+        <button type="submit" className="cp-site-address__go" disabled={!capabilities.open.available || !address.trim() || opening}>{opening ? "Opening…" : "Open"}</button>
       </form>
 
-      {!loading && tabs.filter((tab) => tab.controllable).length === 0 && (
-        <p className="cp-sites-hub__notice">Open at least one Browser page from this Codex task on the Mac. Nerva navigates only a page whose task ownership the bridge can prove.</p>
+      {!loading && (!capabilities.discovery.available || !capabilities.open.available || !capabilities.control.available) && (
+        <p className="cp-sites-hub__notice">{capabilities.discovery.reason ?? capabilities.open.reason ?? capabilities.control.reason}</p>
       )}
       {error && <p className="cp-sites-hub__error" role="status">{error}</p>}
 
@@ -169,7 +184,7 @@ export function SiteHubPage({
           <div className="cp-site-library__heading"><div><p className="cp-overline">Live on your Mac</p><h2 id="open-pages-title">Open pages</h2></div><span>{tabs.length}</span></div>
           <p className="cp-site-library__detail">{detail}</p>
           {loading ? <div className="cp-site-library__empty">Reading Codex Browser…</div> : visibleTabs.length === 0 ? (
-            <div className="cp-site-library__empty"><GlobeIcon /><strong>No matching page</strong><span>Only pages attached to this exact Codex task appear here.</span></div>
+            <div className="cp-site-library__empty"><GlobeIcon /><strong>{tabs.length === 0 ? "No Browser pages open for this task" : "No matching page"}</strong><span>{tabs.length === 0 ? "Enter an address above to open the first page in Codex." : "Only pages attached to this exact Codex task appear here."}</span></div>
           ) : (
             <div className="cp-site-card-list">
               {visibleTabs.map((tab) => (
@@ -199,7 +214,7 @@ export function SiteHubPage({
             <div className="cp-favorite-list">
               {visibleFavorites.map((favorite) => (
                 <article key={favorite.id} className="cp-favorite-card">
-                  <button type="button" disabled={!selectedTab || opening} onClick={() => void openAddress(favorite.url)}><span>★</span><span><strong>{favorite.label}</strong><small>{displayLocation(favorite.url)}</small></span></button>
+                  <button type="button" disabled={!capabilities.open.available || opening} onClick={() => void openAddress(favorite.url)}><span>★</span><span><strong>{favorite.label}</strong><small>{displayLocation(favorite.url)}</small></span></button>
                   <button type="button" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => onFavoritesChange(favorites.filter((candidate) => candidate.id !== favorite.id))}>Remove</button>
                 </article>
               ))}

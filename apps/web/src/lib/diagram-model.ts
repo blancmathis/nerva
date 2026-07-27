@@ -255,10 +255,18 @@ export function updateDiagramNode(
   });
 }
 
-export function addDiagramNode(diagram: DiagramDocument, nodeId: string): DiagramDocument {
+export function addDiagramNode(
+  diagram: DiagramDocument,
+  nodeId: string,
+  placement?: { readonly centerX: number; readonly centerY: number },
+): DiagramDocument {
   const index = diagram.nodes.length;
   const width = 240;
   const height = 104;
+  const requestedX = placement ? placement.centerX - width / 2 : 100 + (index % 4) * 300;
+  const requestedY = placement ? placement.centerY - height / 2 : 120 + Math.floor(index / 4) * 180;
+  const x = Math.min(DIAGRAM_WORLD_LIMIT - width, Math.max(-DIAGRAM_WORLD_LIMIT, requestedX));
+  const y = Math.min(DIAGRAM_WORLD_LIMIT - height, Math.max(-DIAGRAM_WORLD_LIMIT, requestedY));
   return DiagramDocumentSchema.parse({
     ...diagram,
     nodes: [
@@ -266,8 +274,8 @@ export function addDiagramNode(diagram: DiagramDocument, nodeId: string): Diagra
       {
         id: nodeId,
         label: "New step",
-        x: 100 + (index % 4) * 300,
-        y: 120 + Math.floor(index / 4) * 180,
+        x,
+        y,
         width,
         height,
         shape: "rectangle",
@@ -316,8 +324,21 @@ export function autoLayoutDiagram(diagram: DiagramDocument): DiagramDocument {
   const gapY = 72;
   const cellWidth = Math.max(280, ...diagram.nodes.map((node) => node.width + gapX));
   const cellHeight = Math.max(160, ...diagram.nodes.map((node) => node.height + gapY));
-  const originX = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_WIDTH / 2 : Math.min(...diagram.nodes.map((node) => node.x));
-  const originY = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_HEIGHT / 2 : Math.min(...diagram.nodes.map((node) => node.y));
+  const requestedOriginX = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_WIDTH / 2 : Math.min(...diagram.nodes.map((node) => node.x));
+  const requestedOriginY = diagram.nodes.length === 0 ? DIAGRAM_CANVAS_HEIGHT / 2 : Math.min(...diagram.nodes.map((node) => node.y));
+  const rows = Math.ceil(diagram.nodes.length / columns);
+  const widestFinalNode = Math.max(0, ...diagram.nodes.map((node) => node.width));
+  const tallestFinalNode = Math.max(0, ...diagram.nodes.map((node) => node.height));
+  const layoutWidth = Math.max(0, columns - 1) * cellWidth + widestFinalNode;
+  const layoutHeight = Math.max(0, rows - 1) * cellHeight + tallestFinalNode;
+  const originX = Math.min(
+    DIAGRAM_WORLD_LIMIT - layoutWidth,
+    Math.max(-DIAGRAM_WORLD_LIMIT, requestedOriginX),
+  );
+  const originY = Math.min(
+    DIAGRAM_WORLD_LIMIT - layoutHeight,
+    Math.max(-DIAGRAM_WORLD_LIMIT, requestedOriginY),
+  );
   return DiagramDocumentSchema.parse({
     ...diagram,
     nodes: diagram.nodes.map((node, index) => ({

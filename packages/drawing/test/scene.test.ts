@@ -11,6 +11,10 @@ import {
   createTextElement,
   deserializeScene,
   historyReducer,
+  transformElements,
+  topmostElementAtPoint,
+  elementsIntersectingBounds,
+  expandSelectionForErasers,
   migrateScene,
   sceneEraserOperations,
   sceneStrokes,
@@ -184,5 +188,67 @@ describe("history reducer", () => {
     const scene = applySceneOperation(withStroke, { type: "add", element: background });
 
     expect(scene.elements.map((element) => element.id)).toEqual(["background", "ink"]);
+  });
+
+  it("replaces several elements as one reversible history operation", () => {
+    const first = createShapeElement({
+      id: "first", shape: "rectangle", x: 10, y: 20, width: 100, height: 60,
+      strokeColor: "#111", strokeWidth: 2,
+    });
+    const second = createTextElement({
+      id: "second", x: 40, y: 90, text: "Move together", color: "#111", fontSize: 20,
+    });
+    const scene = { ...createScene(), elements: [first, second] };
+    let history = createHistory(scene);
+    const replacements = transformElements(scene, new Set(["first", "second"]), {
+      origin: { x: 0, y: 0 }, deltaX: 80, deltaY: -30,
+    });
+    history = historyReducer(history, {
+      type: "commit",
+      operation: { type: "replaceElements", elements: replacements },
+    });
+    expect(history.present.elements).toMatchObject([
+      { id: "first", x: 90, y: -10 },
+      { id: "second", x: 120, y: 60 },
+    ]);
+    history = historyReducer(history, { type: "undo" });
+    expect(history.present.elements).toEqual(scene.elements);
+    history = historyReducer(history, { type: "redo" });
+    expect(history.present.elements).toMatchObject([
+      { id: "first", x: 90, y: -10 },
+      { id: "second", x: 120, y: 60 },
+    ]);
+  });
+});
+
+describe("selection geometry", () => {
+  it("selects the topmost visible element and supports a marquee", () => {
+    const lower = createShapeElement({
+      id: "lower", shape: "rectangle", x: 0, y: 0, width: 100, height: 100,
+      strokeColor: "#111", strokeWidth: 2, fillColor: "#fff",
+    });
+    const upper = createShapeElement({
+      id: "upper", shape: "ellipse", x: 20, y: 20, width: 80, height: 80,
+      strokeColor: "#00f", strokeWidth: 2, fillColor: "#eef",
+    });
+    const scene = { ...createScene(), elements: [lower, upper] };
+    expect(topmostElementAtPoint(scene, { x: 60, y: 60 })?.id).toBe("upper");
+    expect(elementsIntersectingBounds(scene, {
+      minX: -10, minY: -10, maxX: 15, maxY: 15, width: 25, height: 25,
+    }).map((element) => element.id)).toEqual(["lower"]);
+  });
+
+  it("moves an erased ink component without separating its eraser", () => {
+    const stroke = createStrokeElement({
+      id: "ink", color: "#111", size: 8, points: [point(10, 10), point(100, 10)],
+    });
+    const eraser = createEraserElement({
+      id: "erase", size: 20, points: [point(50, 10), point(60, 10)],
+    });
+    const unrelated = createStrokeElement({
+      id: "other", color: "#111", size: 8, points: [point(300, 300), point(340, 340)],
+    });
+    const scene = { ...createScene(), elements: [stroke, unrelated, eraser] };
+    expect([...expandSelectionForErasers(scene, new Set(["ink"]))]).toEqual(["ink", "erase"]);
   });
 });

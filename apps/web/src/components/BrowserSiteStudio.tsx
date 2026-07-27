@@ -35,6 +35,7 @@ interface BrowserSiteStudioProps {
   readonly fetchFrame: (threadId: string, tabId: string) => Promise<BrowserTabFrame>;
   readonly controlTab: (threadId: string, tabId: string, action: BrowserTabControl) => Promise<BrowserTabFrame>;
   readonly recordTabAction: (threadId: string, tabId: string, action: SiteQaRecordedAction) => Promise<RecordedBrowserTabControlResult>;
+  readonly onOpenAddress: (url: string) => Promise<OpenBrowserTab>;
   readonly onSendAnnotation: (png: Blob) => Promise<{ readonly ok: boolean; readonly message?: string }>;
   readonly onSendRecording: (payload: SiteQaSendPayload) => Promise<SiteQaSendResult>;
   readonly onToggleFavorite: (url: string, title: string) => void;
@@ -76,7 +77,7 @@ function elapsedLabel(milliseconds: number): string {
 
 export function BrowserSiteStudio({
   tab, threadId, sendEnabled, favorites, fetchFrame, controlTab, recordTabAction,
-  onSendAnnotation, onSendRecording, onToggleFavorite, onOpenSites,
+  onOpenAddress, onSendAnnotation, onSendRecording, onToggleFavorite, onOpenSites,
 }: BrowserSiteStudioProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const baseImageRef = useRef<HTMLImageElement | null>(null);
@@ -190,6 +191,20 @@ export function BrowserSiteStudio({
       setError(caught instanceof Error ? caught.message : "The browser page did not accept that action.");
     } finally { requestActiveRef.current = false; setBusy(false); }
   }, [annotating, applyFrame, controlTab, draft, recordTabAction, reviewing, tab.id, threadId]);
+
+  async function openAddress() {
+    if (busy || annotating || reviewing) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const next = await onOpenAddress(normalizeSiteAddress(address));
+      baseImageRef.current = null; setFrame(null); setStrokes([]); setAddress(next.url);
+      setNotice("New Codex Browser page opened for this task.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The site could not be opened.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function canvasPoint(event: ReactPointerEvent<HTMLCanvasElement>): Point {
     const canvas = event.currentTarget; const rect = canvas.getBoundingClientRect();
@@ -372,7 +387,7 @@ export function BrowserSiteStudio({
     <section className={`cp-browser-site${annotating ? " is-annotating" : " is-browsing"}`} aria-label="Live site workspace">
       <header className="cp-browser-site__topbar">
         <button type="button" className="cp-browser-site__back" onClick={onOpenSites}><ChevronIcon direction="left" />Sites</button>
-        <form className="cp-browser-site__address" onSubmit={(event) => { event.preventDefault(); try { void control({ type: "navigate", url: normalizeSiteAddress(address) }); } catch (caught) { setError(caught instanceof Error ? caught.message : "Invalid address."); } }}><GlobeIcon /><input aria-label="Current site address" inputMode="url" autoCapitalize="none" autoCorrect="off" value={address} onChange={(event) => setAddress(event.target.value)} disabled={annotating} /><button type="submit" disabled={busy || annotating}>Go</button><button type="button" className="cp-browser-site__favorite" aria-label={favorite ? "Remove current page from favorites" : "Add current page to favorites"} aria-pressed={favorite} onClick={() => onToggleFavorite(frame?.url ?? tab.url, frame?.title ?? tab.title)}>{favorite ? "★" : "☆"}</button></form>
+        <form className="cp-browser-site__address" onSubmit={(event) => { event.preventDefault(); void openAddress(); }}><GlobeIcon /><input aria-label="Current site address" inputMode="url" autoCapitalize="none" autoCorrect="off" value={address} onChange={(event) => setAddress(event.target.value)} disabled={annotating} /><button type="submit" disabled={busy || annotating}>Open</button><button type="button" className="cp-browser-site__favorite" aria-label={favorite ? "Remove current page from favorites" : "Add current page to favorites"} aria-pressed={favorite} onClick={() => onToggleFavorite(frame?.url ?? tab.url, frame?.title ?? tab.title)}>{favorite ? "★" : "☆"}</button></form>
         <div className="cp-browser-site__navigation" aria-label="Browser navigation"><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "back" })}>←</button><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "forward" })}>→</button><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "reload" })}>↻</button></div>
       </header>
 

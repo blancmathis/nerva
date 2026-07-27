@@ -52,6 +52,7 @@ function fixture(overrides: {
   current?: BridgeStateService["current"];
   normalizeSketch?: ProtocolCommandExecutorOptions["normalizeSketch"];
   normalizeReview?: ProtocolCommandExecutorOptions["normalizeReview"];
+  openBrowserTab?: ProtocolCommandExecutorOptions["openBrowserTab"];
 } = {}) {
   const state = {
     assertExactTarget: overrides.assertExactTarget ?? vi.fn(() => ({ slot: 0 }) as never),
@@ -93,6 +94,7 @@ function fixture(overrides: {
     sessions,
     paths: defaultDataPaths("/tmp/codex-pad-command-test"),
     logger: { warn },
+    ...(overrides.openBrowserTab === undefined ? {} : { openBrowserTab: overrides.openBrowserTab }),
     normalizeSketch: overrides.normalizeSketch ?? (async () => ({
       path: "/private/runtime/sketch.png",
       pngBase64: sketchCommand().png,
@@ -145,6 +147,28 @@ function reviewCommand(): Extract<Command, { type: "sendReview" }> {
 }
 
 describe("ProtocolCommandExecutor outcome preservation", () => {
+  it("opens a Browser page only after exact-target validation", async () => {
+    const openBrowserTab = vi.fn(async () => undefined);
+    const assertExactTarget = vi.fn(() => ({ slot: 0 }) as never);
+    const { executor } = fixture({ openBrowserTab, assertExactTarget });
+    const command = CommandSchema.parse({
+      type: "openBrowserTab",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd0",
+      expectedSequence: 12,
+      expectedBridgeInstanceId: BRIDGE_INSTANCE_ID,
+      expectedThreadId: THREAD_ID,
+      targetThreadId: THREAD_ID,
+      url: "https://example.test/dashboard",
+    });
+
+    await expect(executor.execute(command)).resolves.toMatchObject({
+      targetThreadId: THREAD_ID,
+      message: "New Codex Browser page opened for the exact task",
+    });
+    expect(assertExactTarget).toHaveBeenCalledTimes(2);
+    expect(openBrowserTab).toHaveBeenCalledWith(THREAD_ID, "https://example.test/dashboard");
+  });
+
   it("keeps one exact Dictation press active until the matching end command", async () => {
     const invokeActionSlot = vi.fn(async () => ({ sequence: 13 })) as unknown as BridgeStateService["invokeActionSlot"];
     const { executor } = fixture({ invokeActionSlot });

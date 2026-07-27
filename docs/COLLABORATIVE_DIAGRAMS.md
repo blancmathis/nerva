@@ -7,11 +7,12 @@ Nerva Draw can receive a structured diagram from the Codex task that is currentl
 1. Ask Codex in a task to create a diagram and publish it to Nerva.
 2. Open the same task in Nerva, then tap **Draw**.
 3. The latest unseen diagram for that exact task opens automatically.
-4. In **Diagram** mode, move or resize a block directly on the canvas. The compact bottom dock keeps only **Block**, **Edit**, synchronization state and **Draw** visible.
-5. Tap a block or **Edit** to open its focused inspector. Rename it immediately; use **Style** for shape and color, **Links** for connections, and **More** for the diagram title, automatic arrangement or deletion. On iPad, the canvas reserves a narrow edge column for the inspector instead of placing controls over the drawing. On phone, the inspector temporarily replaces the canvas; closing it restores the full drawing view.
-6. Tap **Draw** or the Pencil action in the inspector to return to the ordinary Pencil canvas. Diagram structure and freehand ink remain separate while editing.
-7. **Sync revision** appears only while the structure has local changes. Tap it when Codex should read those changes without receiving a composer attachment. **Keep** and **Send** also synchronize a dirty diagram revision before continuing.
-8. **Send** synchronizes a dirty Diagram revision before rendering. A compact
+4. The graph opens directly in the same infinite board as Pencil ink, photos, text and shapes; there is no diagram frame or fixed graph page. **Select** can move or resize a block or any ordinary board element. Drag an empty area to select several items, then drag anywhere inside the selection frame to move the group.
+5. A compact graph capsule floats over the board without reducing the canvas. **Block** adds a node at the current camera position, **Edit** opens the selected block, and the final control shows synchronization state. Tap the graph identity to choose another graph for the exact task.
+6. In the focused inspector, rename the block immediately; use **Style** for shape and color, **Links** for connections, and **More** for the graph title, automatic arrangement or deletion. On iPad, the canvas reserves a narrow edge column only while the inspector is open. On phone, the inspector temporarily replaces the canvas; closing it restores the full board.
+7. Choose **Pen** in the tool rail, or use the Pencil action in the inspector, to annotate normally. Graph structure and freehand ink remain separate while editing even though they share one spatial surface.
+8. **Sync revision** appears only while the structure has local changes. Tap it when Codex should read those changes without receiving a composer attachment. **Keep** and **Send** also synchronize a dirty graph revision before continuing.
+9. **Send** synchronizes a dirty graph revision before rendering. A compact
    summary announces the resulting package, for example
    `1 map + 7 linked details · Good`; **Inspect package** optionally reveals the
    regions without adding a required step. Nerva then attaches either one
@@ -127,6 +128,6 @@ system rather than unrelated screenshots:
 
 ## Verification boundary
 
-Unit, component and Playwright tests prove validation, exact-task isolation, optimistic revisions, local draft restoration, structural touch editing, Pencil composition, revision sync, image-only Send and non-reopening after a confirmed Send. Browser screenshots cover iPad landscape, iPad portrait and phone layouts.
+Unit, component and Playwright tests prove validation, exact-task isolation, optimistic revisions, local draft restoration, direct graph movement and resizing, lasso selection and movement of freehand ink, photo movement, Pencil composition, revision sync, image-only Send and non-reopening after a confirmed Send. Browser screenshots cover iPad landscape, iPad portrait and phone layouts.
 
 Physical Apple Pencil pressure, tilt, palm rejection, display cadence and long iPadOS suspension still require the manual device checklist. Browser pointer simulation is not reported as hardware proof.

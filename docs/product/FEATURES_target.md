@@ -196,7 +196,7 @@ Nerva Voice is outside the current delivery target. It may later provide convers
 
 ### 9.1 Shared editor
 
-Draw is a virtually infinite vector board with most of the screen reserved for the canvas. Pencil draws; one palm/finger is passive in Pencil mode; two fingers pan and zoom; Move supports mouse/finger navigation. Tools remain in an edge rail or compact bottom palette and never cover the working area unnecessarily.
+Draw is a virtually infinite vector board with most of the screen reserved for the canvas. Pencil draws; one palm/finger is passive in Pencil mode; two fingers pan and zoom; Hand supports mouse/finger camera navigation. A unified Select tool directly moves or uniformly resizes ink, shapes, text, photos and graph blocks, and an empty-area drag selects several items. Tools remain in an edge rail or compact bottom palette and never cover the working area unnecessarily.
 
 The board can contain freehand ink, shapes, arrows, text, photos, and structured collaborative graphs in one world coordinate system. Undo is operation-based. Autosave and async imports must be generation-safe; Clear is a barrier that old saves cannot undo.
 
@@ -220,7 +220,7 @@ After confirmed Send, the board receives a `Sent` checkpoint and remains in `Boa
 
 ### 9.4 Collaborative graphs
 
-Codex can publish multiple structured graphs into the exact task. The iPad can choose, reopen, move blocks, edit labels/links, and annotate with Pencil. Codex and iPad writes use expected revisions and provenance. Structured graph and freehand ink remain separate; a new Codex revision never silently erases Pencil work. A structured conflict requires an explicit choice.
+Codex can publish multiple structured graphs into the exact task. Each graph is rendered directly in the shared infinite board rather than inside a fixed diagram frame. The iPad can choose, reopen, move or resize blocks, add a block at the current camera position, edit labels/links, combine the graph spatially with photos or other marks, and annotate with Pencil. Codex and iPad writes use expected revisions and provenance. Structured graph and freehand ink remain separate; a new Codex revision never silently erases Pencil work. A structured conflict requires an explicit choice.
 
 Graphs are shared working documents, not one final diagram. See [`../COLLABORATIVE_DIAGRAMS.md`](../COLLABORATIVE_DIAGRAMS.md).
 

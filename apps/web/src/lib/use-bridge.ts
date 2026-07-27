@@ -203,6 +203,7 @@ export interface BridgeController {
   }) => Promise<SiteCaptureResult>;
   readonly fetchManagedSites: (threadId: string) => Promise<readonly ManagedSite[]>;
   readonly fetchOpenBrowserTabs: (threadId: string) => Promise<OpenBrowserTabsResult>;
+  readonly openBrowserTab: (threadId: string, url: string) => Promise<CommandAck>;
   readonly fetchBrowserTabFrame: (threadId: string, tabId: string) => Promise<BrowserTabFrame>;
   readonly controlBrowserTab: (threadId: string, tabId: string, action: BrowserTabControl) => Promise<BrowserTabFrame>;
   readonly recordBrowserTabAction: (threadId: string, tabId: string, action: SiteQaRecordedAction) => Promise<RecordedBrowserTabControlResult>;
@@ -976,6 +977,14 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       if (!client) throw new Error("Bridge is not ready");
       return client.fetchOpenBrowserTabs(threadId);
     }, []),
+    openBrowserTab: useCallback(async (threadId, url) => {
+      const client = clientRef.current;
+      if (!client) return { commandId: crypto.randomUUID(), ok: false, pending: false, message: "Bridge is not ready" };
+      const ack = await client.openBrowserTab(threadId, url);
+      setLastAck(ack);
+      if (ack.pending) trackPending(ack.commandId);
+      return ack;
+    }, [trackPending]),
     fetchBrowserTabFrame: useCallback(async (threadId, tabId) => {
       const client = clientRef.current;
       if (!client) throw new Error("Bridge is not ready");

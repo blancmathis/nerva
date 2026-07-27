@@ -426,9 +426,9 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
 
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   await expect(page.getByRole("button", { name: "Edit selected diagram block" })).toBeVisible();
-  await page.getByRole("button", { name: "Draw on top" }).click();
+  await page.getByRole("button", { name: "Pen", exact: true }).click();
   await markCanvas(page.getByRole("img", { name: /^Sketch canvas/ }));
-  await page.getByRole("button", { name: "Edit diagram structure" }).click();
+  await page.getByRole("button", { name: "Select and move board content" }).click();
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("Saved on this iPad");
   await page.getByRole("button", { name: "Keep in Saved Drawings" }).click();
   await expect(page.getByText("Kept in Saved Drawings on the Mac")).toBeVisible({ timeout: 15_000 });

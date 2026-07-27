@@ -121,6 +121,13 @@ export class MockBridge {
     width: 1_180,
     height: 760,
   };
+  private browserTabCounter = 2;
+  private readonly openedBrowserTabs: Array<{
+    readonly id: string;
+    readonly threadId: string;
+    readonly title: string;
+    readonly url: string;
+  }> = [];
   private readonly fixedNow: number | null;
   private readonly completedCommands = new Map<string, {
     readonly sequence: number;
@@ -551,7 +558,7 @@ export class MockBridge {
     }
     if (url.pathname === "/api/browser-tabs" && request.method() === "GET") {
       const threadId = url.searchParams.get("threadId");
-      const tabs = threadId === THREADS[0]?.id
+      const fixtureTabs = threadId === THREADS[0]?.id
         ? [{
             id: FIXTURE_BROWSER_TAB_ID,
             title: "Component lab",
@@ -568,22 +575,44 @@ export class MockBridge {
               reason: null,
             }]
           : [];
+      const tabs = [
+        ...fixtureTabs,
+        ...this.openedBrowserTabs.filter((tab) => tab.threadId === threadId).map(({ threadId: _threadId, ...tab }) => ({
+          ...tab,
+          controllable: true,
+          reason: null,
+        })),
+      ];
       await fulfillJson(route, 200, {
         ok: true,
         data: {
-          detail: "Open pages attached to this Codex task. Choose one to browse and annotate.",
+          detail: tabs.length > 0
+            ? "Open pages attached to this Codex task. Choose one to browse and annotate."
+            : "No Browser pages are open for this task yet.",
           tabs,
+          capabilities: {
+            discovery: { available: true, reason: null },
+            open: { available: true, reason: null },
+            control: { available: true, reason: null },
+          },
         },
       });
       return;
     }
-    if (url.pathname === `/api/browser-tabs/${FIXTURE_BROWSER_TAB_ID}/frame` && request.method() === "GET") {
+    const browserFrameMatch = url.pathname.match(/^\/api\/browser-tabs\/(tab_[a-z0-9_-]+)\/frame$/u);
+    if (browserFrameMatch && request.method() === "GET") {
+      const tabId = browserFrameMatch[1]!;
+      const opened = this.openedBrowserTabs.find((tab) => tab.id === tabId);
+      if (tabId !== FIXTURE_BROWSER_TAB_ID && opened === undefined) {
+        await fulfillJson(route, 404, errorEnvelope("NOT_FOUND", "Browser page not found."));
+        return;
+      }
       await fulfillJson(route, 200, {
         ok: true,
         data: {
-          tabId: FIXTURE_BROWSER_TAB_ID,
-          title: "Component lab",
-          url: "http://127.0.0.1:8787/",
+          tabId,
+          title: opened?.title ?? "Component lab",
+          url: opened?.url ?? "http://127.0.0.1:8787/",
           imageBase64: this.browserFrameFixture.imageBase64,
           mimeType: "image/jpeg",
           width: this.browserFrameFixture.width,
@@ -688,6 +717,20 @@ export class MockBridge {
         }
         this.activeThreadIdOverride = body.command.targetThreadId;
         this.sequence += 1;
+      }
+      if (
+        body.command.type === "openBrowserTab"
+        && typeof body.command.targetThreadId === "string"
+        && typeof body.command.url === "string"
+      ) {
+        this.browserTabCounter += 1;
+        const parsed = new URL(body.command.url);
+        this.openedBrowserTabs.push({
+          id: `tab_${String(this.browserTabCounter).repeat(24).slice(0, 24)}`,
+          threadId: body.command.targetThreadId,
+          title: parsed.hostname,
+          url: parsed.href,
+        });
       }
       if (body.command.type === "respondToApproval") {
         this.approvalPending = false;

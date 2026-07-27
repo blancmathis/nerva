@@ -539,6 +539,28 @@ export function applySceneOperation(scene: Scene, operation: SceneOperation): Sc
       elements[index] = cloneElement(operation.element);
       return { ...scene, elements };
     }
+    case "replaceElements": {
+      if (operation.elements.length === 0) return scene;
+      const replacements = new Map<string, SceneElement>();
+      for (const element of operation.elements) {
+        assertElement(element);
+        if (replacements.has(element.id)) {
+          throw new TypeError(`replacement contains duplicate element id ${element.id}`);
+        }
+        replacements.set(element.id, element);
+      }
+      if ([...replacements.keys()].some((id) => !scene.elements.some((element) => element.id === id))) {
+        return scene;
+      }
+      let changed = false;
+      const elements = scene.elements.map((element) => {
+        const replacement = replacements.get(element.id);
+        if (!replacement) return element;
+        changed = true;
+        return cloneElement(replacement);
+      });
+      return changed ? { ...scene, elements } : scene;
+    }
     case "clear":
       return scene.elements.length === 0 ? scene : { ...scene, elements: [] };
     case "restoreElements":
@@ -571,6 +593,13 @@ function inverseOperation(scene: Scene, operation: SceneOperation): SceneOperati
     case "replaceElement": {
       const element = scene.elements.find((candidate) => candidate.id === operation.element.id);
       return element ? { type: "replaceElement", element } : null;
+    }
+    case "replaceElements": {
+      const ids = new Set(operation.elements.map((element) => element.id));
+      const elements = scene.elements.filter((element) => ids.has(element.id));
+      return elements.length === operation.elements.length
+        ? { type: "replaceElements", elements }
+        : null;
     }
     case "clear":
       return scene.elements.length > 0 ? { type: "restoreElements", elements: scene.elements } : null;

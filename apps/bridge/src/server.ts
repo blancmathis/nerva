@@ -71,6 +71,7 @@ import { createCompatibilitySiteRegistry, readSites } from "./site-registry.js";
 import { createOptionalSystemChromeDriver, SiteCaptureService } from "./site-capture.js";
 import {
   listOpenCodexBrowserTabs,
+  openCodexBrowserTab,
   type OpenBrowserTabsResult,
 } from "./browser-tabs.js";
 import {
@@ -268,6 +269,7 @@ function safeCommandError(error: unknown): CommandError {
     "APP_SERVER_TARGET_STALE",
     "APP_SERVER_TIMEOUT",
     "APP_SERVER_UNAVAILABLE",
+    "BROWSER_OPEN_UNKNOWN",
     "CDP_CONNECTION_FAILED",
     "IDEMPOTENCY_CAPACITY",
     "MANAGED_PROXY_EXITED",
@@ -289,7 +291,7 @@ function safeCommandError(error: unknown): CommandError {
 function commandOutcomeMayBeUnknown(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const code = "code" in error && typeof error.code === "string" ? error.code : "";
-  if (["APP_SERVER_DELIVERY_UNKNOWN", "DELIVERY_UNKNOWN", "delivery-unknown"].includes(code)) return true;
+  if (["APP_SERVER_DELIVERY_UNKNOWN", "DELIVERY_UNKNOWN", "delivery-unknown", "BROWSER_OPEN_UNKNOWN"].includes(code)) return true;
   if (code !== "APP_SERVER_UNAVAILABLE") return false;
   // APP_SERVER_UNAVAILABLE is also used for definite pre-dispatch states such
   // as connect backoff, missing ownership, or a closed provider. Only an
@@ -599,6 +601,7 @@ async function startBridgeWithLifetimeLease(
     paths,
     logger,
     libraryCommands: libraries,
+    openBrowserTab: (threadId, url) => openCodexBrowserTab(transport, threadId, url),
     ...(options.reviewInstructionHook === undefined ? {} : { reviewInstructionHook: options.reviewInstructionHook }),
   });
   const ledger = new IdempotencyLedger<CommandResult>({

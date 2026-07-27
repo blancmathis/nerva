@@ -87,4 +87,29 @@ describe("diagram model", () => {
     expect(undone.present?.nodes).toHaveLength(2);
     expect(diagramHistoryReducer(undone, { type: "redo" }).present?.nodes).toHaveLength(3);
   });
+
+  it("adds blocks in the current infinite-board viewport and keeps edge layouts valid", () => {
+    const placed = addDiagramNode(diagram(), "remote_review", {
+      centerX: -42_000,
+      centerY: 81_000,
+    });
+    expect(placed.nodes.at(-1)).toMatchObject({
+      x: -42_120,
+      y: 80_948,
+      width: 240,
+      height: 104,
+    });
+
+    const nearWorldEdge = DiagramDocumentSchema.parse({
+      ...diagram(),
+      nodes: diagram().nodes.map((node) => ({
+        ...node,
+        x: 999_400 + node.x / 10,
+        y: 999_400 + node.y / 10,
+      })),
+    });
+    const laidOut = autoLayoutDiagram(nearWorldEdge);
+    expect(Math.max(...laidOut.nodes.map((node) => node.x + node.width))).toBeLessThanOrEqual(1_000_000);
+    expect(Math.max(...laidOut.nodes.map((node) => node.y + node.height))).toBeLessThanOrEqual(1_000_000);
+  });
 });
