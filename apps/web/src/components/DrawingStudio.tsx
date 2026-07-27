@@ -1610,7 +1610,10 @@ export function DrawingStudio({
 
   useEffect(() => {
     if (!draftReady) return;
-    const timer = window.setTimeout(() => void persistDraft(true), 550);
+    // Autosave is background durability, not a new user-facing event. Keeping
+    // it silent prevents it from erasing useful confirmations such as an image
+    // import, a restored draft, or a completed attachment.
+    const timer = window.setTimeout(() => void persistDraft(false), 550);
     return () => window.clearTimeout(timer);
   }, [diagram, draftReady, persistDraft, scene]);
 

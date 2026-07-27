@@ -300,6 +300,11 @@ describe("DrawingStudio routing", () => {
     await screen.findByText("replacement.png added · drag to place it");
     expect(screen.getByRole("button", { name: "Select and move board content" })).toHaveAttribute("aria-pressed", "true");
 
+    // Background autosave must not replace the confirmation for the action the
+    // user just performed. This mirrors slower WebKit/iPhone scheduling.
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    expect(screen.getByText("replacement.png added · drag to place it")).toBeVisible();
+
     view.unmount();
     await waitFor(async () => {
       const draft = await loadDrawingDraft(photoTarget.threadId);
