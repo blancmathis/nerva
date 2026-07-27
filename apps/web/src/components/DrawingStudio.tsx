@@ -882,6 +882,7 @@ export function DrawingStudio({
   const wasOpenRef = useRef(false);
   const drawInteractionRef = useRef<DrawInteraction | null>(null);
   const selectionGestureRef = useRef<SelectionGesture | null>(null);
+  const selectionPreviewRef = useRef<SelectionPreview | null>(null);
   const gesturePointersRef = useRef(new Map<number, { x: number; y: number }>());
   const allPointersRef = useRef(new Map<number, TrackedCanvasPointer>());
   const gestureStartRef = useRef<GestureAnchor | null>(null);
@@ -1079,6 +1080,7 @@ export function DrawingStudio({
     gestureStartRef.current = null;
     penActiveRef.current = false;
     setDrawingPreview(null);
+    selectionPreviewRef.current = null;
     setSelectionPreview(null);
     setActiveLasso(null);
   }, []);
@@ -1834,7 +1836,9 @@ export function DrawingStudio({
     gesture.changed = Math.abs(deltaX) > 0.01
       || Math.abs(deltaY) > 0.01
       || Math.abs(scaleX - 1) > 0.001;
-    setSelectionPreview({ scene: nextScene, diagram: nextDiagram });
+    const preview = { scene: nextScene, diagram: nextDiagram };
+    selectionPreviewRef.current = preview;
+    setSelectionPreview(preview);
   }, []);
 
   const finishSelectionGesture = useCallback((cancelled: boolean) => {
@@ -1875,7 +1879,8 @@ export function DrawingStudio({
       setDiagramInspectorOpen(false);
       return;
     }
-    const preview = selectionPreview;
+    const preview = selectionPreviewRef.current;
+    selectionPreviewRef.current = null;
     setSelectionPreview(null);
     if (cancelled) return;
     if (!gesture.changed) {
@@ -1914,7 +1919,7 @@ export function DrawingStudio({
     }
     setExportPreview(null);
     setLocalError(null);
-  }, [selectionPreview]);
+  }, []);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1957,6 +1962,7 @@ export function DrawingStudio({
         drawInteractionRef.current = null;
         setDrawingPreview(null);
         selectionGestureRef.current = null;
+        selectionPreviewRef.current = null;
         setSelectionPreview(null);
         setActiveLasso(null);
         for (const [pointerId, point] of existingTouches) {
@@ -2239,6 +2245,7 @@ export function DrawingStudio({
     setDiagramInspectorSection("style");
     setTool("pen");
     setSelection(new Set());
+    selectionPreviewRef.current = null;
     setSelectionPreview(null);
     setSelectionTransactions({ past: [], future: [] });
     sceneRef.current = applySceneOperation(sceneRef.current, { type: "clear" });
@@ -2599,6 +2606,7 @@ export function DrawingStudio({
       setInstruction(restored.instruction);
       setPencilOnly(restored.pencilOnly);
       setSelection(new Set());
+      selectionPreviewRef.current = null;
       setSelectionPreview(null);
       if (restored.diagramJson) {
         const parsed = DiagramDocumentSchema.safeParse(JSON.parse(restored.diagramJson));
