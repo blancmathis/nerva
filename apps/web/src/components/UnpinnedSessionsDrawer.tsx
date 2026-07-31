@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { MAX_PINNED_SESSIONS } from "../lib/home-layout";
 import type { ProductSession } from "../lib/session-presentation";
 import { relativeSessionActivity, searchProductSession, sessionStatusLabel } from "../lib/session-presentation";
 import { CloseIcon, FolderIcon, PinIcon, SearchIcon } from "./Icons";
+import { useModalFocus } from "../lib/use-modal-focus";
 
 interface UnpinnedSessionsDrawerProps {
   readonly open: boolean;
@@ -21,6 +22,7 @@ export function UnpinnedSessionsDrawer({
   onOpenSession,
   onPin,
 }: UnpinnedSessionsDrawerProps) {
+  const dialogRef = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
   const [organization, setOrganization] = useState<"recent" | "project">("recent");
   const unpinned = useMemo(() => sessions
@@ -39,13 +41,14 @@ export function UnpinnedSessionsDrawer({
     }
     return [...byProject.entries()];
   }, [organization, unpinned]);
+  useModalFocus(dialogRef, onClose, { active: open, initialFocus: "input" });
 
   if (!open) return null;
   return (
     <div className="cp-drawer-layer" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <aside className="cp-session-drawer" role="dialog" aria-modal="true" aria-labelledby="unpinned-title">
+      <aside ref={dialogRef} className="cp-session-drawer" role="dialog" aria-modal="true" aria-labelledby="unpinned-title" tabIndex={-1}>
         <header>
           <div>
             <p className="cp-overline">Session archive</p>
@@ -58,7 +61,7 @@ export function UnpinnedSessionsDrawer({
           <label className="cp-search-field">
             <SearchIcon />
             <span className="sr-only">Search sessions</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions or projects" autoFocus />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions or projects" />
           </label>
           <div className="cp-segmented cp-segmented--small" aria-label="Organize unpinned sessions">
             <button type="button" aria-pressed={organization === "recent"} onClick={() => setOrganization("recent")}>Last used</button>

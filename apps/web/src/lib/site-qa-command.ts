@@ -5,7 +5,6 @@ import {
 } from "@codex-pad/protocol";
 import type { SiteQaSendPayload } from "./site-qa-types";
 import { prepareReviewImageBlobs } from "./review-command";
-import { createUuidV4 } from "./uuid";
 
 function actionText(step: SiteQaSendPayload["manifest"]["steps"][number]): string {
   const target = step.target;
@@ -49,12 +48,36 @@ export function siteQaInstruction(manifestInput: SiteQaSendPayload["manifest"]):
 }
 
 async function base64(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const buffer = typeof blob.arrayBuffer === "function"
+    ? await blob.arrayBuffer()
+    : await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+          else reject(new Error("The QA evidence image could not be encoded."));
+        }, { once: true });
+        reader.addEventListener("error", () => reject(reader.error ?? new Error("The QA evidence image could not be encoded.")), { once: true });
+        reader.readAsArrayBuffer(blob);
+      });
+  const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   }
   return btoa(binary);
+}
+
+async function stableFrameId(recordingId: string, evidenceId: string, index: number): Promise<string> {
+  if (!crypto.subtle) throw new Error("Secure hashing is unavailable; the QA report was not sent.");
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${recordingId}:${evidenceId}:${index}`),
+  ));
+  const bytes = digest.slice(0, 16);
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export async function buildSiteQaCommand(input: {
@@ -82,7 +105,7 @@ export async function buildSiteQaCommand(input: {
     snapshotSeq: input.snapshotSeq,
     instruction,
     frames: await Promise.all(input.payload.frames.map(async (frame, index) => ({
-      frameId: createUuidV4(),
+      frameId: await stableFrameId(manifest.recordingId, frame.id, index),
       index,
       kind: "siteSnapshot" as const,
       image: { kind: "inlinePng" as const, png: await base64(pngs[index]!) },

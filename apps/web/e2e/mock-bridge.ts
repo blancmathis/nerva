@@ -85,6 +85,7 @@ export class MockBridge {
   private abandonNextCommandResponse = false;
   private nextCommandFailureMessage: string | null = null;
   private failNextProductStateSave = false;
+  private nextSavedDrawingLoadDelayMs = 0;
   private approvalPending = true;
   private capabilitiesAvailable = true;
   private pushSubscribed = false;
@@ -192,6 +193,10 @@ export class MockBridge {
 
   makeNextProductStateSaveFail(): void {
     this.failNextProductStateSave = true;
+  }
+
+  delayNextSavedDrawingLoad(milliseconds = 250): void {
+    this.nextSavedDrawingLoadDelayMs = Math.max(0, Math.trunc(milliseconds));
   }
 
   setExternalModelReasoningPresets(presets: readonly Readonly<Record<string, unknown>>[]): void {
@@ -479,6 +484,9 @@ export class MockBridge {
       return;
     }
     if (url.pathname.startsWith("/api/saved-drawings/") && request.method() === "GET") {
+      const delay = this.nextSavedDrawingLoadDelayMs;
+      this.nextSavedDrawingLoadDelayMs = 0;
+      if (delay > 0) await new Promise<void>((resolve) => setTimeout(resolve, delay));
       const drawingId = decodeURIComponent(url.pathname.slice("/api/saved-drawings/".length));
       const drawing = this.savedDrawings.find((candidate) => candidate.id === drawingId);
       await fulfillJson(route, drawing ? 200 : 404, drawing ? { ok: true, data: drawing } : errorEnvelope("NOT_FOUND", "Saved drawing not found."));

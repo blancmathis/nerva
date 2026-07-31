@@ -30,7 +30,13 @@ function readLocal(): unknown | null {
 
 export async function loadHomeLayout(): Promise<HomeLayout | null> {
   try {
-    const stored = await (await database()).get(STORE, RECORD_KEY);
+    const db = await database();
+    let stored: unknown;
+    try {
+      stored = await db.get(STORE, RECORD_KEY);
+    } finally {
+      db.close();
+    }
     if (stored !== undefined && stored !== null) return migrateHomeLayout(stored);
   } catch {
     // An inaccessible IndexedDB falls back to the compact presentation cache.
@@ -56,7 +62,12 @@ export async function saveHomeLayout(layout: HomeLayout): Promise<void> {
     // IndexedDB can still preserve the layout.
   }
   try {
-    await (await database()).put(STORE, sanitized, RECORD_KEY);
+    const db = await database();
+    try {
+      await db.put(STORE, sanitized, RECORD_KEY);
+    } finally {
+      db.close();
+    }
   } catch {
     // The in-memory state remains usable when browser persistence is unavailable.
   }

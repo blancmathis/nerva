@@ -111,7 +111,7 @@ Direct `Approval`, `Error`, `Working`, `Waiting`, and `Completed` controls filte
 
 Capture Inbox is a local library, not a routing queue. From Home, the user may capture Photo, Scan, Sketch, File, or Note without selecting a Session. Voice is excluded.
 
-To use an item, the user first opens the exact Session, then opens Capture Inbox and chooses items for that Session's local Review. Captures are copied, remain reusable, and are never assigned, consumed, queued, or sent on reconnect. Deletion is directly accessible and confirmed. See [`CAPTURE_INBOX.md`](./CAPTURE_INBOX.md).
+To use an item, the user first opens the exact Session, then opens Capture Inbox. Notes and images are copied into that Session's local Review through `Use in session`; a file-only selection uses `Attach to composer`, which adds one bounded batch to the exact visible Mac composer without submitting it. Captures remain reusable and are never assigned, consumed, queued, or sent on reconnect. Mixed selections are deliberately separated, and every deletion is directly accessible and confirmed. See [`CAPTURE_INBOX.md`](./CAPTURE_INBOX.md).
 
 ## 6. Mac ↔ iPad relationship
 

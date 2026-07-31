@@ -17,8 +17,9 @@ import {
   type SiteQaEvidenceFrame,
   type SiteQaRecordingDraft,
 } from "../lib/site-qa-recorder-store";
-import type { SiteQaManifestStep, SiteQaSendPayload, SiteQaSendResult } from "../lib/site-qa-types";
+import type { SiteQaDeliveryIdentity, SiteQaManifestStep, SiteQaSendPayload, SiteQaSendResult } from "../lib/site-qa-types";
 import type { SiteFavorite } from "../lib/storage";
+import { useModalFocus } from "../lib/use-modal-focus";
 import { createUuidV4 } from "../lib/uuid";
 import { ChevronIcon, GlobeIcon, PencilIcon } from "./Icons";
 import { normalizeSiteAddress } from "./SiteHubPage";
@@ -31,6 +32,7 @@ interface BrowserSiteStudioProps {
   readonly tab: OpenBrowserTab;
   readonly threadId: string;
   readonly sendEnabled: boolean;
+  readonly deliveryAuthority: Omit<SiteQaDeliveryIdentity, "commandId"> | null;
   readonly favorites: readonly SiteFavorite[];
   readonly fetchFrame: (threadId: string, tabId: string) => Promise<BrowserTabFrame>;
   readonly controlTab: (threadId: string, tabId: string, action: BrowserTabControl) => Promise<BrowserTabFrame>;
@@ -49,6 +51,10 @@ function frameSource(frame: BrowserTabFrame): string { return `data:${frame.mime
 function displayHost(url: string): string {
   try { const parsed = new URL(url); return `${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}${parsed.pathname === "/" ? "" : parsed.pathname}`; }
   catch { return url; }
+}
+function crossesOrigin(beforeUrl: string, afterUrl: string): boolean {
+  try { return new URL(beforeUrl).origin !== new URL(afterUrl).origin; }
+  catch { return beforeUrl !== afterUrl; }
 }
 function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke): void {
   if (stroke.points.length === 0) return;
@@ -76,16 +82,19 @@ function elapsedLabel(milliseconds: number): string {
 }
 
 export function BrowserSiteStudio({
-  tab, threadId, sendEnabled, favorites, fetchFrame, controlTab, recordTabAction,
+  tab, threadId, sendEnabled, deliveryAuthority, favorites, fetchFrame, controlTab, recordTabAction,
   onOpenAddress, onSendAnnotation, onSendRecording, onToggleFavorite, onOpenSites,
 }: BrowserSiteStudioProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const baseImageRef = useRef<HTMLImageElement | null>(null);
   const requestActiveRef = useRef(false);
+  const deliveryActiveRef = useRef(false);
   const annotatingRef = useRef(false);
   const browseGestureRef = useRef<BrowseGesture | null>(null);
   const activeStrokeRef = useRef<{ readonly pointerId: number; stroke: Stroke } | null>(null);
+  const issueDialogRef = useRef<HTMLElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStopPromiseRef = useRef<Promise<Blob | null> | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceTimerRef = useRef<number | null>(null);
   const [frame, setFrame] = useState<BrowserTabFrame | null>(null);
@@ -163,12 +172,12 @@ export function BrowserSiteStudio({
   const control = useCallback(async (action: BrowserTabControl) => {
     if (requestActiveRef.current || annotating || reviewing) return;
     requestActiveRef.current = true; setBusy(true); setError(null); setNotice(null);
+    let recordedDraft: SiteQaRecordingDraft | null = null;
     try {
       if (draft?.status === "recording") {
         if (draft.steps.length >= 100) throw new Error("This recording reached the 100-step limit. Review it before continuing.");
         if (Date.now() - draft.startedAt >= 10 * 60 * 1_000) throw new Error("This recording reached the 10-minute limit. Review it before continuing.");
         const result = await recordTabAction(threadId, tab.id, action as SiteQaRecordedAction);
-        await applyFrame(result.frame);
         const frameEvidence: SiteQaEvidenceFrame = { id: createUuidV4(), role: "step", frame: result.frame };
         const evidenceFrameId = draft.frames.length < MAX_EVIDENCE_FRAMES ? frameEvidence.id : draft.frames.at(-1)?.id;
         if (!evidenceFrameId) throw new Error("The recording has no evidence frame.");
@@ -177,18 +186,37 @@ export function BrowserSiteStudio({
           relativeAtMs: Math.min(10 * 60 * 1_000, Math.max(0, result.receipt.recordedAt - draft.startedAt)),
           action: result.receipt.action, target: result.receipt.target, input: result.receipt.input,
           beforeUrl: result.receipt.beforeUrl, afterUrl: result.receipt.afterUrl,
+          outcome: result.receipt.outcome,
           confidence: result.receipt.confidence, evidenceFrameId,
         };
-        await commitDraft({ ...draft, updatedAt: Date.now(), steps: [...draft.steps, step], frames: draft.frames.length < MAX_EVIDENCE_FRAMES ? [...draft.frames, frameEvidence] : draft.frames });
+        const changedOrigin = crossesOrigin(result.receipt.beforeUrl, result.receipt.afterUrl);
+        recordedDraft = {
+          ...draft,
+          status: result.receipt.outcome === "unknown" || changedOrigin ? "paused" : draft.status,
+          updatedAt: Date.now(),
+          steps: [...draft.steps, step],
+          frames: draft.frames.length < MAX_EVIDENCE_FRAMES ? [...draft.frames, frameEvidence] : draft.frames,
+        };
+        await commitDraft(recordedDraft);
+        await applyFrame(result.frame);
+        if (result.receipt.outcome === "unknown") {
+          setError("The Mac accepted the action, but its visible result is unknown. Check the page, then resume this recording.");
+        } else if (changedOrigin) {
+          setNotice("Recording paused at a cross-site boundary. Review the new origin before continuing.");
+        }
       } else {
         await applyFrame(await controlTab(threadId, tab.id, action));
       }
     } catch (caught) {
-      if (draft?.status === "recording") {
-        const paused = { ...draft, status: "paused" as const, updatedAt: Date.now() };
-        setDraft(paused); void saveSiteQaDraft(paused);
+      const recoverable = recordedDraft ?? (draft?.status === "recording" ? draft : null);
+      if (recoverable) {
+        const paused = { ...recoverable, status: "paused" as const, updatedAt: Date.now() };
+        setDraft(paused);
+        try { await saveSiteQaDraft(paused); } catch { /* Keep the receipt in memory when local storage is unavailable. */ }
       }
-      setError(caught instanceof Error ? caught.message : "The browser page did not accept that action.");
+      setError(recordedDraft
+        ? "The action happened on the Mac, but its evidence could not be saved locally. Keep Nerva open, free storage, then review this paused recording."
+        : caught instanceof Error ? caught.message : "The browser page did not accept that action.");
     } finally { requestActiveRef.current = false; setBusy(false); }
   }, [annotating, applyFrame, controlTab, draft, recordTabAction, reviewing, tab.id, threadId]);
 
@@ -196,9 +224,14 @@ export function BrowserSiteStudio({
     if (busy || annotating || reviewing) return;
     setBusy(true); setError(null); setNotice(null);
     try {
+      if (draft?.status === "recording") {
+        await commitDraft({ ...draft, status: "paused", updatedAt: Date.now() });
+      }
       const next = await onOpenAddress(normalizeSiteAddress(address));
       baseImageRef.current = null; setFrame(null); setStrokes([]); setAddress(next.url);
-      setNotice("New Codex Browser page opened for this task.");
+      setNotice(draft?.status === "recording"
+        ? "Recording paused safely. A new Codex Browser page opened for this task."
+        : "New Codex Browser page opened for this task.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The site could not be opened.");
     } finally {
@@ -221,6 +254,7 @@ export function BrowserSiteStudio({
     if (kind === "issue") { setIssueExpected(""); setIssueActual(""); setIssueExplanation(""); setVoiceBlob(null); }
   }
   function leaveAnnotation() { annotatingRef.current = false; setAnnotationKind("none"); setStrokes([]); setNotice(null); }
+  useModalFocus(issueDialogRef, leaveAnnotation, { active: annotationKind === "issue", initialFocus: "textarea" });
   function pointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!frame) return;
     const startsAnnotation = !annotating && (event.pointerType === "pen" || (event.pointerType === "touch" && touchDraws));
@@ -260,11 +294,12 @@ export function BrowserSiteStudio({
     return new Promise<Blob>((resolve, reject) => output.toBlob((value) => value ? resolve(value) : reject(new Error("The annotation could not be exported.")), "image/png"));
   }
   async function sendAnnotation() {
-    if (strokes.length === 0 || busy) return;
+    if (strokes.length === 0 || busy || deliveryActiveRef.current) return;
+    deliveryActiveRef.current = true;
     setBusy(true); setError(null); setNotice("Attaching the annotated page to the Mac composer…");
     try { const result = await onSendAnnotation(await compositeAnnotation()); if (!result.ok) throw new Error(result.message ?? "The annotated page was not attached."); setNotice(result.message ?? "Annotated page attached to the Mac composer."); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "The annotated page was not attached."); }
-    finally { setBusy(false); }
+    finally { deliveryActiveRef.current = false; setBusy(false); }
   }
 
   async function startRecording() {
@@ -275,6 +310,12 @@ export function BrowserSiteStudio({
     catch (caught) { setError(caught instanceof Error ? caught.message : "Recording could not start."); }
   }
   async function resumeRecording(candidate: SiteQaRecordingDraft) {
+    if (candidate.tabId !== tab.id || candidate.threadId !== threadId || candidate.frozenDelivery) {
+      setError(candidate.frozenDelivery
+        ? "This exact report is locked after delivery started. Review or check it instead."
+        : "This recording belongs to a different live page and cannot be resumed here.");
+      return;
+    }
     const next = { ...candidate, status: "recording" as const, updatedAt: Date.now() };
     try { await commitDraft(next); setReviewing(false); setNotice("Recording resumed on the exact saved page."); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Recording could not resume."); }
@@ -295,32 +336,44 @@ export function BrowserSiteStudio({
     await deleteSiteQaDraft(current.id); setDraft(null); setResumableDraft(null); setReviewing(false); setNotice("Local recording deleted.");
   }
   async function toggleVoice() {
-    if (recordingVoice) { recorderRef.current?.stop(); return; }
+    if (recordingVoice) { await stopVoiceRecording(); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream); voiceChunksRef.current = [];
       recorder.addEventListener("dataavailable", (event) => { if (event.data.size > 0) voiceChunksRef.current.push(event.data); });
+      let resolveVoice: (blob: Blob | null) => void = () => undefined;
+      voiceStopPromiseRef.current = new Promise<Blob | null>((resolve) => { resolveVoice = resolve; });
       recorder.addEventListener("stop", () => {
         if (voiceTimerRef.current !== null) window.clearTimeout(voiceTimerRef.current);
         voiceTimerRef.current = null;
-        setVoiceBlob(new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/mp4" }));
+        const captured = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/mp4" });
+        setVoiceBlob(captured);
         setRecordingVoice(false);
+        recorderRef.current = null;
         for (const track of stream.getTracks()) track.stop();
+        resolveVoice(captured);
       }, { once: true });
       recorderRef.current = recorder; recorder.start(); setRecordingVoice(true);
       voiceTimerRef.current = window.setTimeout(() => recorder.stop(), 3 * 60 * 1_000);
     } catch { setError("Microphone access was not granted. Type the explanation instead."); }
   }
+  async function stopVoiceRecording(): Promise<Blob | null> {
+    const recorder = recorderRef.current;
+    const completion = voiceStopPromiseRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (completion) return completion;
+    return voiceBlob;
+  }
   async function saveIssue(finish: boolean) {
     if (!draft || !frame || strokes.length === 0) { setError("Circle, underline, or redact the issue before saving it."); return; }
     setBusy(true); setError(null);
     try {
-      if (recordingVoice) recorderRef.current?.stop();
+      const capturedVoice = recordingVoice ? await stopVoiceRecording() : voiceBlob;
       const evidence: SiteQaEvidenceFrame = { id: createUuidV4(), role: "issue", frame };
-      const voiceBytes = voiceBlob ? await voiceBlob.arrayBuffer() : null;
+      const voiceBytes = capturedVoice ? await capturedVoice.arrayBuffer() : null;
       const issue: SiteQaDraftIssue = {
         issueId: createUuidV4(), frameId: evidence.id, expected: issueExpected.trim(), actual: issueActual.trim(), explanation: issueExplanation.trim(),
-        annotationPngBase64: await blobBase64(await compositeAnnotation()), voiceMimeType: voiceBlob?.type ?? null, voiceBytes,
+        annotationPngBase64: await blobBase64(await compositeAnnotation()), voiceMimeType: capturedVoice?.type ?? null, voiceBytes,
       };
       const next = { ...draft, updatedAt: Date.now(), frames: [...draft.frames, evidence].slice(-MAX_EVIDENCE_FRAMES), issues: [...draft.issues, issue] };
       await commitDraft(next); leaveAnnotation();
@@ -342,31 +395,56 @@ export function BrowserSiteStudio({
   }, [draft]);
 
   async function sendRecording() {
+    if (deliveryActiveRef.current || busy) return;
     if (!draft || draft.issues.length === 0 || reviewFrames.length === 0) { setError("Mark at least one issue before sending this recording."); return; }
+    deliveryActiveRef.current = true;
     setBusy(true); setError(null); setNotice("Sending one atomic QA report to the exact Codex task…");
     try {
-      const first = draft.frames[0]!.frame;
-      const manifest = SiteQaManifestSchema.parse({
-        version: 1, recordingId: draft.id, sourceThreadId: draft.threadId, startedAt: draft.startedAt,
-        durationMs: Math.min(10 * 60 * 1_000, Math.max(0, draft.updatedAt - draft.startedAt)), intent: draft.intent,
-        environment: { viewport: { width: first.width, height: first.height }, deviceScaleFactor: first.deviceScaleFactor, controllerOrientation: first.width >= first.height ? "landscape" : "portrait" },
-        steps: draft.steps,
-        issues: draft.issues.map((issue) => ({ issueId: issue.issueId, frameId: issue.frameId, expected: issue.expected, actual: issue.actual, explanation: issue.explanation, hasLocalVoiceNote: issue.voiceBytes !== null })),
-      });
-      const payload: SiteQaSendPayload = {
-        manifest,
-        frames: reviewFrames.map((evidence) => {
+      let payload: SiteQaSendPayload;
+      if (draft.frozenDelivery) {
+        if (!draft.frozenDelivery.delivery) {
+          throw new Error("This older retained report has no exact retry authority. Keep it for inspection and resolve its previous outcome on the Mac before creating a new report.");
+        }
+        payload = {
+          manifest: draft.frozenDelivery.manifest,
+          frames: draft.frozenDelivery.frames,
+          delivery: draft.frozenDelivery.delivery,
+        };
+      } else {
+        if (!deliveryAuthority) {
+          throw new Error("Open this exact task on the Mac before freezing its QA report.");
+        }
+        const first = draft.frames[0]!.frame;
+        const manifest = SiteQaManifestSchema.parse({
+          version: 1, recordingId: draft.id, sourceThreadId: draft.threadId, startedAt: draft.startedAt,
+          durationMs: Math.min(10 * 60 * 1_000, Math.max(0, draft.updatedAt - draft.startedAt)), intent: draft.intent,
+          environment: { viewport: { width: first.width, height: first.height }, deviceScaleFactor: first.deviceScaleFactor, controllerOrientation: first.width >= first.height ? "landscape" : "portrait" },
+          steps: draft.steps,
+          issues: draft.issues.map((issue) => ({ issueId: issue.issueId, frameId: issue.frameId, expected: issue.expected, actual: issue.actual, explanation: issue.explanation, hasLocalVoiceNote: issue.voiceBytes !== null })),
+        });
+        const frames = reviewFrames.map((evidence) => {
           const issue = draft.issues.find((candidate) => candidate.frameId === evidence.id);
           const blob = issue?.annotationPngBase64 ? rawBase64Blob(issue.annotationPngBase64, "image/png") : rawBase64Blob(evidence.frame.imageBase64, evidence.frame.mimeType);
           return { id: evidence.id, title: issue ? `Marked issue · ${evidence.frame.title}` : `${evidence.role} · ${evidence.frame.title}`, url: evidence.frame.url, blob, width: evidence.frame.width, height: evidence.frame.height, deviceScaleFactor: evidence.frame.deviceScaleFactor, scrollX: evidence.frame.scrollX, scrollY: evidence.frame.scrollY };
-        }),
-      };
+        });
+        const delivery: SiteQaDeliveryIdentity = {
+          commandId: createUuidV4(),
+          ...deliveryAuthority,
+        };
+        payload = { manifest, frames, delivery };
+        await commitDraft({
+          ...draft,
+          status: "delivery-unknown",
+          updatedAt: Date.now(),
+          frozenDelivery: { createdAt: Date.now(), manifest, frames, delivery },
+        });
+      }
       const result = await onSendRecording(payload);
       if (!result.ok) throw new Error(result.message);
       setNotice(result.pending ? "The report is still being accepted by Codex. It remains saved locally." : result.message);
       if (!result.pending) { await deleteSiteQaDraft(draft.id); setDraft(null); setReviewing(false); }
     } catch (caught) { setError(caught instanceof Error ? caught.message : "The recording was not sent. It remains saved locally."); }
-    finally { setBusy(false); }
+    finally { deliveryActiveRef.current = false; setBusy(false); }
   }
 
   if (reviewing && draft) {
@@ -375,9 +453,9 @@ export function BrowserSiteStudio({
         <header><button type="button" onClick={() => setReviewing(false)}><ChevronIcon direction="left" />Live page</button><div><p className="cp-overline">Site QA Recorder</p><h1 id="recording-review-title">Review recording</h1></div><span>{draft.steps.length} steps · {draft.issues.length} issue{draft.issues.length === 1 ? "" : "s"}</span></header>
         <div className="cp-site-recording-review__body">
           <section className="cp-site-recording-review__evidence"><div className="cp-site-recording-review__strip">{reviewFrames.map((evidence) => { const issue = draft.issues.find((candidate) => candidate.frameId === evidence.id); return <img key={evidence.id} src={issue?.annotationPngBase64 ? `data:image/png;base64,${issue.annotationPngBase64}` : frameSource(evidence.frame)} alt={evidence.role} />; })}</div><div className="cp-site-recording-review__privacy"><strong>Privacy check</strong><p>{draft.steps.filter((step) => step.input.mode === "placeholder").length} typed value(s) were replaced with placeholders. Screenshots can still contain visible private content; use the black Redact ink before saving an issue.</p><p>{draft.issues.some((issue) => issue.voiceBytes) ? "Voice notes remain local to this iPad. Their written explanation is what the agent receives." : "No microphone data is included."}</p></div></section>
-          <section className="cp-site-recording-review__timeline"><div className="cp-site-recording-review__intent"><span>Ask the agent to</span>{([ ["both", "Fix + test"], ["diagnose-and-fix", "Diagnose + fix"], ["regression-test", "Add test"] ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={draft.intent === value} onClick={() => void commitDraft({ ...draft, intent: value, updatedAt: Date.now() })}>{label}</button>)}</div><ol>{draft.steps.map((step) => <li key={step.stepId}><span>{step.index + 1}</span><div><strong>{step.action.type === "insertText" ? "Type protected value" : step.action.type}</strong><small>{step.target?.accessibleName ?? step.target?.label ?? displayHost(step.afterUrl)} · {step.confidence}</small></div><button type="button" aria-label={`Remove step ${step.index + 1}`} onClick={() => { const steps = draft.steps.filter((candidate) => candidate.stepId !== step.stepId).map((candidate, index) => ({ ...candidate, index })); void commitDraft({ ...draft, steps, updatedAt: Date.now() }); }}>Remove</button></li>)}</ol>{draft.issues.map((issue, index) => <article key={issue.issueId} className="cp-site-recording-review__issue"><strong>Issue {index + 1}</strong><p>{issue.explanation || issue.actual || "Annotated on the evidence frame."}</p>{issue.expected && <small>Expected: {issue.expected}</small>}{issue.actual && <small>Actual: {issue.actual}</small>}</article>)}</section>
+          <section className="cp-site-recording-review__timeline"><div className="cp-site-recording-review__intent"><span>Ask the agent to</span>{([ ["both", "Fix + test"], ["diagnose-and-fix", "Diagnose + fix"], ["regression-test", "Add test"] ] as const).map(([value, label]) => <button key={value} type="button" disabled={Boolean(draft.frozenDelivery)} aria-pressed={draft.intent === value} onClick={() => void commitDraft({ ...draft, intent: value, updatedAt: Date.now() })}>{label}</button>)}</div><ol>{draft.steps.map((step) => <li key={step.stepId}><span>{step.index + 1}</span><div><strong>{step.action.type === "insertText" ? "Type protected value" : step.action.type}</strong><small>{step.target?.accessibleName ?? step.target?.label ?? displayHost(step.afterUrl)} · {step.confidence} · {(step.outcome ?? "applied").replaceAll("-", " ")}</small></div><button type="button" disabled={Boolean(draft.frozenDelivery)} aria-label={`Remove step ${step.index + 1}`} onClick={() => { const steps = draft.steps.filter((candidate) => candidate.stepId !== step.stepId).map((candidate, index) => ({ ...candidate, index })); void commitDraft({ ...draft, steps, updatedAt: Date.now() }); }}>Remove</button></li>)}</ol>{draft.issues.map((issue, index) => <article key={issue.issueId} className="cp-site-recording-review__issue"><strong>Issue {index + 1}</strong><p>{issue.explanation || issue.actual || "Annotated on the evidence frame."}</p>{issue.expected && <small>Expected: {issue.expected}</small>}{issue.actual && <small>Actual: {issue.actual}</small>}</article>)}</section>
         </div>
-        <footer><button type="button" className="is-danger" onClick={() => void discardRecording()}>Delete recording</button><button type="button" onClick={() => { void commitDraft({ ...draft, status: "recording", updatedAt: Date.now() }); setReviewing(false); }}>Continue recording</button><button type="button" className="is-primary" disabled={!sendEnabled || busy || draft.issues.length === 0} onClick={() => void sendRecording()}>{busy ? "Sending…" : "Send to agent"}</button></footer>
+        <footer><button type="button" className="is-danger" onClick={() => void discardRecording()}>Delete recording</button>{!draft.frozenDelivery && <button type="button" onClick={() => { void commitDraft({ ...draft, status: "recording", updatedAt: Date.now() }); setReviewing(false); }}>Continue recording</button>}<button type="button" className="is-primary" disabled={!sendEnabled || busy || draft.issues.length === 0} onClick={() => void sendRecording()}>{busy ? "Sending…" : draft.frozenDelivery ? "Check exact report" : "Send to agent"}</button></footer>
         {(notice || error) && <p className={`cp-browser-site__message${error ? " is-error" : ""}`} role="status">{error ?? notice}</p>}
       </section>
     );
@@ -387,11 +465,11 @@ export function BrowserSiteStudio({
     <section className={`cp-browser-site${annotating ? " is-annotating" : " is-browsing"}`} aria-label="Live site workspace">
       <header className="cp-browser-site__topbar">
         <button type="button" className="cp-browser-site__back" onClick={onOpenSites}><ChevronIcon direction="left" />Sites</button>
-        <form className="cp-browser-site__address" onSubmit={(event) => { event.preventDefault(); void openAddress(); }}><GlobeIcon /><input aria-label="Current site address" inputMode="url" autoCapitalize="none" autoCorrect="off" value={address} onChange={(event) => setAddress(event.target.value)} disabled={annotating} /><button type="submit" disabled={busy || annotating}>Open</button><button type="button" className="cp-browser-site__favorite" aria-label={favorite ? "Remove current page from favorites" : "Add current page to favorites"} aria-pressed={favorite} onClick={() => onToggleFavorite(frame?.url ?? tab.url, frame?.title ?? tab.title)}>{favorite ? "★" : "☆"}</button></form>
+        <form className="cp-browser-site__address" onSubmit={(event) => { event.preventDefault(); void openAddress(); }}><GlobeIcon /><input aria-label="Current site address" inputMode="url" autoCapitalize="none" autoCorrect="off" maxLength={2_048} value={address} onChange={(event) => setAddress(event.target.value)} disabled={annotating} /><button type="submit" disabled={busy || annotating}>Open</button><button type="button" className="cp-browser-site__favorite" aria-label={favorite ? "Remove current page from favorites" : "Add current page to favorites"} aria-pressed={favorite} onClick={() => onToggleFavorite(frame?.url ?? tab.url, frame?.title ?? tab.title)}>{favorite ? "★" : "☆"}</button></form>
         <div className="cp-browser-site__navigation" aria-label="Browser navigation"><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "back" })}>←</button><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "forward" })}>→</button><button type="button" disabled={busy || annotating} onClick={() => void control({ type: "reload" })}>↻</button></div>
       </header>
 
-      {resumableDraft && !draft && <div className="cp-browser-site__resume"><span><strong>Saved QA recording</strong><small>{resumableDraft.steps.length} steps · {resumableDraft.issues.length} issues</small></span><button type="button" onClick={() => void resumeRecording(resumableDraft)}>Resume</button><button type="button" onClick={() => { setDraft(resumableDraft); setReviewing(true); }}>Review</button><button type="button" onClick={() => void discardRecording()}>Delete</button></div>}
+      {resumableDraft && !draft && <div className="cp-browser-site__resume"><span><strong>{resumableDraft.frozenDelivery ? "Delivery needs confirmation" : "Saved QA recording"}</strong><small>{resumableDraft.steps.length} steps · {resumableDraft.issues.length} issues</small></span>{!resumableDraft.frozenDelivery && <button type="button" onClick={() => void resumeRecording(resumableDraft)}>Resume</button>}<button type="button" onClick={() => { setDraft(resumableDraft); setReviewing(true); }}>Review</button><button type="button" onClick={() => void discardRecording()}>Delete</button></div>}
       {recording && <div className="cp-browser-site__recording"><i /><strong>Recording</strong><span>{elapsedLabel(clock - draft.startedAt)}</span><small>{draft.steps.length} steps</small></div>}
 
       <div className="cp-browser-site__stage">
@@ -419,9 +497,9 @@ export function BrowserSiteStudio({
         </>}
       </footer>
 
-      {typing && !annotating && <form className="cp-browser-site__typing" onSubmit={(event) => { event.preventDefault(); if (typedText !== "") void control({ type: "insertText", text: typedText }); setTypedText(""); setTyping(false); }}><input autoFocus value={typedText} placeholder="Type into the focused field" onChange={(event) => setTypedText(event.target.value)} /><button type="button" onClick={() => void control({ type: "key", key: "Backspace" })}>⌫</button><button type="submit" disabled={typedText === ""}>Type</button><button type="button" onClick={() => { void control({ type: "key", key: "Enter" }); setTyping(false); }}>Enter</button></form>}
+      {typing && !annotating && <form className="cp-browser-site__typing" onSubmit={(event) => { event.preventDefault(); if (typedText !== "") void control({ type: "insertText", text: typedText }); setTypedText(""); setTyping(false); }}><input autoFocus maxLength={1_000} value={typedText} placeholder="Type into the focused field" onChange={(event) => setTypedText(event.target.value)} /><button type="button" onClick={() => void control({ type: "key", key: "Backspace" })}>⌫</button><button type="submit" disabled={typedText === ""}>Type</button><button type="button" onClick={() => { void control({ type: "key", key: "Enter" }); setTyping(false); }}>Enter</button></form>}
 
-      {annotationKind === "issue" && <section className="cp-site-issue-sheet" aria-labelledby="mark-issue-title"><div className="cp-site-issue-sheet__handle" /><header><div><p className="cp-overline">Checkpoint</p><h2 id="mark-issue-title">Mark what went wrong</h2></div><button type="button" onClick={leaveAnnotation}>Cancel</button></header><div className="cp-site-issue-sheet__fields"><label><span>What happened?</span><textarea value={issueExplanation} placeholder="Explain the visible problem" onChange={(event) => setIssueExplanation(event.target.value)} /></label><label><span>Expected</span><input value={issueExpected} placeholder="What should have happened?" onChange={(event) => setIssueExpected(event.target.value)} /></label><label><span>Actual</span><input value={issueActual} placeholder="What happened instead?" onChange={(event) => setIssueActual(event.target.value)} /></label></div><div className="cp-site-issue-sheet__voice"><button type="button" aria-pressed={recordingVoice} onClick={() => void toggleVoice()}>{recordingVoice ? "Stop voice note" : voiceBlob ? "Replace voice note" : "Explain with voice"}</button><small>{voiceBlob ? "Voice is saved locally with this checkpoint. Add a written summary for the agent." : "Microphone starts only after you tap."}</small></div><footer><button type="button" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(false)}>Save & continue</button><button type="button" className="is-primary" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(true)}>Save & review</button></footer></section>}
+      {annotationKind === "issue" && <section ref={issueDialogRef} className="cp-site-issue-sheet" role="dialog" aria-modal="true" aria-labelledby="mark-issue-title" tabIndex={-1}><div className="cp-site-issue-sheet__handle" /><header><div><p className="cp-overline">Checkpoint</p><h2 id="mark-issue-title">Mark what went wrong</h2></div><button type="button" onClick={leaveAnnotation}>Cancel</button></header><div className="cp-site-issue-sheet__fields"><label><span>What happened?</span><textarea maxLength={3_000} value={issueExplanation} placeholder="Explain the visible problem" onChange={(event) => setIssueExplanation(event.target.value)} /></label><label><span>Expected</span><input maxLength={1_500} value={issueExpected} placeholder="What should have happened?" onChange={(event) => setIssueExpected(event.target.value)} /></label><label><span>Actual</span><input maxLength={1_500} value={issueActual} placeholder="What happened instead?" onChange={(event) => setIssueActual(event.target.value)} /></label></div><div className="cp-site-issue-sheet__voice"><button type="button" aria-pressed={recordingVoice} onClick={() => void toggleVoice()}>{recordingVoice ? "Stop voice note" : voiceBlob ? "Replace voice note" : "Explain with voice"}</button><small>{voiceBlob ? "Voice is saved locally with this checkpoint. Add a written summary for the agent." : "Microphone starts only after you tap."}</small></div><footer><button type="button" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(false)}>Save & continue</button><button type="button" className="is-primary" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(true)}>Save & review</button></footer></section>}
       {(notice || (error && frame)) && <p className={`cp-browser-site__message${error ? " is-error" : ""}`} role="status">{error ?? notice}</p>}
     </section>
   );

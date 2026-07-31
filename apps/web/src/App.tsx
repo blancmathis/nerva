@@ -1,5 +1,6 @@
 import type {
   AdjustReasoningCommand,
+  AttachCaptureFilesCommand,
   Command,
   CreateTaskCommand,
   OpenSessionCommand,
@@ -70,6 +71,7 @@ import {
 } from "./lib/storage";
 import { useBridge } from "./lib/use-bridge";
 import { usePwaUpdate } from "./lib/pwa-updates";
+import { useModalFocus } from "./lib/use-modal-focus";
 import { createUuidV4 } from "./lib/uuid";
 import { useCaptureInboxSummary } from "./lib/capture-inbox-store";
 import type { OpenBrowserTab } from "./lib/bridge-client";
@@ -224,6 +226,7 @@ export function resolveControlAction(
 function statusLabel(phase: ReturnType<typeof useBridge>["phase"]): string {
   switch (phase) {
     case "online": return "Connected";
+    case "update-required": return "Refresh Nerva";
     case "connecting": return "Connecting";
     case "reconnecting": return "Reconnecting";
     case "pairing": return "Pairing";
@@ -233,6 +236,19 @@ function statusLabel(phase: ReturnType<typeof useBridge>["phase"]): string {
 
 function createId(): string {
   return createUuidV4();
+}
+
+function useDeviceSystemTheme(): "light" | "dark" {
+  const read = () => window.matchMedia("(prefers-color-scheme: light)").matches ? "light" as const : "dark" as const;
+  const [theme, setTheme] = useState<"light" | "dark">(read);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-color-scheme: light)");
+    const update = () => setTheme(query.matches ? "light" : "dark");
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  return theme;
 }
 
 function directSiteInteractionAvailable(status: string): boolean {
@@ -264,8 +280,13 @@ export function releaseCommandMutation(lock: { current: boolean }): void {
 
 function App() {
   const [preferences, setPreferences] = useState<UiPreferences>(loadPreferences);
+  const deviceSystemTheme = useDeviceSystemTheme();
   const bridge = useBridge({ allSessionsEnabled: preferences.allSessionsEnabled });
   const pwa = usePwaUpdate();
+
+  useEffect(() => {
+    if (bridge.phase === "update-required") void pwa.check();
+  }, [bridge.phase, pwa.check]);
   const captureInbox = useCaptureInboxSummary();
   const [notificationPermission, setNotificationPermission] = useState<NervaNotificationPermission>(readNotificationPermission);
   const [pendingNotificationTarget, setPendingNotificationTarget] = useState<NervaNotificationTarget | null>(() => notificationTargetFromUrl(window.location));
@@ -299,6 +320,10 @@ function App() {
   const [drawingStatus, setDrawingStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [drawingMessage, setDrawingMessage] = useState<string | null>(null);
   const [selectedSkillsByThread, setSelectedSkillsByThread] = useState<Readonly<Record<string, readonly string[]>>>({});
+  const pendingSkillSubmissionsRef = useRef(new Map<string, {
+    readonly threadId: string;
+    readonly skillIds: readonly string[];
+  }>());
   const [savedDrawingsOpen, setSavedDrawingsOpen] = useState(false);
   const [activeBrowserTab, setActiveBrowserTab] = useState<OpenBrowserTab | null>(null);
   const [selectedSiteByThread, setSelectedSiteByThread] = useState<Readonly<Record<string, SiteAssociation>>>({});
@@ -309,7 +334,20 @@ function App() {
   const [savedDrawingBusyId, setSavedDrawingBusyId] = useState<string | null>(null);
   const [savedDrawingDeleteId, setSavedDrawingDeleteId] = useState<string | null>(null);
   const [pinReplacementThreadId, setPinReplacementThreadId] = useState<string | null>(null);
+  const savedDrawingsDialogRef = useRef<HTMLElement | null>(null);
+  const pinReplacementDialogRef = useRef<HTMLElement | null>(null);
+  const closeSavedDrawings = useCallback(() => setSavedDrawingsOpen(false), []);
+  const closePinReplacement = useCallback(() => setPinReplacementThreadId(null), []);
+  useModalFocus(savedDrawingsDialogRef, closeSavedDrawings, {
+    active: savedDrawingsOpen,
+    initialFocus: "[aria-label='Close Saved Drawings']",
+  });
+  useModalFocus(pinReplacementDialogRef, closePinReplacement, {
+    active: pinReplacementThreadId !== null,
+    initialFocus: ".cp-secondary-button",
+  });
   const previousSessionStatusRef = useRef<ReadonlyMap<string, ProductSession["status"]>>(new Map());
+  const exactMutationTargetRef = useRef<DrawingTarget | null>(null);
 
   const slots = bridge.snapshot?.slots ?? Array.from({ length: 6 }, (_, index) => emptySlot(index));
   const selected = slots.find((slot) => slot.selected)
@@ -338,13 +376,15 @@ function App() {
   } satisfies BridgeCapabilities;
 
   const effectiveTheme = preferences.theme === "system"
-    ? bridge.snapshot?.theme ?? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+    ? deviceSystemTheme
     : preferences.theme;
 
   useEffect(() => {
     document.documentElement.dataset.theme = effectiveTheme;
     document.documentElement.dataset.motion = preferences.motion;
     document.documentElement.style.colorScheme = effectiveTheme;
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+      ?.setAttribute("content", effectiveTheme === "light" ? "#f4f6f5" : "#161b1a");
   }, [effectiveTheme, preferences.motion]);
 
   useEffect(() => {
@@ -363,11 +403,31 @@ function App() {
     if (
       dictationGesture !== null
       && bridge.snapshot !== null
-      && bridge.snapshot.bridgeInstanceId !== dictationGesture.bridgeInstanceId
+      && (
+        bridge.snapshot.bridgeInstanceId !== dictationGesture.bridgeInstanceId
+        || (
+          bridge.snapshot.activeThreadKey !== null
+          && bridge.snapshot.activeThreadKey !== dictationGesture.threadId
+        )
+      )
     ) {
       setDictationGesture(null);
     }
-  }, [bridge.snapshot?.bridgeInstanceId, dictationGesture]);
+  }, [bridge.snapshot?.activeThreadKey, bridge.snapshot?.bridgeInstanceId, dictationGesture]);
+
+  useEffect(() => {
+    const ack = bridge.lastAck;
+    if (!ack || ack.pending) return;
+    const pending = pendingSkillSubmissionsRef.current.get(ack.commandId);
+    if (!pending) return;
+    pendingSkillSubmissionsRef.current.delete(ack.commandId);
+    if (!ack.ok || pending.skillIds.length === 0) return;
+    setSelectedSkillsByThread((current) => ({
+      ...current,
+      [pending.threadId]: (current[pending.threadId] ?? [])
+        .filter((skillId) => !pending.skillIds.includes(skillId)),
+    }));
+  }, [bridge.lastAck]);
 
   const drawingTarget = useMemo<DrawingTarget | null>(() => {
     if (!selected?.threadId || !selected.threadKey || !bridge.snapshot) return null;
@@ -878,38 +938,71 @@ function App() {
   async function sendPrompt() {
     const submitAction = resolveAction("send");
     const active = dictationGesture;
-    if (submitAction === null) return;
-    if (active === null) {
-      await runControl(submitAction);
-      return;
-    }
-
     const snapshot = liveMutationSnapshot(mutationGate);
     if (
-      !snapshot
+      submitAction === null
+      || !snapshot
       || !selected?.threadId
-      || active.threadId !== selected.threadId
-      || !active.action.startsWith("micro:")
       || !submitAction.startsWith("micro:")
       || !supportsSelectedTargetCommand(mutationGate, "runMicroAction", selected)
       || selected.status === "awaiting-approval"
       || snapshot.pendingApprovals.some((approval) => approval.threadId === selected.threadId)
     ) return;
 
-    const [, dictationSlot, encodedDictationKeycapId, encodedDictationCommandId] = active.action.split(":");
     const [, submitSlot, encodedSubmitKeycapId, encodedSubmitCommandId] = submitAction.split(":");
     if (
-      !dictationSlot
-      || !encodedDictationKeycapId
-      || encodedDictationCommandId === undefined
-      || !submitSlot
+      !submitSlot
       || !encodedSubmitKeycapId
       || encodedSubmitCommandId === undefined
     ) return;
 
+    const targetThreadId = selected.threadId;
+    const frozenSkillIds = [...new Set(selectedSkillsByThread[targetThreadId] ?? [])];
+    const submit = async (sequence: number) => {
+      const command = buildMicroActionCommand(
+        { ...snapshot, seq: sequence },
+        targetThreadId,
+        submitSlot as RunMicroActionCommand["actionSlot"],
+        decodeURIComponent(encodedSubmitKeycapId),
+        encodedSubmitCommandId === "" ? null : decodeURIComponent(encodedSubmitCommandId),
+        createId(),
+        "tap",
+        null,
+        frozenSkillIds,
+      );
+      if (!command) return;
+      if (frozenSkillIds.length > 0) {
+        pendingSkillSubmissionsRef.current.set(command.commandId, {
+          threadId: targetThreadId,
+          skillIds: frozenSkillIds,
+        });
+      }
+      try {
+        const ack = await bridge.command(command);
+        if (!ack.pending && !ack.ok) pendingSkillSubmissionsRef.current.delete(command.commandId);
+      } catch (error) {
+        pendingSkillSubmissionsRef.current.delete(command.commandId);
+        throw error;
+      }
+    };
+
+    if (active === null) {
+      if (!beginCommandMutation("send")) return;
+      try {
+        await submit(snapshot.seq);
+      } finally {
+        finishCommandMutation();
+      }
+      return;
+    }
+
+    if (active.threadId !== targetThreadId || !active.action.startsWith("micro:")) return;
+    const [, dictationSlot, encodedDictationKeycapId, encodedDictationCommandId] = active.action.split(":");
+    if (!dictationSlot || !encodedDictationKeycapId || encodedDictationCommandId === undefined) return;
+
     const stopCommand = buildMicroActionCommand(
       snapshot,
-      selected.threadId,
+      targetThreadId,
       dictationSlot as RunMicroActionCommand["actionSlot"],
       decodeURIComponent(encodedDictationKeycapId),
       encodedDictationCommandId === "" ? null : decodeURIComponent(encodedDictationCommandId),
@@ -923,16 +1016,7 @@ function App() {
       const stopAck = await bridge.command(stopCommand);
       if (!stopAck.ok || stopAck.pending || stopAck.sequence === undefined) return;
       setDictationGesture(null);
-
-      const submitCommand = buildMicroActionCommand(
-        { ...snapshot, seq: stopAck.sequence },
-        selected.threadId,
-        submitSlot as RunMicroActionCommand["actionSlot"],
-        decodeURIComponent(encodedSubmitKeycapId),
-        encodedSubmitCommandId === "" ? null : decodeURIComponent(encodedSubmitCommandId),
-        createId(),
-      );
-      if (submitCommand) await bridge.command(submitCommand);
+      await submit(stopAck.sequence);
     } finally {
       finishCommandMutation();
     }
@@ -1092,8 +1176,13 @@ function App() {
     }
   }
 
-  async function sendSiteAnnotation(png: Blob) {
-    if (!drawingTarget) return { ok: false, message: "The exact selected task is unavailable." };
+  async function sendSiteAnnotation(png: Blob, expectedThreadId: string) {
+    if (!drawingTarget || drawingTarget.threadId !== expectedThreadId) {
+      return {
+        ok: false,
+        message: "Open this exact site task on the Mac before attaching its annotation.",
+      };
+    }
     const { blobToBase64 } = await import("./components/drawing-image");
     return sendDrawing({
       commandId: createId(),
@@ -1126,21 +1215,23 @@ function App() {
     }
     try {
       const { buildSiteQaCommand } = await import("./lib/site-qa-command");
-      const armedSkills = selectedSkillsByThread[payload.manifest.sourceThreadId] ?? [];
-      const suffix = appendSkillSuffix("", armedSkills);
       const command = await buildSiteQaCommand({
         payload,
         // Reopening a saved recording cannot create a second Codex task for
         // the same approved report.
-        commandId: payload.manifest.recordingId,
-        bridgeInstanceId: snapshot.bridgeInstanceId,
+        commandId: payload.delivery.commandId,
+        bridgeInstanceId: payload.delivery.expectedBridgeInstanceId,
         threadId: selected.threadId,
-        snapshotSeq: snapshot.seq,
-        instructionSuffix: suffix ? `\n\n${suffix}` : "",
+        snapshotSeq: payload.delivery.snapshotSeq,
+        instructionSuffix: payload.delivery.instructionSuffix,
       });
       const ack = await bridge.command(command);
-      if (ack.ok && armedSkills.length > 0) {
-        setSelectedSkillsByThread((current) => ({ ...current, [payload.manifest.sourceThreadId]: [] }));
+      if (ack.ok && !ack.pending && payload.delivery.skillIds.length > 0) {
+        setSelectedSkillsByThread((current) => ({
+          ...current,
+          [payload.manifest.sourceThreadId]: (current[payload.manifest.sourceThreadId] ?? [])
+            .filter((skillId) => !payload.delivery.skillIds.includes(skillId)),
+        }));
       }
       return { ok: ack.ok, pending: ack.pending === true, message: ack.message };
     } catch (caught) {
@@ -1153,7 +1244,8 @@ function App() {
   }
 
   async function useSavedDrawing(drawingId: string) {
-    if (!viewedSession || !targetReady) {
+    const requestedTarget = exactMutationTargetRef.current;
+    if (!viewedSession || !requestedTarget || requestedTarget.threadId !== viewedSession.threadId) {
       setSavedDrawingMessage("Open this session on the Mac before using a saved drawing here.");
       return;
     }
@@ -1163,6 +1255,16 @@ function App() {
       const drawing = await bridge.loadSavedDrawing(drawingId);
       if (!drawing) {
         setSavedDrawingMessage("This saved drawing is no longer available on the Mac.");
+        return;
+      }
+      const currentTarget = exactMutationTargetRef.current;
+      if (
+        !currentTarget
+        || currentTarget.threadId !== requestedTarget.threadId
+        || currentTarget.bridgeInstanceId !== requestedTarget.bridgeInstanceId
+        || currentTarget.slotId !== requestedTarget.slotId
+      ) {
+        setSavedDrawingMessage("The selected Mac task changed while this drawing was opening. Nothing was added; choose it again for the current task.");
         return;
       }
       setSavedDrawingWorkingCopy({
@@ -1251,17 +1353,20 @@ function App() {
     }
     try {
       const { reviewCommand } = await import("./lib/review-command");
-      const armedSkills = selectedSkillsByThread[payload.targetThreadId] ?? [];
       const command = await reviewCommand({
         ...payload,
         manifest: {
           ...payload.manifest,
-          instruction: appendSkillSuffix(payload.manifest.instruction, armedSkills),
+          instruction: `${payload.manifest.instruction}${payload.instructionSuffix}`,
         },
       });
       const ack = await bridge.command(command);
-      if (ack.ok && armedSkills.length > 0) {
-        setSelectedSkillsByThread((current) => ({ ...current, [payload.targetThreadId]: [] }));
+      if (ack.ok && !ack.pending && payload.skillIds.length > 0) {
+        setSelectedSkillsByThread((current) => ({
+          ...current,
+          [payload.targetThreadId]: (current[payload.targetThreadId] ?? [])
+            .filter((skillId) => !payload.skillIds.includes(skillId)),
+        }));
       }
       return { ok: ack.ok, pending: ack.pending === true, message: ack.message };
     } catch (error) {
@@ -1326,6 +1431,7 @@ function App() {
     && mutationSnapshot
     && hasExactSelectedTarget(mutationSnapshot, selected),
   );
+  exactMutationTargetRef.current = targetReady ? drawingTarget : null;
   const selectedSkillIds = viewedSession ? selectedSkillsByThread[viewedSession.threadId] ?? [] : [];
   const pendingApprovals = viewedSession
     ? bridge.snapshot?.pendingApprovals.filter((approval) => approval.threadId === viewedSession.threadId) ?? []
@@ -1413,6 +1519,27 @@ function App() {
                 setReviewReturnView("session");
                 setView("review");
               }}
+              onAttachFiles={async (threadId, files) => {
+                const snapshot = liveMutationSnapshot(mutationGate);
+                if (
+                  !snapshot
+                  || !selected?.threadId
+                  || selected.threadId !== threadId
+                  || !supportsSelectedTargetCommand(mutationGate, "attachCaptureFiles", selected)
+                ) {
+                  return { ok: false, message: "Open this exact Session on the Mac before attaching its files." };
+                }
+                const command: AttachCaptureFilesCommand = {
+                  type: "attachCaptureFiles",
+                  commandId: createId(),
+                  expectedBridgeInstanceId: snapshot.bridgeInstanceId,
+                  expectedSequence: snapshot.seq,
+                  expectedThreadId: threadId,
+                  targetThreadId: threadId,
+                  files: files.map((file) => ({ ...file })),
+                };
+                return bridge.command(command);
+              }}
               onBackToSession={() => {
                 if (captureInboxTargetThreadId === null) return;
                 setSessionThreadId(captureInboxTargetThreadId);
@@ -1437,7 +1564,7 @@ function App() {
             currentModel={capabilities.currentModel ?? null}
             models={capabilities.models ?? []}
             modelReasoningPresets={preferences.modelReasoningPresets}
-            modelReasoningEnabled={supportsSelectedTargetCommand(mutationGate, "setModelReasoning", selected)}
+            modelReasoningEnabled={targetReady && supportsSelectedTargetCommand(mutationGate, "setModelReasoning", selected)}
             dictationAction={dictationGesture?.threadId === viewedSession.threadId
               ? dictationGesture.action
               : resolveAction("dictate")}
@@ -1445,7 +1572,7 @@ function App() {
             fastAction={resolveAction("fast")}
             sendAction={resolveAction("send")}
             pendingApprovals={pendingApprovals}
-            approvalEnabled={supportsSelectedTargetCommand(mutationGate, "respondToApproval", selected)}
+            approvalEnabled={targetReady && supportsSelectedTargetCommand(mutationGate, "respondToApproval", selected)}
             busyAction={busyAction}
             drawingAvailable={drawingWorkspaceTarget !== null}
             captureInboxCount={captureInbox.summary.count}
@@ -1501,9 +1628,20 @@ function App() {
 
         {view === "site" && viewedSession && activeBrowserTab && (
           <BrowserSiteStudio
+            key={`${viewedSession.threadId}:${activeBrowserTab.id}`}
             tab={activeBrowserTab}
             threadId={viewedSession.threadId}
-            sendEnabled={supportsSelectedTargetCommand(mutationGate, "sendSketch", selected) && capabilities.drawing}
+            sendEnabled={targetReady && supportsSelectedTargetCommand(mutationGate, "sendSketch", selected) && capabilities.drawing}
+            deliveryAuthority={targetReady && drawingTarget?.threadId === viewedSession.threadId
+              ? {
+                  expectedBridgeInstanceId: drawingTarget.bridgeInstanceId,
+                  snapshotSeq: drawingTarget.snapshotSeq,
+                  instructionSuffix: selectedSkillIds.length > 0
+                    ? `\n\n${appendSkillSuffix("", selectedSkillIds)}`
+                    : "",
+                  skillIds: selectedSkillIds,
+                }
+              : null}
             fetchFrame={bridge.fetchBrowserTabFrame}
             controlTab={bridge.controlBrowserTab}
             recordTabAction={bridge.recordBrowserTabAction}
@@ -1524,7 +1662,7 @@ function App() {
               }
               throw new Error("The new Codex Browser page could not be identified uniquely. Check the Mac before trying again.");
             }}
-            onSendAnnotation={sendSiteAnnotation}
+            onSendAnnotation={(png) => sendSiteAnnotation(png, viewedSession.threadId)}
             onSendRecording={sendSiteQaRecording}
             favorites={preferences.siteFavorites}
             onToggleFavorite={(url, title) => {
@@ -1555,12 +1693,16 @@ function App() {
                 threadKey={viewedSession.threadKey}
                 threadTitle={viewedSession.title}
                 snapshotSeq={bridge.snapshot?.seq ?? 0}
-                sendEnabled={supportsSelectedTargetCommand(mutationGate, "sendReview", selected) && capabilities.review && capabilities.reviewMaxImages > 0}
+                sendEnabled={targetReady && supportsSelectedTargetCommand(mutationGate, "sendReview", selected) && capabilities.review && capabilities.reviewMaxImages > 0}
                 reviewMaxImages={capabilities.reviewMaxImages}
                 agentUpdated={viewedSession.status === "unread"}
                 site={reviewSite}
                 onClose={() => setView(reviewReturnView)}
                 onSendReview={sendReview}
+                instructionSuffix={selectedSkillIds.length > 0
+                  ? `\n\n${appendSkillSuffix("", selectedSkillIds)}`
+                  : ""}
+                selectedSkillIds={selectedSkillIds}
                 {...(hasMutationAuthority && mutationSnapshot && hasExactSelectedTarget(mutationSnapshot, selected) && reviewSite?.captureCapability === "available" ? { onCaptureSite: captureAssociatedSite } : {})}
               />
             </Suspense>
@@ -1641,9 +1783,9 @@ function App() {
       )}
 
       {savedDrawingsOpen && (
-        <div className="cp-drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSavedDrawingsOpen(false); }}>
-          <aside className="cp-saved-drawings" role="dialog" aria-modal="true" aria-labelledby="saved-drawings-title">
-            <header><div><p className="cp-overline">Global visual memory</p><h2 id="saved-drawings-title">Saved Drawings</h2></div><button type="button" className="cp-icon-button" aria-label="Close Saved Drawings" onClick={() => setSavedDrawingsOpen(false)}><CloseIcon /></button></header>
+        <div className="cp-drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSavedDrawings(); }}>
+          <aside ref={savedDrawingsDialogRef} className="cp-saved-drawings" role="dialog" aria-modal="true" aria-labelledby="saved-drawings-title" tabIndex={-1}>
+            <header><div><p className="cp-overline">Global visual memory</p><h2 id="saved-drawings-title">Saved Drawings</h2></div><button type="button" className="cp-icon-button" aria-label="Close Saved Drawings" onClick={closeSavedDrawings}><CloseIcon /></button></header>
             <div className="cp-saved-drawings__toolbar">
               <label>
                 <span>Source session</span>
@@ -1687,7 +1829,7 @@ function App() {
 
       {pinReplacementThreadId && (
         <div className="cp-modal-layer" role="presentation">
-          <section className="cp-replace-modal" role="dialog" aria-modal="true" aria-labelledby="session-replace-title">
+          <section ref={pinReplacementDialogRef} className="cp-replace-modal" role="dialog" aria-modal="true" aria-labelledby="session-replace-title" tabIndex={-1}>
             <p className="cp-overline">Home limit reached</p>
             <h2 id="session-replace-title">Choose a session to unpin.</h2>
             <p>Home holds up to 12 sessions. The Codex session itself is never deleted.</p>
@@ -1695,11 +1837,11 @@ function App() {
               {pinnedProductSessions.map((session) => (
                 <button type="button" key={session.threadId} onClick={() => {
                   dispatchHomeLayout({ type: "replace-pin", unpinThreadId: session.threadId, pinThreadId: pinReplacementThreadId });
-                  setPinReplacementThreadId(null);
+                  closePinReplacement();
                 }}><span>{session.title}</span><small>{session.project ?? session.threadId.slice(-8)}</small></button>
               ))}
             </div>
-            <button type="button" className="cp-secondary-button" onClick={() => setPinReplacementThreadId(null)}>Cancel</button>
+            <button type="button" className="cp-secondary-button" onClick={closePinReplacement}>Cancel</button>
           </section>
         </div>
       )}
@@ -1721,7 +1863,7 @@ function App() {
             target={drawingWorkspaceTarget}
             importOnOpen={drawingImportOnOpen}
             initialSavedDrawing={savedDrawingWorkingCopy}
-            connected={supportsSelectedTargetCommand(mutationGate, "sendSketch", selected) && capabilities.drawing}
+            connected={targetReady && supportsSelectedTargetCommand(mutationGate, "sendSketch", selected) && capabilities.drawing}
             composerAttachmentMaxImages={capabilities.composerAttachmentMaxImages ?? 1}
             sending={drawingSending}
             sendStatus={drawingStatus}

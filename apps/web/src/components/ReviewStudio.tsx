@@ -43,12 +43,14 @@ import { buildAtomicReviewSend, type AtomicReviewSend } from "../lib/review-payl
 import { flattenReviewDrawings } from "../lib/review-render";
 import { createUuidV4 } from "../lib/uuid";
 import { publicCapturedSiteUrl } from "../lib/site-capture";
+import { createSerialMutationQueue } from "../lib/serial-mutation-queue";
 import {
   clearPendingReviewDelivery,
   deleteReviewDraftIfUnchanged,
   getReviewBlob,
   loadReviewDraft,
   loadPendingReviewDelivery,
+  loadPendingReviewDeliveryIdentity,
   reviewDraftBlobRefs,
   reviewFrameBlobRefs,
   savePendingReviewDelivery,
@@ -110,6 +112,8 @@ export interface ReviewStudioProps {
   readonly site?: AllowedReviewSite | null;
   readonly onClose?: () => void;
   readonly onSendReview: (payload: AtomicReviewSend) => Promise<ReviewSendResult>;
+  readonly instructionSuffix?: string;
+  readonly selectedSkillIds?: readonly string[];
   readonly onCaptureSite?: (input: CaptureReviewSiteInput) => Promise<CapturedReviewImage>;
 }
 
@@ -402,6 +406,8 @@ export function ReviewStudio({
   agentUpdated = false,
   site = null,
   onClose,
+  instructionSuffix = "",
+  selectedSkillIds = [],
   onSendReview,
   onCaptureSite,
 }: ReviewStudioProps) {
@@ -421,17 +427,22 @@ export function ReviewStudio({
   const [sendResult, setSendResult] = useState<ReviewSendResult | null>(null);
   const mountedRef = useRef(true);
   const targetThreadRef = useRef(threadId);
+  const reviewMutationQueueRef = useRef(createSerialMutationQueue());
   targetThreadRef.current = threadId;
   const allowedSiteUrl = useMemo(() => resolveAllowedSite(site), [site]);
   const [captureViewport, setCaptureViewport] = useState<CaptureViewportChoice>("current");
 
+  const enqueueReviewMutation = useCallback(<T,>(mutation: () => Promise<T>): Promise<T> => {
+    return reviewMutationQueueRef.current.enqueue(mutation);
+  }, []);
+
   const persist = useCallback((next: ReviewDraft) => {
     draftRef.current = next;
     setDraft(next);
-    void saveReviewDraft(next).catch(() => {
+    void enqueueReviewMutation(() => saveReviewDraft(next)).catch(() => {
       if (mountedRef.current) setError("This draft could not be saved on the iPad.");
     });
-  }, []);
+  }, [enqueueReviewMutation]);
 
   const applyAction = useCallback((action: ReviewDraftAction): ReviewDraft | null => {
     const current = draftRef.current;
@@ -455,7 +466,7 @@ export function ReviewStudio({
       const garbage = candidateRefs.filter((ref) => !retained.has(ref));
       draftRef.current = next;
       setDraft(next);
-      void saveReviewDraftAndDeleteBlobs(next, garbage).catch(() => {
+      void enqueueReviewMutation(() => saveReviewDraftAndDeleteBlobs(next, garbage)).catch(() => {
         if (mountedRef.current) setError("The review changed in memory, but its media cleanup could not be saved atomically.");
       });
       return next;
@@ -463,7 +474,7 @@ export function ReviewStudio({
       setError(deletionError instanceof Error ? deletionError.message : "The review item could not be deleted.");
       return null;
     }
-  }, []);
+  }, [enqueueReviewMutation]);
 
   const commitPreparedMedia = useCallback(async (
     base: ReviewDraft,
@@ -474,21 +485,27 @@ export function ReviewStudio({
     if (next.targetThreadId !== base.targetThreadId) {
       throw new Error("A media commit cannot change its review thread.");
     }
-    await saveReviewDraftWithBlobChanges(next, blobWrites);
-    const latest = draftRef.current;
-    if (targetThreadRef.current !== base.targetThreadId || latest !== base) {
-      const rollbackDraft = latest?.targetThreadId === base.targetThreadId ? latest : base;
-      await saveReviewDraftWithBlobChanges(
-        rollbackDraft,
-        [],
-        blobWrites.map((write) => write.id),
-      );
-      throw new Error(raceMessage);
-    }
-    draftRef.current = next;
-    setDraft(next);
-    return next;
-  }, []);
+    return enqueueReviewMutation(async () => {
+      const beforeCommit = draftRef.current;
+      if (targetThreadRef.current !== base.targetThreadId || beforeCommit !== base) {
+        throw new Error(raceMessage);
+      }
+      await saveReviewDraftWithBlobChanges(next, blobWrites);
+      const latest = draftRef.current;
+      if (targetThreadRef.current !== base.targetThreadId || latest !== base) {
+        const rollbackDraft = latest?.targetThreadId === base.targetThreadId ? latest : base;
+        await saveReviewDraftWithBlobChanges(
+          rollbackDraft,
+          [],
+          blobWrites.map((write) => write.id),
+        );
+        throw new Error(raceMessage);
+      }
+      draftRef.current = next;
+      setDraft(next);
+      return next;
+    });
+  }, [enqueueReviewMutation]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -511,7 +528,7 @@ export function ReviewStudio({
         if (next.frames.length === 0) {
           next = reviewDraftReducer(next, { type: "addFrame", frame: makeBlankReviewFrame(geometryForViewport()) });
         }
-        await saveReviewDraft(next);
+        await enqueueReviewMutation(() => saveReviewDraft(next));
         if (cancelled) return;
         draftRef.current = next;
         setDraft(next);
@@ -526,7 +543,7 @@ export function ReviewStudio({
     return () => {
       cancelled = true;
     };
-  }, [threadId]);
+  }, [enqueueReviewMutation, threadId]);
 
   const activeFrame = draft?.frames.find((frame) => frame.id === activeFrameId) ?? draft?.frames[0] ?? null;
 
@@ -799,19 +816,39 @@ export function ReviewStudio({
           "The review changed while annotation media was being saved. Preview it again.",
         );
       }
+      const retainedIdentity = sendPayload === null
+        ? await loadPendingReviewDeliveryIdentity(threadId, flattened.updatedAt)
+        : null;
+      const legacyCommandId = retainedIdentity === null && sendPayload === null
+        ? await loadPendingReviewDelivery(threadId, flattened.updatedAt)
+        : null;
+      // A legacy marker retained only the command ID and cannot reproduce the
+      // bridge fingerprint after a reload. Rotate it before any attempt rather
+      // than creating a permanent COMMAND_ID_COLLISION loop.
       const commandId = sendPayload?.commandId
-        ?? await loadPendingReviewDelivery(threadId, flattened.updatedAt)
+        ?? retainedIdentity?.commandId
         ?? createUuidV4();
+      if (legacyCommandId !== null) {
+        setNotice("Updated an older local retry marker before preparing this review. Nothing was sent automatically.");
+      }
       const payload = await buildAtomicReviewSend({
         commandId,
-        expectedBridgeInstanceId: bridgeInstanceId,
+        expectedBridgeInstanceId: retainedIdentity?.expectedBridgeInstanceId ?? bridgeInstanceId,
         activeThreadId: threadId,
-        targetThreadKey: threadKey,
-        snapshotSeq,
+        targetThreadKey: retainedIdentity?.targetThreadKey ?? threadKey,
+        snapshotSeq: retainedIdentity?.snapshotSeq ?? snapshotSeq,
         draft: flattened,
         loadBlob: getReviewBlob,
+        instructionSuffix: retainedIdentity?.instructionSuffix ?? instructionSuffix,
+        skillIds: retainedIdentity?.skillIds ?? selectedSkillIds,
       });
-      await savePendingReviewDelivery(threadId, flattened.updatedAt, payload.commandId);
+      await savePendingReviewDelivery(threadId, flattened.updatedAt, payload.commandId, {
+        expectedBridgeInstanceId: payload.expectedBridgeInstanceId,
+        targetThreadKey: payload.targetThreadKey,
+        snapshotSeq: payload.snapshotSeq,
+        instructionSuffix: payload.instructionSuffix,
+        skillIds: payload.skillIds,
+      });
       if (targetThreadRef.current !== threadId || draftRef.current !== flattened) {
         throw new Error("The selected review changed before its delivery identity was saved.");
       }
@@ -859,10 +896,10 @@ export function ReviewStudio({
     setClearing(true);
     setError(null);
     try {
-      const deleted = await deleteReviewDraftIfUnchanged({
+      const deleted = await enqueueReviewMutation(() => deleteReviewDraftIfUnchanged({
         draft: sendPayload.draft,
         commandId: sendPayload.commandId,
-      });
+      }));
       if (!deleted) {
         throw new Error("This local review changed in another tab. Its newer draft, media, and delivery marker were preserved.");
       }
@@ -877,7 +914,7 @@ export function ReviewStudio({
       }
       let next = createReviewDraft({ id: reviewId("review"), targetThreadId: clearTarget });
       next = reviewDraftReducer(next, { type: "addFrame", frame: makeBlankReviewFrame(geometryForViewport()) });
-      await saveReviewDraft(next);
+      await enqueueReviewMutation(() => saveReviewDraft(next));
       draftRef.current = next;
       setDraft(next);
       setActiveFrameId(next.frames[0]?.id ?? null);

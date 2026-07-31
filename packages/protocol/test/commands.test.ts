@@ -62,6 +62,12 @@ const commands: Command[] = [
   { ...metadata, type: "openSession", targetThreadId: THREAD_ID },
   { ...metadata, type: "openBrowserTab", targetThreadId: THREAD_ID, url: "https://example.test/dashboard" },
   { ...metadata, type: "runSkill", targetThreadId: THREAD_ID, skillName: "browser:control-in-app-browser" },
+  {
+    ...metadata,
+    type: "attachCaptureFiles",
+    targetThreadId: THREAD_ID,
+    files: [{ fileName: "context.txt", mimeType: "text/plain", dataBase64: "aGVsbG8=" }],
+  },
   { ...metadata, type: "refreshSnapshot", lastKnownSequence: 42 },
 ];
 
@@ -273,6 +279,32 @@ describe("CommandSchema", () => {
         targetThreadId: "019f6de7-44c2-7fe2-9d17-9322c952e627",
       }).success,
     ).toBe(false);
+  });
+
+  it("allows Skills insertion only on the exact native Send Prompt action", () => {
+    const sendWithSkills = {
+      ...metadata,
+      type: "runMicroAction",
+      slot: 2,
+      actionSlot: "ACT12",
+      expectedKeycapId: "CODEX",
+      expectedNativeCommandId: "composer.submit",
+      skillNames: ["github:github", "impeccable"],
+    };
+    expect(CommandSchema.safeParse(sendWithSkills).success).toBe(true);
+    expect(CommandSchema.safeParse({ ...sendWithSkills, actionSlot: "ACT06" }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...sendWithSkills, expectedKeycapId: "FAST" }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...sendWithSkills, gesture: "begin", gestureId: COMMAND_ID }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...sendWithSkills, skillNames: ["impeccable", "impeccable"] }).success).toBe(false);
+  });
+
+  it("accepts only bounded, exact-target Capture Inbox file batches", () => {
+    const command = commands.find((candidate) => candidate.type === "attachCaptureFiles")!;
+    expect(CommandSchema.safeParse(command).success).toBe(true);
+    expect(CommandSchema.safeParse({ ...command, targetThreadId: TURN_ID }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...command, files: [{ ...command.files[0], fileName: "../secret.txt" }] }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...command, files: [{ ...command.files[0], mimeType: "not-a-mime" }] }).success).toBe(false);
+    expect(CommandSchema.safeParse({ ...command, files: [command.files[0], command.files[0]] }).success).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ context_room:
   status: current
   canonical_for: implemented Capture Inbox behavior
   last_verified: 2026-07-26
-  sources: [apps/web/src/components/CaptureInboxPage.tsx, apps/web/src/lib/capture-inbox-store.ts, apps/web/src/lib/capture-review.ts, apps/web/e2e/codex-pad.spec.ts, apps/web/e2e/pwa-offline.spec.ts]
+  sources: [apps/web/src/components/CaptureInboxPage.tsx, apps/web/src/lib/capture-inbox-store.ts, apps/web/src/lib/capture-review.ts, packages/protocol/src/commands.ts, apps/bridge/src/commands.ts, packages/codex-desktop/src/renderer-expression.ts, apps/web/e2e/codex-pad.spec.ts, apps/web/e2e/pwa-offline.spec.ts]
 ---
 
 # Nerva — Capture Inbox
@@ -29,11 +29,11 @@ A capture is never assigned to a Session. Nerva stores no destination, routing s
 1. Open the exact Session first.
 2. Under `Choose an input`, tap `Capture Inbox`.
 3. The Inbox shows a temporary context with that Session's title. This context is never written into the captures.
-4. Select one or more compatible notes or images and tap `Use in session`.
-5. Nerva copies them into the local Review for the exact displayed `threadId` and opens that Review. Originals remain in the Inbox.
-6. The same item can be reused later from another Session. Use never moves, consumes, or assigns it.
+4. Select compatible notes/images and tap `Use in session`, or select only files and tap `Attach to composer`.
+5. Notes and images are copied into the local Review for the exact displayed `threadId`. Files use one bounded native paste into that Session's exact visible Mac composer. Neither path removes the originals.
+6. The same item can be reused later from another Session. Use never moves, consumes, or assigns it, and a file attachment never submits the composer.
 
-`Use in session` sends nothing to the Mac. Delivery remains the existing Review flow: explicit preview, exact capability, and separate confirmation. Reconnection triggers none of those steps.
+`Use in session` sends nothing to the Mac. Delivery remains the existing Review flow: explicit preview, exact capability, and separate confirmation. `Attach to composer` is a different explicit action for file-only selections: it requires the exact Session to be open and verified on the Mac, adds the selected files without text, Queue, Steer, or submit, and returns to the Session only after confirmation. Reconnection triggers neither path.
 
 Changing the Mac Session does not close a capture started from Home. When a Session opens the Inbox, however, the temporary use context remains bound to that exact Session until the user explicitly leaves.
 
@@ -44,12 +44,12 @@ Changing the Mac Session does not close a capture started from Home. When a Sess
 | `Photo` | Camera or photo library through the system picker | Yes, after Review validates and normalizes PNG/JPEG/WebP/HEIC/HEIF |
 | `Scan` | Rear-camera document photo | Yes, as an image. Nerva does not claim iPadOS native document-scanner behavior. |
 | `Sketch` | Touch/Pencil canvas, Pencil-only by default, passive palm, two-finger navigation | Yes, as a bounded PNG |
-| `File` | Received file, with no execution or arbitrary preview | Only when it is a compatible image; other files remain local |
+| `File` | Received file, with no execution or arbitrary preview | File-only batches attach to the exact Mac composer: 1–4 files, 8 MiB each, 16 MiB total, safe unique names, and bounded MIME types. No submit. |
 | `Note` | Local text up to 20,000 characters | Yes, in Review's general instruction. A note alone still needs an image or annotation before Review can prepare a valid send. |
 
 Capture Inbox has no `Voice` action and never requests microphone permission. Session Dictation and the optional Site QA checkpoint voice note are separate capabilities with separate contracts.
 
-Nerva never silently deletes or converts an unsupported file. A selection containing a non-image file explains the limit and leaves the original in the Inbox.
+Nerva never silently deletes, executes, or converts a file. Files must be selected separately from notes and images so the destination remains explicit. An oversized batch, unavailable exact Mac target, rejected paste, partial attachment, or unknown result keeps every original and the current selection in the Inbox for inspection and a deliberate retry.
 
 ## Storage and migration
 
@@ -69,10 +69,10 @@ Capture Inbox is not part of Mac Product State and does not return on a replacem
 
 The Capture Inbox store has no `queued`, `pendingSend`, command, retry, or replay state. Capturing, viewing, selecting, and deleting never call `/api/command`, Sketch transport, or `sendReview`.
 
-`Use in session` writes only to the displayed thread's local Review. WebSocket or bridge reconnection never reads the Inbox and never starts a delivery effect. Only a later explicit Review gesture may prepare and confirm a send.
+`Use in session` writes only to the displayed thread's local Review. `Attach to composer` builds a fresh `attachCaptureFiles` command only from the files selected during that gesture; no command or payload is stored on the capture. The bridge revalidates the exact target, emits one native paste event, confirms every unique remove-attachment label, and never invokes composer submit. WebSocket or bridge reconnection never reads the Inbox and never starts or resumes either action.
 
 ## Evidence and limits
 
-Local tests cover storage, v1-to-v2 migration, absence of destination state, unsupported transport files, exact-Review note/image copying, reuse in two Sessions, reload, offline/reconnect, absence of Mac commands, and an emulated Pencil canvas. Flows pass under Chromium and WebKit for iPad landscape, iPad portrait, and phone profiles.
+Local tests cover storage, v1-to-v2 migration, absence of destination state, exact-Review note/image copying, exact-target generic-file attachment, filename/MIME/base64/budget validation, one native paste with no submit, retained originals, mixed/oversized/offline refusal, reuse in two Sessions, reload, offline/reconnect, and an emulated Pencil canvas. The relevant flows pass under Chromium and WebKit for iPad landscape, iPad portrait, and phone profiles.
 
-Physical Camera/Photos/Files behavior, iPadOS storage pressure, real Apple Pencil input, background suspension, and persistence after iPadOS eviction remain unproved.
+Physical Camera/Photos/Files behavior, a real generic-file attachment in the current Codex Desktop composer, iPadOS storage pressure, real Apple Pencil input, background suspension, and persistence after iPadOS eviction remain unproved.

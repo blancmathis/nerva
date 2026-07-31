@@ -2,7 +2,6 @@ import { execFile as execFileCallback } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
-  chmod,
   link,
   lstat,
   mkdir,
@@ -11,7 +10,6 @@ import {
   rename,
   rm,
   rmdir,
-  stat,
   unlink,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -90,7 +88,28 @@ interface ResolvedPrivateFileLockOptions {
 
 export async function ensurePrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 });
-  await chmod(path, 0o700);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const details = await handle.stat();
+    if (!details.isDirectory()) {
+      throw new Error(`Expected a private directory at ${path}`);
+    }
+    const currentUid = typeof process.getuid === "function" ? process.getuid() : undefined;
+    if (currentUid !== undefined && details.uid !== currentUid) {
+      throw new Error(`Refusing a private directory not owned by the current user: ${path}`);
+    }
+    // Change permissions through the already-verified descriptor. A path
+    // replacement between lstat/chmod must never redirect this operation.
+    await handle.chmod(0o700);
+  } catch (error) {
+    if (errno(error) === "ELOOP") {
+      throw new Error(`Refusing a symbolic link as a private directory: ${path}`, { cause: error });
+    }
+    throw error;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
 }
 
 export async function atomicWritePrivateJson(path: string, value: unknown): Promise<void> {
@@ -104,15 +123,15 @@ export async function atomicWritePrivateJson(path: string, value: unknown): Prom
   try {
     handle = await open(
       temporaryPath,
-      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW,
       0o600,
     );
     await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await handle.chmod(0o600);
     await handle.sync();
     await handle.close();
     handle = undefined;
     await rename(temporaryPath, path);
-    await chmod(path, 0o600);
     const directoryHandle = await open(directory, fsConstants.O_RDONLY);
     try {
       await directoryHandle.sync();
@@ -127,12 +146,30 @@ export async function atomicWritePrivateJson(path: string, value: unknown): Prom
 }
 
 export async function assertPrivateRegularFile(path: string): Promise<void> {
-  const details = await stat(path);
-  if (!details.isFile()) {
-    throw new Error(`Expected a regular file at ${path}`);
-  }
-  if ((details.mode & 0o077) !== 0) {
-    throw new Error(`Refusing insecure permissions on ${path}; expected mode 0600`);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const details = await handle.stat();
+    if (!details.isFile()) {
+      throw new Error(`Expected a regular file at ${path}`);
+    }
+    const currentUid = typeof process.getuid === "function" ? process.getuid() : undefined;
+    if (currentUid !== undefined && details.uid !== currentUid) {
+      throw new Error(`Refusing a private file not owned by the current user: ${path}`);
+    }
+    if (details.nlink !== 1) {
+      throw new Error(`Refusing a hard-linked private file at ${path}`);
+    }
+    if ((details.mode & 0o777) !== 0o600) {
+      throw new Error(`Refusing insecure permissions on ${path}; expected mode 0600`);
+    }
+  } catch (error) {
+    if (errno(error) === "ELOOP") {
+      throw new Error(`Refusing a symbolic link as a private file: ${path}`, { cause: error });
+    }
+    throw error;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 

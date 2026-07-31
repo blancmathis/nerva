@@ -1,7 +1,9 @@
 import { constants as fsConstants } from "node:fs";
+import type { Stats } from "node:fs";
 import {
   access,
   chmod,
+  link,
   lstat,
   mkdir,
   open,
@@ -10,7 +12,7 @@ import {
   rm,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
   doctorCodexPad,
   findTailscaleBinary,
@@ -43,6 +45,8 @@ const LEGACY_APP_SERVER_LAUNCH_AGENT_FILE = `${LEGACY_APP_SERVER_LAUNCH_AGENT_LA
 const DEFAULT_CODEX_BINARY = "/Applications/ChatGPT.app/Contents/Resources/codex";
 const SERVE_HTTPS_PORT = 443;
 const BRIDGE_TARGET = `http://${DEFAULT_BRIDGE_HOST}:${DEFAULT_BRIDGE_PORT}`;
+export const MANAGED_LOG_ROTATION_BYTES = 512 * 1_024;
+export const MANAGED_LOG_ARCHIVE_COUNT = 4;
 
 type FetchLike = typeof globalThis.fetch;
 
@@ -54,6 +58,9 @@ export interface MacSetupDependencies {
   readonly codexBinaryPath?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly uid?: number;
+  /** Filesystem owner expected for Nerva-owned user files. Kept separate from
+   * the launchd GUI-domain uid so tests cannot weaken either boundary. */
+  readonly filesystemUid?: number;
   readonly runCommand?: CommandRunner;
   readonly fetch?: FetchLike;
   readonly now?: () => Date;
@@ -117,6 +124,33 @@ export interface MacSetupPreflight {
   readonly blockers: readonly MacSetupIssue[];
 }
 
+export interface MacUninstallTarget {
+  readonly state: "absent" | "owned" | "blocked";
+  readonly detail: string;
+  readonly path?: string;
+}
+
+export interface MacUninstallInspection {
+  readonly state: "ready" | "blocked";
+  readonly launchAgent: MacUninstallTarget;
+  readonly serve: MacUninstallTarget & {
+    readonly binary?: string;
+    readonly dnsName?: string;
+  };
+  readonly retainedDataRoot: string;
+  readonly retainedRuntime: string;
+}
+
+export interface MacUninstallResult {
+  readonly inspection: MacUninstallInspection;
+  readonly state: "complete" | "partial";
+  readonly launchAgentRemoved: boolean;
+  readonly serveRemoved: boolean;
+  readonly dataRetained: true;
+  readonly logsRetained: true;
+  readonly errors: readonly string[];
+}
+
 interface TailscaleIdentity {
   readonly binary: string;
   readonly dnsName: string;
@@ -126,6 +160,39 @@ interface TailscaleIdentity {
 interface ServeInspection {
   readonly state: "ready" | "available" | "conflict" | "ambiguous";
   readonly detail: string;
+}
+
+interface OwnedLaunchAgentTarget extends MacUninstallTarget {
+  readonly state: "owned";
+  readonly path: string;
+  readonly device: number;
+  readonly inode: number;
+}
+
+interface NonOwnedLaunchAgentTarget extends MacUninstallTarget {
+  readonly state: "absent" | "blocked";
+}
+
+type LaunchAgentInspection = OwnedLaunchAgentTarget | NonOwnedLaunchAgentTarget;
+
+interface ManagedLogFile {
+  readonly path: string;
+  readonly device?: number;
+  readonly inode?: number;
+}
+
+interface ManagedLogRotation {
+  readonly current: ManagedLogFile;
+  readonly archives: readonly ManagedLogFile[];
+  readonly filesystemUid: number;
+}
+
+interface ManagedServeReceipt {
+  readonly version: 1;
+  readonly dnsName: string;
+  readonly httpsPort: typeof SERVE_HTTPS_PORT;
+  readonly target: typeof BRIDGE_TARGET;
+  readonly createdAt: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -138,6 +205,15 @@ async function exists(path: string, mode = fsConstants.F_OK): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function lstatIfPresent(path: string): Promise<Stats | undefined> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (isRecord(error) && error.code === "ENOENT") return undefined;
+    throw error;
   }
 }
 
@@ -156,8 +232,11 @@ function launchAgentXml(input: {
   readonly workingDirectory: string;
   readonly stdoutPath: string;
   readonly stderrPath: string;
-}): string {
+}, options: { readonly includeUmask?: boolean } = {}): string {
   const value = (text: string): string => `<string>${xmlEscape(text)}</string>`;
+  const umask = options.includeUmask === false
+    ? ""
+    : "  <key>Umask</key>\n  <integer>63</integer>\n";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -183,13 +262,67 @@ function launchAgentXml(input: {
   <integer>30</integer>
   <key>ProcessType</key>
   <string>Background</string>
-  <key>StandardOutPath</key>
+${umask}  <key>StandardOutPath</key>
   ${value(input.stdoutPath)}
   <key>StandardErrorPath</key>
   ${value(input.stderrPath)}
 </dict>
 </plist>
 `;
+}
+
+function xmlUnescape(value: string): string {
+  return value
+    .replaceAll("&apos;", "'")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&gt;", ">")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&amp;", "&");
+}
+
+function parseOwnedLaunchAgent(
+  contents: string,
+  homeDirectory: string,
+): {
+  readonly nodeExecutable: string;
+  readonly cliPath: string;
+  readonly workingDirectory: string;
+  readonly stdoutPath: string;
+  readonly stderrPath: string;
+} | undefined {
+  const values = [...contents.matchAll(/<string>([\s\S]*?)<\/string>/gu)]
+    .map((match) => xmlUnescape(match[1] ?? ""));
+  if (values.length !== 8) return undefined;
+  const [label, nodeExecutable, cliPath, start, workingDirectory, processType, stdoutPath, stderrPath] = values;
+  if (
+    label !== LAUNCH_AGENT_LABEL
+    || start !== "start"
+    || processType !== "Background"
+    || !nodeExecutable
+    || !cliPath
+    || !workingDirectory
+    || !isAbsolute(nodeExecutable)
+    || !isAbsolute(workingDirectory)
+    || resolve(workingDirectory) !== workingDirectory
+    || cliPath !== join(workingDirectory, "apps", "bridge", "dist", "cli.js")
+  ) {
+    return undefined;
+  }
+  const runtime = codexPadPaths(homeDirectory).runtime;
+  if (
+    stdoutPath !== join(runtime, "bridge.stdout.log")
+    || stderrPath !== join(runtime, "bridge.stderr.log")
+  ) {
+    return undefined;
+  }
+  const parsed = { nodeExecutable, cliPath, workingDirectory, stdoutPath, stderrPath };
+  // Accept the immediately preceding Nerva-generated plist as owned so users
+  // can safely uninstall without first reinstalling. New installs use Umask
+  // 0077 so launchd-created logs are private.
+  return contents === launchAgentXml(parsed)
+    || contents === launchAgentXml(parsed, { includeUmask: false })
+    ? parsed
+    : undefined;
 }
 
 async function atomicWritePrivate(path: string, contents: string): Promise<boolean> {
@@ -275,16 +408,24 @@ function inspectServeStatus(result: CommandResult, dnsName: string): ServeInspec
   }
   const routeKey = `${dnsName}:${SERVE_HTTPS_PORT}`;
   const route = isRecord(web) ? web[routeKey] : undefined;
+  const tcp = parsed.TCP;
+  if (tcp !== undefined && !isRecord(tcp)) {
+    return { state: "ambiguous", detail: "Tailscale Serve TCP configuration has an unsupported shape." };
+  }
   if (route !== undefined) {
     if (!isRecord(route) || !isRecord(route.Handlers)) {
       return { state: "ambiguous", detail: "The existing HTTPS route cannot be inspected safely." };
     }
     const handlerEntries = Object.entries(route.Handlers);
     const root = route.Handlers["/"];
+    const httpsListener = isRecord(tcp) ? tcp[String(SERVE_HTTPS_PORT)] : undefined;
     if (
       handlerEntries.length === 1
       && isRecord(root)
       && root.Proxy === BRIDGE_TARGET
+      && isRecord(httpsListener)
+      && httpsListener.HTTPS === true
+      && Object.keys(httpsListener).length === 1
     ) {
       return { state: "ready", detail: "The exact Codex Pad Serve route is already configured." };
     }
@@ -294,10 +435,6 @@ function inspectServeStatus(result: CommandResult, dnsName: string): ServeInspec
     };
   }
 
-  const tcp = parsed.TCP;
-  if (tcp !== undefined && !isRecord(tcp)) {
-    return { state: "ambiguous", detail: "Tailscale Serve TCP configuration has an unsupported shape." };
-  }
   if (isRecord(tcp) && (tcp[String(SERVE_HTTPS_PORT)] !== undefined || tcp[routeKey] !== undefined)) {
     return { state: "conflict", detail: `TCP/HTTPS port ${SERVE_HTTPS_PORT} is already configured.` };
   }
@@ -305,6 +442,62 @@ function inspectServeStatus(result: CommandResult, dnsName: string): ServeInspec
     return { state: "ambiguous", detail: "Foreground Serve configuration exists and must be reviewed manually." };
   }
   return { state: "available", detail: "The Codex Pad HTTPS route is available." };
+}
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stableJsonValue(entry)]),
+  );
+}
+
+function unrelatedServeSnapshot(result: CommandResult, dnsName: string): string {
+  if (result.exitCode !== 0) {
+    throw new Error("Tailscale Serve state could not be snapshotted safely.");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("Tailscale Serve state returned unreadable JSON while uninstalling.");
+  }
+  if (parsed === null) return "{}";
+  if (!isRecord(parsed)) throw new Error("Tailscale Serve state has an unsupported shape while uninstalling.");
+  const remaining: Record<string, unknown> = { ...parsed };
+  if (isRecord(parsed.Web)) {
+    const web = { ...parsed.Web };
+    delete web[`${dnsName}:${SERVE_HTTPS_PORT}`];
+    if (Object.keys(web).length === 0) delete remaining.Web;
+    else remaining.Web = web;
+  }
+  if (isRecord(parsed.TCP)) {
+    const tcp = { ...parsed.TCP };
+    const httpsListener = tcp[String(SERVE_HTTPS_PORT)];
+    if (
+      isRecord(httpsListener)
+      && httpsListener.HTTPS === true
+      && Object.keys(httpsListener).length === 1
+    ) {
+      delete tcp[String(SERVE_HTTPS_PORT)];
+    }
+    if (Object.keys(tcp).length === 0) delete remaining.TCP;
+    else remaining.TCP = tcp;
+  }
+  return JSON.stringify(stableJsonValue(remaining));
+}
+
+async function readUnrelatedServeSnapshot(
+  binary: string,
+  dnsName: string,
+  command: CommandRunner,
+): Promise<string> {
+  return unrelatedServeSnapshot(
+    await command(binary, ["serve", "status", "--json"], 10_000),
+    dnsName,
+  );
 }
 
 async function ensurePrivateServe(
@@ -342,14 +535,28 @@ async function ensurePrivateServe(
     identity.dnsName,
   );
   if (after.state !== "ready") {
-    throw new Error(`Tailscale Serve did not report the exact Codex Pad route after setup: ${after.detail}`);
+    const rollback = await command(
+      identity.binary,
+      ["serve", "--bg", `--https=${SERVE_HTTPS_PORT}`, BRIDGE_TARGET, "off"],
+      60_000,
+    );
+    throw new Error(
+      `Tailscale Serve did not report the exact Codex Pad route after setup: ${after.detail} ${rollback.exitCode === 0 ? "The new route was rolled back." : `Rollback failed: ${rollback.stderr.trim() || rollback.stdout.trim() || "command failed"}`}`,
+    );
   }
   const funnelAfter = inspectFunnelStatus(
     await command(identity.binary, ["funnel", "status", "--json"], 10_000),
     targetRoute,
   );
   if (funnelAfter.state !== "disabled") {
-    throw new Error(`Funnel became ambiguous or enabled after Serve setup: ${funnelAfter.detail}`);
+    const rollback = await command(
+      identity.binary,
+      ["serve", "--bg", `--https=${SERVE_HTTPS_PORT}`, BRIDGE_TARGET, "off"],
+      60_000,
+    );
+    throw new Error(
+      `Funnel became ambiguous or enabled after Serve setup: ${funnelAfter.detail} ${rollback.exitCode === 0 ? "The new route was rolled back." : `Rollback failed: ${rollback.stderr.trim() || rollback.stdout.trim() || "command failed"}`}`,
+    );
   }
   return true;
 }
@@ -360,6 +567,553 @@ function launchAgentPath(homeDirectory: string): string {
 
 function legacyAppServerLaunchAgentPath(homeDirectory: string): string {
   return join(homeDirectory, "Library", "LaunchAgents", LEGACY_APP_SERVER_LAUNCH_AGENT_FILE);
+}
+
+function managedServeReceiptPath(homeDirectory: string): string {
+  return join(codexPadPaths(homeDirectory).security, "tailscale-serve-ownership.json");
+}
+
+function parseManagedServeReceipt(value: unknown, dnsName: string): ManagedServeReceipt | undefined {
+  if (!isRecord(value) || Object.keys(value).length !== 5) return undefined;
+  if (
+    value.version !== 1
+    || value.dnsName !== dnsName
+    || value.httpsPort !== SERVE_HTTPS_PORT
+    || value.target !== BRIDGE_TARGET
+    || typeof value.createdAt !== "string"
+    || !Number.isFinite(Date.parse(value.createdAt))
+  ) {
+    return undefined;
+  }
+  return value as unknown as ManagedServeReceipt;
+}
+
+async function inspectManagedServeReceipt(
+  homeDirectory: string,
+  filesystemUid: number,
+  dnsName: string,
+): Promise<"owned" | "absent" | "blocked"> {
+  const path = managedServeReceiptPath(homeDirectory);
+  const metadata = await lstatIfPresent(path);
+  if (metadata === undefined) return "absent";
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || metadata.uid !== filesystemUid
+    || metadata.nlink !== 1
+    || (metadata.mode & 0o777) !== 0o600
+  ) {
+    return "blocked";
+  }
+  try {
+    return parseManagedServeReceipt(JSON.parse(await readFile(path, "utf8")), dnsName) === undefined
+      ? "blocked"
+      : "owned";
+  } catch {
+    return "blocked";
+  }
+}
+
+async function recordManagedServeOwnership(
+  homeDirectory: string,
+  filesystemUid: number,
+  identity: TailscaleIdentity,
+  now: () => Date,
+): Promise<void> {
+  const security = codexPadPaths(homeDirectory).security;
+  const metadata = await lstatIfPresent(security);
+  if (
+    metadata === undefined
+    || !metadata.isDirectory()
+    || metadata.isSymbolicLink()
+    || metadata.uid !== filesystemUid
+  ) {
+    throw new Error(`Refusing unsafe Nerva security directory for Serve ownership: ${security}`);
+  }
+  const receipt: ManagedServeReceipt = {
+    version: 1,
+    dnsName: identity.dnsName,
+    httpsPort: SERVE_HTTPS_PORT,
+    target: BRIDGE_TARGET,
+    createdAt: now().toISOString(),
+  };
+  const path = managedServeReceiptPath(homeDirectory);
+  const existing = await lstatIfPresent(path);
+  if (
+    existing !== undefined
+    && (
+      !existing.isFile()
+      || existing.isSymbolicLink()
+      || existing.uid !== filesystemUid
+      || existing.nlink !== 1
+      || (existing.mode & 0o777) !== 0o600
+    )
+  ) {
+    throw new Error(`Refusing unsafe existing Serve ownership receipt: ${path}`);
+  }
+  await atomicWritePrivate(path, `${JSON.stringify(receipt, null, 2)}\n`);
+}
+
+async function validateManagedLogPath(path: string, uid: number): Promise<Stats | undefined> {
+  const metadata = await lstatIfPresent(path);
+  if (metadata === undefined) return undefined;
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || metadata.nlink !== 1
+    || metadata.uid !== uid
+  ) {
+    throw new Error(`Refusing unsafe managed bridge log path: ${path}`);
+  }
+  return metadata;
+}
+
+async function prepareManagedLogRotations(
+  homeDirectory: string,
+  uid: number,
+): Promise<readonly ManagedLogRotation[]> {
+  const runtime = codexPadPaths(homeDirectory).runtime;
+  const runtimeMetadata = await lstatIfPresent(runtime);
+  if (runtimeMetadata === undefined) return [];
+  if (
+    !runtimeMetadata.isDirectory()
+    || runtimeMetadata.isSymbolicLink()
+    || runtimeMetadata.uid !== uid
+  ) {
+    throw new Error(`Refusing unsafe managed bridge runtime directory: ${runtime}`);
+  }
+  const candidates: Array<ManagedLogRotation & { readonly size: number }> = [];
+  for (const name of ["bridge.stdout.log", "bridge.stderr.log"] as const) {
+    const current = join(runtime, name);
+    const currentMetadata = await validateManagedLogPath(current, uid);
+    const archives = Array.from(
+      { length: MANAGED_LOG_ARCHIVE_COUNT },
+      (_value, index) => `${current}.${index + 1}`,
+    );
+    const archivePlans: ManagedLogFile[] = [];
+    for (const archive of archives) {
+      const metadata = await validateManagedLogPath(archive, uid);
+      archivePlans.push(metadata === undefined
+        ? { path: archive }
+        : { path: archive, device: metadata.dev, inode: metadata.ino });
+    }
+    if (currentMetadata !== undefined) {
+      candidates.push({
+        current: { path: current, device: currentMetadata.dev, inode: currentMetadata.ino },
+        archives: archivePlans,
+        filesystemUid: uid,
+        size: currentMetadata.size,
+      });
+    }
+  }
+  // Rotate stdout and stderr as one evidence generation. This keeps the two
+  // timelines aligned when either stream reaches the bound.
+  return candidates.some((candidate) => candidate.size >= MANAGED_LOG_ROTATION_BYTES)
+    ? candidates.map(({ current, archives, filesystemUid }) => ({ current, archives, filesystemUid }))
+    : [];
+}
+
+async function revalidateManagedLogFile(target: ManagedLogFile, filesystemUid: number): Promise<void> {
+  const metadata = await validateManagedLogPath(target.path, filesystemUid);
+  if (target.device === undefined || target.inode === undefined) {
+    if (metadata !== undefined) throw new Error(`Managed bridge log path appeared during rotation: ${target.path}`);
+    return;
+  }
+  if (metadata === undefined || metadata.dev !== target.device || metadata.ino !== target.inode) {
+    throw new Error(`Managed bridge log path changed before rotation: ${target.path}`);
+  }
+}
+
+async function executeManagedLogRotations(
+  rotations: readonly ManagedLogRotation[],
+): Promise<void> {
+  for (const rotation of rotations) {
+    await revalidateManagedLogFile(rotation.current, rotation.filesystemUid);
+    for (const archive of rotation.archives) {
+      await revalidateManagedLogFile(archive, rotation.filesystemUid);
+    }
+  }
+  const nonce = `${process.pid}-${Date.now()}`;
+  const staged: Array<{
+    readonly source: ManagedLogFile;
+    readonly temporary: string;
+    readonly destination?: string;
+  }> = [];
+  for (const [rotationIndex, rotation] of rotations.entries()) {
+    const sources = [rotation.current, ...rotation.archives];
+    for (const [sourceIndex, source] of sources.entries()) {
+      if (source.device === undefined) continue;
+      const destination = sourceIndex < rotation.archives.length
+        ? rotation.archives[sourceIndex]?.path
+        : undefined;
+      const temporary = `${rotation.current.path}.rotate-${nonce}-${rotationIndex}-${sourceIndex}`;
+      if (await lstatIfPresent(temporary)) {
+        throw new Error(`Managed bridge log staging path already exists: ${temporary}`);
+      }
+      staged.push({
+        source,
+        temporary,
+        ...(destination === undefined ? {} : { destination }),
+      });
+    }
+  }
+
+  const moved: typeof staged = [];
+  try {
+    for (const entry of staged) {
+      await rename(entry.source.path, entry.temporary);
+      const metadata = await lstatIfPresent(entry.temporary);
+      if (
+        metadata === undefined
+        || metadata.dev !== entry.source.device
+        || metadata.ino !== entry.source.inode
+      ) {
+        throw new Error(`Managed bridge log identity changed while staging: ${entry.source.path}`);
+      }
+      await chmod(entry.temporary, 0o600);
+      moved.push(entry);
+    }
+  } catch (error) {
+    for (const entry of moved.toReversed()) {
+      if (await lstatIfPresent(entry.source.path)) continue;
+      await rename(entry.temporary, entry.source.path).catch(() => undefined);
+    }
+    throw error;
+  }
+
+  // Publish each retained generation with a hard link, which fails rather than
+  // overwriting a path that appeared after validation. Keep every staged inode
+  // until the whole two-stream generation is published successfully.
+  for (const entry of staged) {
+    if (entry.destination !== undefined) await link(entry.temporary, entry.destination);
+  }
+  for (const entry of staged) await rm(entry.temporary);
+}
+
+async function inspectLaunchAgentForUninstall(
+  homeDirectory: string,
+  filesystemUid: number,
+): Promise<LaunchAgentInspection> {
+  const path = launchAgentPath(homeDirectory);
+  const parent = dirname(path);
+  const parentMetadata = await lstatIfPresent(parent);
+  if (parentMetadata === undefined) {
+    return { state: "absent", path, detail: "The Nerva LaunchAgent directory does not exist." };
+  }
+  if (
+    !parentMetadata.isDirectory()
+    || parentMetadata.isSymbolicLink()
+    || parentMetadata.uid !== filesystemUid
+  ) {
+    return { state: "blocked", path, detail: `Refusing unsafe LaunchAgent directory: ${parent}` };
+  }
+  const metadata = await lstatIfPresent(path);
+  if (metadata === undefined) {
+    return { state: "absent", path, detail: "The Nerva LaunchAgent is not installed." };
+  }
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || metadata.uid !== filesystemUid
+    || metadata.nlink !== 1
+    || (metadata.mode & 0o777) !== 0o600
+  ) {
+    return { state: "blocked", path, detail: `Refusing unsafe Nerva LaunchAgent path: ${path}` };
+  }
+  const contents = await readFile(path, "utf8");
+  if (parseOwnedLaunchAgent(contents, homeDirectory) === undefined) {
+    return { state: "blocked", path, detail: `Refusing to remove an unrecognized LaunchAgent: ${path}` };
+  }
+  return {
+    state: "owned",
+    path,
+    detail: "The exact Nerva LaunchAgent is installed and can be removed.",
+    device: metadata.dev,
+    inode: metadata.ino,
+  };
+}
+
+async function tailscaleIdentityForUninstall(
+  environment: NodeJS.ProcessEnv,
+  command: CommandRunner,
+): Promise<TailscaleIdentity> {
+  const binary = await findTailscaleBinary(environment);
+  if (binary === undefined) throw new Error("Tailscale is not installed, so its exact Serve state cannot be inspected.");
+  const status = await command(binary, ["status", "--json"], 10_000);
+  if (status.exitCode !== 0) {
+    throw new Error(`Tailscale status is unavailable: ${status.stderr.trim() || "command failed"}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(status.stdout);
+  } catch {
+    throw new Error("Tailscale status returned unreadable JSON.");
+  }
+  if (!isRecord(parsed)) throw new Error("Tailscale status returned an unsupported shape.");
+  const self = isRecord(parsed.Self) ? parsed.Self : undefined;
+  const dnsName = normalizeTailscaleDnsName(typeof self?.DNSName === "string" ? self.DNSName : undefined);
+  if (dnsName === undefined) {
+    throw new Error("Tailscale did not report the Mac's exact MagicDNS name, so Nerva will not change Serve.");
+  }
+  return { binary, dnsName, publicOrigin: `https://${dnsName}` };
+}
+
+async function inspectServeForUninstall(
+  environment: NodeJS.ProcessEnv,
+  command: CommandRunner,
+): Promise<MacUninstallInspection["serve"]> {
+  let identity: TailscaleIdentity;
+  try {
+    identity = await tailscaleIdentityForUninstall(environment, command);
+  } catch (error) {
+    return {
+      state: "blocked",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const targetRoute = `${identity.dnsName}:${SERVE_HTTPS_PORT}`;
+  const funnel = inspectFunnelStatus(
+    await command(identity.binary, ["funnel", "status", "--json"], 10_000),
+    targetRoute,
+  );
+  if (funnel.state !== "disabled") {
+    return {
+      state: "blocked",
+      binary: identity.binary,
+      dnsName: identity.dnsName,
+      path: identity.publicOrigin,
+      detail: `Funnel is not proven disabled for ${targetRoute}: ${funnel.detail}`,
+    };
+  }
+  const serve = inspectServeStatus(
+    await command(identity.binary, ["serve", "status", "--json"], 10_000),
+    identity.dnsName,
+  );
+  if (serve.state === "ready") {
+    return {
+      state: "owned",
+      binary: identity.binary,
+      dnsName: identity.dnsName,
+      path: identity.publicOrigin,
+      detail: "The exact Nerva root Serve route is configured and can be removed.",
+    };
+  }
+  if (serve.state === "available") {
+    return {
+      state: "absent",
+      binary: identity.binary,
+      dnsName: identity.dnsName,
+      path: identity.publicOrigin,
+      detail: "The exact Nerva Serve route is not configured.",
+    };
+  }
+  return {
+    state: "blocked",
+    binary: identity.binary,
+    dnsName: identity.dnsName,
+    path: identity.publicOrigin,
+    detail: serve.detail,
+  };
+}
+
+export async function inspectMacUninstall(
+  dependencies: MacSetupDependencies = {},
+): Promise<MacUninstallInspection> {
+  const input = normalizedDependencies(dependencies);
+  const paths = codexPadPaths(input.homeDirectory);
+  if (input.platform !== "darwin") {
+    const detail = "Nerva's managed background bridge can be uninstalled only on macOS.";
+    return {
+      state: "blocked",
+      launchAgent: { state: "blocked", path: launchAgentPath(input.homeDirectory), detail },
+      serve: { state: "blocked", detail },
+      retainedDataRoot: paths.root,
+      retainedRuntime: paths.runtime,
+    };
+  }
+  const [launchAgentInternal, inspectedServe] = await Promise.all([
+    inspectLaunchAgentForUninstall(input.homeDirectory, input.filesystemUid),
+    inspectServeForUninstall(input.environment, input.command),
+  ]);
+  const launchAgent: MacUninstallTarget = {
+    state: launchAgentInternal.state,
+    detail: launchAgentInternal.detail,
+    ...(launchAgentInternal.path ? { path: launchAgentInternal.path } : {}),
+  };
+  let serve = inspectedServe;
+  if (inspectedServe.state === "owned") {
+    const receipt = inspectedServe.dnsName === undefined
+      ? "blocked"
+      : await inspectManagedServeReceipt(
+        input.homeDirectory,
+        input.filesystemUid,
+        inspectedServe.dnsName,
+      );
+    if (launchAgentInternal.state !== "owned" || receipt !== "owned") {
+      serve = {
+        ...inspectedServe,
+        state: "blocked" as const,
+        detail: receipt === "absent"
+          ? "The route matches Nerva but predates verifiable Serve ownership. It was retained."
+          : "The route matches Nerva, but its ownership receipt or exact LaunchAgent is unsafe. It was retained.",
+      };
+    }
+  }
+  return {
+    state: launchAgent.state === "blocked" || serve.state === "blocked" ? "blocked" : "ready",
+    launchAgent,
+    serve,
+    retainedDataRoot: paths.root,
+    retainedRuntime: paths.runtime,
+  };
+}
+
+function launchAgentWasNotLoaded(result: CommandResult): boolean {
+  return /(?:could not find service|no such process|not loaded)/iu.test(`${result.stderr}\n${result.stdout}`);
+}
+
+async function removeExactServeRoute(
+  homeDirectory: string,
+  filesystemUid: number,
+  environment: NodeJS.ProcessEnv,
+  command: CommandRunner,
+): Promise<boolean> {
+  const before = await inspectServeForUninstall(environment, command);
+  if (before.state === "absent") return false;
+  if (before.state !== "owned" || !before.binary || !before.dnsName) {
+    throw new Error(`Nerva Serve removal is blocked: ${before.detail}`);
+  }
+  const launchAgent = await inspectLaunchAgentForUninstall(homeDirectory, filesystemUid);
+  if (launchAgent.state !== "owned") {
+    throw new Error("Nerva Serve removal is blocked because the exact owned LaunchAgent is not present.");
+  }
+  if (await inspectManagedServeReceipt(homeDirectory, filesystemUid, before.dnsName) !== "owned") {
+    throw new Error("Nerva Serve removal is blocked because its private ownership receipt is absent or unsafe.");
+  }
+  const unrelatedBefore = await readUnrelatedServeSnapshot(before.binary, before.dnsName, command);
+  const removed = await command(
+    before.binary,
+    ["serve", "--bg", `--https=${SERVE_HTTPS_PORT}`, BRIDGE_TARGET, "off"],
+    60_000,
+  );
+  if (removed.exitCode !== 0) {
+    throw new Error(`Could not remove the exact Nerva Serve route: ${removed.stderr.trim() || removed.stdout.trim() || "command failed"}`);
+  }
+  const unrelatedAfter = await readUnrelatedServeSnapshot(before.binary, before.dnsName, command);
+  if (unrelatedAfter !== unrelatedBefore) {
+    throw new Error("An unrelated Tailscale Serve route changed during Nerva removal. No further uninstall actions were attempted; review Serve status manually.");
+  }
+  const after = await inspectServeForUninstall(environment, command);
+  if (after.state !== "absent") {
+    throw new Error(`Tailscale did not confirm removal of the exact Nerva Serve route: ${after.detail}`);
+  }
+  await rm(managedServeReceiptPath(homeDirectory));
+  return true;
+}
+
+async function removeExactLaunchAgent(
+  homeDirectory: string,
+  uid: number,
+  filesystemUid: number,
+  command: CommandRunner,
+): Promise<boolean> {
+  const before = await inspectLaunchAgentForUninstall(homeDirectory, filesystemUid);
+  if (before.state === "absent") return false;
+  if (before.state !== "owned") throw new Error(`Nerva LaunchAgent removal is blocked: ${before.detail}`);
+  const domain = `gui/${uid}`;
+  const bootout = await command("/bin/launchctl", ["bootout", domain, before.path], 10_000);
+  if (bootout.exitCode !== 0 && !launchAgentWasNotLoaded(bootout)) {
+    throw new Error(`Could not stop the exact Nerva LaunchAgent: ${bootout.stderr.trim() || bootout.stdout.trim() || "command failed"}`);
+  }
+  const revalidated = await inspectLaunchAgentForUninstall(homeDirectory, filesystemUid);
+  if (
+    revalidated.state !== "owned"
+    || revalidated.device !== before.device
+    || revalidated.inode !== before.inode
+  ) {
+    throw new Error("The Nerva LaunchAgent changed while uninstalling; the file was retained for manual inspection.");
+  }
+  const quarantine = `${before.path}.uninstall-${process.pid}-${Date.now()}`;
+  if (await lstatIfPresent(quarantine)) {
+    throw new Error(`The Nerva LaunchAgent quarantine path already exists; the plist was retained: ${quarantine}`);
+  }
+  await rename(before.path, quarantine);
+  const quarantined = await lstatIfPresent(quarantine);
+  if (
+    quarantined === undefined
+    || quarantined.dev !== before.device
+    || quarantined.ino !== before.inode
+  ) {
+    if (!(await lstatIfPresent(before.path))) {
+      await rename(quarantine, before.path).catch(() => undefined);
+    }
+    throw new Error("The Nerva LaunchAgent changed during quarantine; no plist was deleted.");
+  }
+  await rm(quarantine);
+  return true;
+}
+
+export async function uninstallMac(
+  dependencies: MacSetupDependencies = {},
+): Promise<MacUninstallResult> {
+  const input = normalizedDependencies(dependencies);
+  if (input.platform !== "darwin") throw new Error("`uninstall:mac` is supported only on macOS.");
+  const inspection = await inspectMacUninstall(dependencies);
+  if (inspection.state === "blocked") {
+    const details = [inspection.launchAgent, inspection.serve]
+      .filter((target) => target.state === "blocked")
+      .map((target) => target.detail)
+      .join(" ");
+    throw new Error(`Mac uninstall is blocked: ${details}`);
+  }
+  let serveRemoved = false;
+  try {
+    serveRemoved = await removeExactServeRoute(
+      input.homeDirectory,
+      input.filesystemUid,
+      input.environment,
+      input.command,
+    );
+  } catch (error) {
+    const after = await inspectServeForUninstall(input.environment, input.command).catch(() => undefined);
+    return {
+      inspection,
+      state: "partial",
+      launchAgentRemoved: false,
+      serveRemoved: after?.state === "absent",
+      dataRetained: true,
+      logsRetained: true,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+  let launchAgentRemoved = false;
+  try {
+    launchAgentRemoved = await removeExactLaunchAgent(
+      input.homeDirectory,
+      input.uid,
+      input.filesystemUid,
+      input.command,
+    );
+  } catch (error) {
+    return {
+      inspection,
+      state: "partial",
+      launchAgentRemoved: false,
+      serveRemoved,
+      dataRetained: true,
+      logsRetained: true,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+  return {
+    inspection,
+    state: "complete",
+    launchAgentRemoved,
+    serveRemoved,
+    dataRetained: true,
+    logsRetained: true,
+    errors: [],
+  };
 }
 
 async function validateCodexBinary(path: string): Promise<void> {
@@ -484,11 +1238,30 @@ async function bootstrapLaunchAgent(
   throw new Error("Unreachable launchd bootstrap retry state.");
 }
 
+async function waitForManagedLogDetachment(
+  command: CommandRunner,
+  rotations: readonly ManagedLogRotation[],
+): Promise<void> {
+  if (rotations.length === 0) return;
+  const paths = rotations.map((rotation) => rotation.current.path);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await command("/usr/sbin/lsof", ["-Fn", "--", ...paths], 10_000);
+    if (result.exitCode === 1 && result.stdout.trim() === "" && result.stderr.trim() === "") return;
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
+      throw new Error(`Could not verify managed bridge log detachment: ${result.stderr.trim() || result.stdout.trim() || "lsof failed"}`);
+    }
+    if (result.exitCode === 0 && result.stdout.trim() === "") return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("The previous Nerva bridge process still has a managed log open; log rotation was cancelled without deleting evidence.");
+}
+
 async function installLaunchAgent(input: {
   readonly homeDirectory: string;
   readonly repositoryRoot: string;
   readonly nodeExecutable: string;
   readonly uid: number;
+  readonly filesystemUid: number;
   readonly command: CommandRunner;
 }): Promise<{ readonly path: string; readonly changed: boolean }> {
   const repositoryRoot = resolve(input.repositoryRoot);
@@ -497,6 +1270,7 @@ async function installLaunchAgent(input: {
   const runtime = codexPadPaths(input.homeDirectory).runtime;
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   await chmod(runtime, 0o700);
+  const logRotations = await prepareManagedLogRotations(input.homeDirectory, input.filesystemUid);
   const path = launchAgentPath(input.homeDirectory);
   const contents = launchAgentXml({
     nodeExecutable: input.nodeExecutable,
@@ -508,7 +1282,26 @@ async function installLaunchAgent(input: {
   const domain = `gui/${input.uid}`;
   const service = `${domain}/${LAUNCH_AGENT_LABEL}`;
   const changed = await atomicWritePrivate(path, contents);
-  await input.command("/bin/launchctl", ["bootout", service], 10_000);
+  const bootout = await input.command("/bin/launchctl", ["bootout", service], 10_000);
+  if (bootout.exitCode !== 0 && !launchAgentWasNotLoaded(bootout)) {
+    throw new Error(`Could not stop the exact Nerva LaunchAgent before log rotation: ${bootout.stderr.trim() || bootout.stdout.trim() || "command failed"}`);
+  }
+  try {
+    await waitForManagedLogDetachment(input.command, logRotations);
+    await executeManagedLogRotations(logRotations);
+  } catch (error) {
+    // Restore the already-installed service when rotation encounters an
+    // unexpected filesystem race. The current log was never truncated: it is
+    // either still at its original path or retained as the first archive.
+    const recovery = await bootstrapLaunchAgent(input.command, domain, path);
+    if (recovery.exitCode !== 0) {
+      throw new Error(
+        `Managed log rotation failed and the exact Nerva LaunchAgent could not be restored: ${recovery.stderr.trim() || recovery.stdout.trim() || "command failed"}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   const bootstrap = await bootstrapLaunchAgent(input.command, domain, path);
   if (bootstrap.exitCode !== 0) {
     throw new Error(`LaunchAgent bootstrap failed: ${bootstrap.stderr.trim() || bootstrap.stdout.trim() || "command failed"}`);
@@ -569,6 +1362,7 @@ function normalizedDependencies(dependencies: MacSetupDependencies): {
   readonly codexBinaryPath: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly uid: number;
+  readonly filesystemUid: number;
   readonly command: CommandRunner;
   readonly fetchImplementation: FetchLike;
   readonly now: () => Date;
@@ -584,6 +1378,7 @@ function normalizedDependencies(dependencies: MacSetupDependencies): {
       ?? DEFAULT_CODEX_BINARY,
     environment: dependencies.environment ?? process.env,
     uid: dependencies.uid ?? process.getuid?.() ?? 0,
+    filesystemUid: dependencies.filesystemUid ?? process.getuid?.() ?? 0,
     command: dependencies.runCommand ?? runCommand,
     fetchImplementation: dependencies.fetch ?? globalThis.fetch,
     now: dependencies.now ?? (() => new Date()),
@@ -663,8 +1458,15 @@ export async function preflightMacSetup(
     }
   }
 
+  // Installation-path safety is the boundary for all command probes. Once it
+  // is established, keep the independent read-only Codex and doctor probes
+  // running even when Tailscale itself contributes a blocker. Otherwise one
+  // offline network prerequisite makes an installed Desktop/standalone CLI
+  // look absent and sends the user toward the wrong repair.
+  const canRunReadOnlyProbes = blockers.length === 0;
+
   let identity: TailscaleIdentity | undefined;
-  if (blockers.length === 0) {
+  if (canRunReadOnlyProbes) {
     try {
       identity = await tailscaleIdentity(input.environment, input.command);
       const targetRoute = `${identity.dnsName}:${SERVE_HTTPS_PORT}`;
@@ -699,13 +1501,13 @@ export async function preflightMacSetup(
     }
   }
 
-  const desktopVersionResult = blockers.length === 0
+  const desktopVersionResult = canRunReadOnlyProbes
     ? await input.command(input.codexBinaryPath, ["--version"], 10_000)
     : undefined;
   const desktopCodexVersion = normalizedCodexVersion(
     desktopVersionResult?.exitCode === 0 ? desktopVersionResult.stdout : undefined,
   );
-  if (blockers.length === 0 && desktopCodexVersion === undefined) {
+  if (canRunReadOnlyProbes && desktopCodexVersion === undefined) {
     blockers.push(setupIssue(
       "desktop-unavailable",
       "Codex Desktop's bundled CLI did not return a readable version.",
@@ -714,14 +1516,14 @@ export async function preflightMacSetup(
   }
   const codexHome = input.environment.CODEX_HOME?.trim() || join(input.homeDirectory, ".codex");
   const standalonePath = join(codexHome, "packages", "standalone", "current", "codex");
-  const standaloneVersionResult = blockers.length === 0
+  const standaloneVersionResult = canRunReadOnlyProbes
     ? await input.command(standalonePath, ["--version"], 10_000)
     : undefined;
   const standaloneCodexVersion = normalizedCodexVersion(
     standaloneVersionResult?.exitCode === 0 ? standaloneVersionResult.stdout : undefined,
   );
 
-  const doctor = blockers.length === 0
+  const doctor = canRunReadOnlyProbes
     ? await (dependencies.inspectDoctor
         ? dependencies.inspectDoctor(dependencies)
         : doctorCodexPad({
@@ -811,13 +1613,51 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
   await validateLaunchAgentDestination(input.homeDirectory, input.repositoryRoot);
   const identity = await tailscaleIdentity(input.environment, input.command);
   const serveChanged = await ensurePrivateServe(identity, input.command);
-  const launchAgent = await installLaunchAgent({
-    homeDirectory: input.homeDirectory,
-    repositoryRoot: input.repositoryRoot,
-    nodeExecutable: input.nodeExecutable,
-    uid: input.uid,
-    command: input.command,
-  });
+  if (serveChanged) {
+    try {
+      await recordManagedServeOwnership(
+        input.homeDirectory,
+        input.filesystemUid,
+        identity,
+        input.now,
+      );
+    } catch (error) {
+      const rollback = await input.command(
+        identity.binary,
+        ["serve", "--bg", `--https=${SERVE_HTTPS_PORT}`, BRIDGE_TARGET, "off"],
+        60_000,
+      );
+      const rollbackDetail = rollback.exitCode === 0
+        ? "The newly created route was rolled back."
+        : `Route rollback also failed: ${rollback.stderr.trim() || rollback.stdout.trim() || "command failed"}`;
+      throw new Error(`Could not record private ownership of the new Nerva Serve route. ${rollbackDetail} ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  let launchAgent: Awaited<ReturnType<typeof installLaunchAgent>>;
+  try {
+    launchAgent = await installLaunchAgent({
+      homeDirectory: input.homeDirectory,
+      repositoryRoot: input.repositoryRoot,
+      nodeExecutable: input.nodeExecutable,
+      uid: input.uid,
+      filesystemUid: input.filesystemUid,
+      command: input.command,
+    });
+  } catch (error) {
+    if (!serveChanged) throw error;
+    const rollback = await input.command(
+      identity.binary,
+      ["serve", "--bg", `--https=${SERVE_HTTPS_PORT}`, BRIDGE_TARGET, "off"],
+      60_000,
+    );
+    if (rollback.exitCode === 0) {
+      await rm(managedServeReceiptPath(input.homeDirectory)).catch(() => undefined);
+    }
+    throw new Error(
+      `The Nerva LaunchAgent could not be installed. ${rollback.exitCode === 0 ? "The newly created Serve route was rolled back." : `Serve rollback failed: ${rollback.stderr.trim() || rollback.stdout.trim() || "command failed"}`} ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
   const healthy = await (dependencies.waitForBridgeHealth ?? bridgeHealthy)(input.fetchImplementation);
   if (!healthy) {
     throw new Error(`The background bridge did not become healthy. Inspect ${join(setup.paths.runtime, "bridge.stderr.log")}.`);

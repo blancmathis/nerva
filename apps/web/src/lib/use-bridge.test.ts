@@ -17,6 +17,9 @@ import { fixtureSessions } from "../../e2e/fixture-data";
 function snapshot(seq: number, bridgeInstanceId = "7d35b974-62cc-4db8-9b4e-5a8dc8a4d812"): BridgeSnapshot {
   return {
     bridgeInstanceId,
+    bridgeVersion: "0.1.0",
+    buildRevision: "0000000000000000",
+    apiContractVersion: 1,
     seq,
     capturedAt: new Date(seq).toISOString(),
     theme: "dark",

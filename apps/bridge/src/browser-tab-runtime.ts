@@ -62,6 +62,97 @@ interface PageState {
   readonly href: string;
 }
 
+export interface SiteQaReceiptPageState {
+  readonly scrollX: number;
+  readonly scrollY: number;
+  readonly title: string;
+  readonly href: string;
+}
+
+type SiteQaPrivacy = "public" | "private" | "password" | "otp" | "payment" | "token" | "email" | "phone";
+
+const SITE_QA_PRIVACY_VALUES = new Set<SiteQaPrivacy>([
+  "public",
+  "private",
+  "password",
+  "otp",
+  "payment",
+  "token",
+  "email",
+  "phone",
+]);
+
+const SITE_QA_METADATA_FIELDS = [
+  "role",
+  "accessibleName",
+  "label",
+  "placeholder",
+  "testId",
+  "stableId",
+  "inputType",
+  "tagName",
+] as const satisfies readonly (keyof SiteQaTargetDescriptor)[];
+
+function normalizedBoundedText(value: string, maximum = 160): string {
+  return value
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, maximum);
+}
+
+function sensitiveTextPrivacy(value: string): Exclude<SiteQaPrivacy, "public"> | null {
+  const text = normalizedBoundedText(value, 1_000);
+  if (text === "") return null;
+  if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu.test(text)) return "email";
+  if (/\b(?:\d[ -]*?){13,19}\b/u.test(text)) return "payment";
+  if (/^\+?[\d ().-]{7,20}$/u.test(text) && (text.match(/\d/gu)?.length ?? 0) >= 7) return "phone";
+  if (/^\d{4,8}$/u.test(text)) return "otp";
+  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/iu.test(text)) return "token";
+  if (/\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_-]{12,}\b/u.test(text)) return "token";
+  if (/\b(?:bearer|authorization)\s+[A-Za-z0-9._~+/-]{12,}=*\b/iu.test(text)) return "token";
+  if (/\b(?:password|passwd|pwd)\b\s*[:=]\s*\S+/iu.test(text)) return "password";
+  if (/\b(?:api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret|private[ _-]?key|secret)\b\s*[:=]\s*\S+/iu.test(text)) return "token";
+  if (/\b[A-Za-z0-9_+/=-]{32,}\b/u.test(text)) return "token";
+  return null;
+}
+
+export function sanitizeSiteQaDisplayText(value: string): string {
+  let text = normalizedBoundedText(value);
+  if (text === "") return text;
+  text = text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu, "[redacted email]");
+  text = text.replace(/\b(?:\d[ -]*?){13,19}\b/gu, "[redacted number]");
+  text = text.replace(/\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_-]{12,}\b/gu, "[redacted sensitive text]");
+  text = text.replace(/\b(?:bearer|authorization)\s+[A-Za-z0-9._~+/-]{12,}=*\b/giu, "[redacted sensitive text]");
+  text = text.replace(/\b(?:password|passwd|pwd|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret|private[ _-]?key|secret)\b\s*[:=]\s*\S+/giu, "[redacted sensitive text]");
+  text = text.replace(/\b[A-Za-z0-9_+/=-]{32,}\b/gu, "[redacted sensitive text]");
+  return normalizedBoundedText(text);
+}
+
+function safeSiteQaPrivacy(value: string): SiteQaPrivacy {
+  return SITE_QA_PRIVACY_VALUES.has(value as SiteQaPrivacy) ? value as SiteQaPrivacy : "private";
+}
+
+function sanitizeSiteQaTarget(target: SiteQaTargetDescriptor): SiteQaTargetDescriptor {
+  const sanitized: SiteQaTargetDescriptor = { ...target };
+  let containedSensitiveMetadata = false;
+  for (const field of SITE_QA_METADATA_FIELDS) {
+    const value = target[field];
+    if (typeof value !== "string") continue;
+    const next = sanitizeSiteQaDisplayText(value);
+    containedSensitiveMetadata ||= next !== normalizedBoundedText(value);
+    Object.assign(sanitized, { [field]: next === "" ? null : next });
+  }
+  const ambiguityReason = containedSensitiveMetadata
+    ? "sensitive-name" as const
+    : sanitized.ambiguityReason;
+  const confidence = ambiguityReason !== null && sanitized.confidence === "high"
+    ? "medium" as const
+    : sanitized.confidence;
+  return SiteQaTargetDescriptorSchema.parse({ ...sanitized, ambiguityReason, confidence });
+}
+
 const MAX_FRAME_BASE64 = 16 * 1024 * 1024;
 const MAX_FRAME_PIXELS = 8_192 * 8_192;
 const PAGE_STATE_EXPRESSION = `(() => ({
@@ -85,7 +176,7 @@ const TARGET_DESCRIPTOR_EXPRESSION = (action: SiteQaRecordedAction): string => {
       : "null";
   return `(() => {
     const raw = ${source};
-    if (!(raw instanceof Element)) return { target: null, privacy: "public" };
+    if (!(raw instanceof Element)) return { target: null, privacy: "private" };
     const element = raw.closest('button,a,input,textarea,select,[role],[data-testid],[contenteditable="true"]') || raw;
     const clean = (value) => {
       const text = String(value || "").normalize("NFC").replace(/[\\u0000-\\u001f\\u007f]+/gu, " ").replace(/\\s+/gu, " ").trim();
@@ -134,13 +225,14 @@ const TARGET_DESCRIPTOR_EXPRESSION = (action: SiteQaRecordedAction): string => {
       : tagName === "input" || tagName === "textarea" || element.isContentEditable ? "input"
       : tagName === "iframe" ? "frame" : clean(element.textContent) ? "text" : "unknown";
     const confidence = testId || (role && accessibleName) || label ? "high" : stableId || role || accessibleName ? "medium" : "coordinate-only";
+    const ambiguityReason = confidence === "coordinate-only" ? (tagName === "iframe" ? "cross-origin-frame" : "missing-semantics") : null;
     return {
       target: {
         kind, role, accessibleName, label, placeholder, testId, stableId, inputType, tagName,
         relativePoint, viewportPoint, confidence,
-        ambiguityReason: confidence === "coordinate-only" ? (tagName === "iframe" ? "cross-origin-frame" : "missing-semantics") : null,
+        ambiguityReason,
       },
-      privacy,
+      privacy: ambiguityReason === null ? privacy : "private",
     };
   })()`;
 };
@@ -151,18 +243,27 @@ function boundedNumber(value: unknown, fallback: number, minimum: number, maximu
     : fallback;
 }
 
-function safeVisibleUrl(value: string, fallback: string): string {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return fallback;
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return fallback;
+export function safeSiteQaVisibleUrl(value: string, fallback: string): string {
+  for (const candidate of [value, fallback]) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      url.username = "";
+      url.password = "";
+      url.search = "";
+      url.hash = "";
+      url.pathname = url.pathname.split("/").map((segment) => {
+        if (segment === "") return segment;
+        let decoded = segment;
+        try { decoded = decodeURIComponent(segment); } catch { /* Keep the encoded segment. */ }
+        return sensitiveTextPrivacy(decoded) === null ? segment : "%5Bredacted%5D";
+      }).join("/");
+      return url.toString();
+    } catch {
+      // Try the already-known tab URL before returning a non-sensitive sentinel.
+    }
   }
+  return "https://invalid.invalid/";
 }
 
 export function safeBrowserNavigationUrl(value: string): string {
@@ -187,10 +288,10 @@ function pageState(value: unknown, fallbackTitle: string, fallbackUrl: string): 
     deviceScaleFactor: boundedNumber(source.deviceScaleFactor, 1, 1, 4),
     scrollX: Math.round(boundedNumber(source.scrollX, 0, 0, 10_000_000)),
     scrollY: Math.round(boundedNumber(source.scrollY, 0, 0, 10_000_000)),
-    title: typeof source.title === "string" && source.title.trim() !== ""
-      ? source.title.normalize("NFC").replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, 160)
-      : fallbackTitle,
-    href: safeVisibleUrl(typeof source.href === "string" ? source.href : fallbackUrl, fallbackUrl),
+    title: sanitizeSiteQaDisplayText(typeof source.title === "string" && source.title.trim() !== ""
+      ? source.title
+      : fallbackTitle) || "Untitled page",
+    href: safeSiteQaVisibleUrl(typeof source.href === "string" ? source.href : fallbackUrl, fallbackUrl),
   };
 }
 
@@ -341,25 +442,79 @@ function safeReceiptAction(action: SiteQaRecordedAction): SiteQaActionReceipt["a
   return action;
 }
 
-function inputEvidence(action: SiteQaRecordedAction, privacy: string): SiteQaInputEvidence {
-  if (action.type !== "insertText") return { mode: "none" };
+function privateInputEvidence(privacy: Exclude<SiteQaPrivacy, "public">): SiteQaInputEvidence {
   if (privacy === "password") return { mode: "placeholder", value: "{PASSWORD_1}" };
   if (privacy === "otp") return { mode: "placeholder", value: "{OTP_1}" };
   if (privacy === "payment") return { mode: "placeholder", value: "{PAYMENT_1}" };
   if (privacy === "token") return { mode: "placeholder", value: "{TOKEN_1}" };
   if (privacy === "email") return { mode: "placeholder", value: "{TEST_EMAIL_1}" };
   if (privacy === "phone") return { mode: "placeholder", value: "{TEST_PHONE_1}" };
-  if (privacy !== "public") return { mode: "placeholder", value: "{PRIVATE_VALUE_1}" };
+  return { mode: "placeholder", value: "{PRIVATE_VALUE_1}" };
+}
+
+function inputEvidence(action: SiteQaRecordedAction, privacy: SiteQaPrivacy, uncertainTarget: boolean): SiteQaInputEvidence {
+  if (action.type !== "insertText") return { mode: "none" };
+  const contentPrivacy = sensitiveTextPrivacy(action.text);
+  if (contentPrivacy !== null) return privateInputEvidence(contentPrivacy);
+  if (privacy !== "public") return privateInputEvidence(privacy);
+  if (uncertainTarget) return privateInputEvidence("private");
   return { mode: "literal", value: action.text };
 }
 
-function descriptorResult(value: unknown): { readonly target: SiteQaTargetDescriptor | null; readonly privacy: string } {
+interface DescribedSiteQaTarget {
+  readonly target: SiteQaTargetDescriptor | null;
+  readonly privacy: string;
+}
+
+export function safeSiteQaReceiptEvidence(
+  action: SiteQaRecordedAction,
+  described: DescribedSiteQaTarget,
+): Pick<SiteQaActionReceipt, "target" | "input" | "confidence"> {
+  const target = described.target === null ? null : sanitizeSiteQaTarget(described.target);
+  const uncertainTarget = target === null
+    || target.confidence === "coordinate-only"
+    || target.ambiguityReason !== null;
+  const confidence: SiteQaActionReceipt["confidence"] = target === null
+    ? "coordinate-only"
+    : target.ambiguityReason !== null && target.confidence === "high"
+      ? "medium"
+      : target.confidence;
+  const normalizedTarget = target === null || target.confidence === confidence
+    ? target
+    : SiteQaTargetDescriptorSchema.parse({ ...target, confidence });
+  return {
+    target: normalizedTarget,
+    input: inputEvidence(action, safeSiteQaPrivacy(described.privacy), uncertainTarget),
+    confidence,
+  };
+}
+
+function descriptorResult(value: unknown): DescribedSiteQaTarget {
   const source = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
   const parsed = source.target === null ? null : SiteQaTargetDescriptorSchema.safeParse(source.target);
+  const target = parsed === null || !parsed.success ? null : sanitizeSiteQaTarget(parsed.data);
   return {
-    target: parsed === null || !parsed.success ? null : parsed.data,
-    privacy: typeof source.privacy === "string" ? source.privacy : "private",
+    target,
+    privacy: target === null
+      ? "private"
+      : typeof source.privacy === "string"
+        ? safeSiteQaPrivacy(source.privacy)
+        : "private",
   };
+}
+
+export function classifySiteQaActionOutcome(
+  action: SiteQaRecordedAction,
+  before: SiteQaReceiptPageState,
+  after: SiteQaReceiptPageState,
+): SiteQaActionReceipt["outcome"] {
+  const observableStateChanged = before.href !== after.href
+    || before.title !== after.title
+    || before.scrollX !== after.scrollX
+    || before.scrollY !== after.scrollY;
+  if (observableStateChanged) return "confirmed";
+  if (action.type === "scroll") return "no-visible-change";
+  return "dispatched";
 }
 
 export class VerifiedBrowserTabRuntime implements BrowserTabRuntime {
@@ -401,7 +556,7 @@ export class VerifiedBrowserTabRuntime implements BrowserTabRuntime {
       const beforeState = beforeStateResult === null
         ? null
         : pageState(evaluatedValue(beforeStateResult), resolved.tab.title, resolved.tab.url);
-      let described: { readonly target: SiteQaTargetDescriptor | null; readonly privacy: string } = { target: null, privacy: "public" };
+      let described: DescribedSiteQaTarget = { target: null, privacy: "private" };
       if (recorded && action !== null && action.type !== "navigate" && action.type !== "back" && action.type !== "forward" && action.type !== "reload" && action.type !== "key") {
         const describedResult = await session.send("Runtime.evaluate", {
           expression: TARGET_DESCRIPTOR_EXPRESSION(action),
@@ -447,20 +602,20 @@ export class VerifiedBrowserTabRuntime implements BrowserTabRuntime {
         capturedAt: Date.now(),
       };
       if (!recorded || action === null || beforeState === null) return { frame, receipt: null };
-      const confidence = described.target?.confidence ?? "high";
+      const receiptEvidence = safeSiteQaReceiptEvidence(action as SiteQaRecordedAction, described);
       const receipt = SiteQaActionReceiptSchema.parse({
         receiptId: randomUUID(),
         threadId,
         tabId,
         action: safeReceiptAction(action as SiteQaRecordedAction),
-        target: described.target,
-        input: inputEvidence(action as SiteQaRecordedAction, described.privacy),
-        beforeUrl: safeVisibleUrl(beforeState.href, resolved.tab.url),
+        target: receiptEvidence.target,
+        input: receiptEvidence.input,
+        beforeUrl: safeSiteQaVisibleUrl(beforeState.href, resolved.tab.url),
         afterUrl: frame.url,
         beforeScroll: { x: beforeState.scrollX, y: beforeState.scrollY },
         afterScroll: { x: frame.scrollX, y: frame.scrollY },
-        outcome: "applied",
-        confidence,
+        outcome: classifySiteQaActionOutcome(action as SiteQaRecordedAction, beforeState, state),
+        confidence: receiptEvidence.confidence,
         recordedAt: frame.capturedAt,
       });
       return { frame, receipt };

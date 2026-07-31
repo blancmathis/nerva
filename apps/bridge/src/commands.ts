@@ -9,6 +9,10 @@ import type { SessionsService } from "./sessions.js";
 
 const SECRET_LIKE_PROMPT = /(?:\bsk-[A-Za-z0-9_-]{20,}\b|\bgh[pousr]_[A-Za-z0-9]{20,}\b|\bAKIA[0-9A-Z]{16}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/u;
 
+function skillsSuffix(skillNames: readonly string[]): string {
+  return `\n\nUse the following skills for this task: ${skillNames.join(", ")}.`;
+}
+
 export interface LibraryCommandDefinition {
   libraryId: string;
   label: string;
@@ -145,8 +149,32 @@ export class ProtocolCommandExecutor {
           this.#heldMicroActions.delete(command.gestureId!);
           return result(snapshot.sequence, command.expectedThreadId, "Mac Dictation stopped");
         }
+        const skillNames = command.skillNames ?? [];
+        if (skillNames.length > 0) {
+          const enabledSkills = new Set(
+            this.state.capabilities().skills
+              .filter((skill) => skill.enabled)
+              .map((skill) => skill.id),
+          );
+          const unavailable = skillNames.find((skillName) => !enabledSkills.has(skillName));
+          if (unavailable !== undefined) {
+            throw new ProtocolCommandError(
+              "CAPABILITY_UNAVAILABLE",
+              `The selected skill ${unavailable} is no longer available for this exact task.`,
+              409,
+            );
+          }
+        }
+        const mutationSnapshot = skillNames.length === 0
+          ? this.state.current()
+          : await this.state.appendTextToComposer(
+              command.expectedSequence,
+              command.expectedThreadId,
+              command.slot,
+              skillsSuffix(skillNames),
+            );
         const snapshot = await this.state.invokeActionSlot(
-          command.expectedSequence,
+          mutationSnapshot.sequence,
           command.expectedThreadId,
           command.slot,
           command.actionSlot,
@@ -341,6 +369,25 @@ export class ProtocolCommandExecutor {
           initialInstructionConfirmed
             ? "New Codex task created"
             : "New Codex task created; initial instruction delivery was not confirmed",
+        );
+      }
+      case "attachCaptureFiles": {
+        const target = this.state.assertExactTarget(command.expectedSequence, command.targetThreadId, true);
+        const snapshot = await this.state.attachFilesToComposer(
+          command.expectedSequence,
+          command.targetThreadId,
+          target.slot,
+          command.files.map((file) => ({
+            expectedThreadId: command.targetThreadId,
+            fileName: file.fileName,
+            mimeType: file.mimeType,
+            dataBase64: file.dataBase64,
+          })),
+        );
+        return result(
+          snapshot.sequence,
+          command.targetThreadId,
+          `${command.files.length} Capture Inbox file${command.files.length === 1 ? "" : "s"} attached to the exact Codex composer`,
         );
       }
       case "sendSketch": {

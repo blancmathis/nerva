@@ -252,6 +252,11 @@ interface ExportPreview {
   lockedInstruction: string | null;
   boardId: string;
   checkpointId: string;
+  sourceSceneJson: string;
+  deliverySceneJson: string;
+  diagramJson: string | null;
+  background: BackgroundMode;
+  camera: CanvasView;
   package: DrawingBoardExportPackage;
 }
 
@@ -324,24 +329,17 @@ function useContainedDialog({
       }
       if (event.key !== "Tab") return;
       const focusable = Array.from(currentDialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE));
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (!first || !last) {
+      if (focusable.length === 0) {
         event.preventDefault();
         currentDialog.focus();
         return;
       }
-      const focused = document.activeElement;
-      if (!currentDialog.contains(focused)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && (focused === first || focused === currentDialog)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (focused === last || focused === currentDialog)) {
-        event.preventDefault();
-        first.focus();
-      }
+      event.preventDefault();
+      const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
+      const nextIndex = currentIndex < 0
+        ? event.shiftKey ? focusable.length - 1 : 0
+        : (currentIndex + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+      focusable[nextIndex]!.focus();
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -835,6 +833,7 @@ export function DrawingStudio({
   });
   const [canvasRevision, setCanvasRevision] = useState(0);
   const [draftReady, setDraftReady] = useState(false);
+  const [draftRecoveryRequired, setDraftRecoveryRequired] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [keepMessage, setKeepMessage] = useState<string | null>(null);
   const [localSending, setLocalSending] = useState(false);
@@ -859,6 +858,7 @@ export function DrawingStudio({
   const [reconcilingDelivery, setReconcilingDelivery] = useState(false);
   const [availableDiagrams, setAvailableDiagrams] = useState<readonly DiagramDocument[]>([]);
   const [incomingDiagram, setIncomingDiagram] = useState<DiagramDocument | null>(null);
+  const [diagramConflictOpen, setDiagramConflictOpen] = useState(false);
   const [diagramDirty, setDiagramDirty] = useState(false);
   const [diagramSyncing, setDiagramSyncing] = useState(false);
   const [diagramMessage, setDiagramMessage] = useState<string | null>(null);
@@ -877,8 +877,12 @@ export function DrawingStudio({
   const studioDialogRef = useRef<HTMLElement | null>(null);
   const clearDialogRef = useRef<HTMLElement | null>(null);
   const importDialogRef = useRef<HTMLElement | null>(null);
+  const diagramConflictDialogRef = useRef<HTMLElement | null>(null);
+  const boardsDialogRef = useRef<HTMLElement | null>(null);
+  const diagramPickerDialogRef = useRef<HTMLElement | null>(null);
   const clearCancelRef = useRef<HTMLButtonElement | null>(null);
   const importCancelRef = useRef<HTMLButtonElement | null>(null);
+  const diagramConflictCancelRef = useRef<HTMLButtonElement | null>(null);
   const wasOpenRef = useRef(false);
   const drawInteractionRef = useRef<DrawInteraction | null>(null);
   const selectionGestureRef = useRef<SelectionGesture | null>(null);
@@ -931,7 +935,7 @@ export function DrawingStudio({
 
   useContainedDialog({
     active: open,
-    suspended: clearPending || importSourceOpen,
+    suspended: clearPending || importSourceOpen || diagramConflictOpen || boardsOpen || diagramPickerOpen,
     dialogRef: studioDialogRef,
     initialFocusRef: canvasRef,
     escapeAllowed: pendingDelivery === null,
@@ -955,6 +959,28 @@ export function DrawingStudio({
     restoreFallbackRef: canvasRef,
     escapeAllowed: true,
     onEscape: () => setClearPending(false),
+  });
+  useContainedDialog({
+    active: diagramConflictOpen,
+    dialogRef: diagramConflictDialogRef,
+    initialFocusRef: diagramConflictCancelRef,
+    restoreFallbackRef: canvasRef,
+    escapeAllowed: true,
+    onEscape: () => setDiagramConflictOpen(false),
+  });
+  useContainedDialog({
+    active: boardsOpen,
+    dialogRef: boardsDialogRef,
+    restoreFallbackRef: canvasRef,
+    escapeAllowed: true,
+    onEscape: () => setBoardsOpen(false),
+  });
+  useContainedDialog({
+    active: diagramPickerOpen,
+    dialogRef: diagramPickerDialogRef,
+    restoreFallbackRef: canvasRef,
+    escapeAllowed: true,
+    onEscape: () => setDiagramPickerOpen(false),
   });
 
   const scene = history.present;
@@ -994,6 +1020,7 @@ export function DrawingStudio({
     color,
     size,
     diagram,
+    diagramDirty,
     view,
     boardId,
   });
@@ -1006,6 +1033,7 @@ export function DrawingStudio({
     color,
     size,
     diagram,
+    diagramDirty,
     view,
     boardId,
   };
@@ -1033,6 +1061,8 @@ export function DrawingStudio({
         background: sceneToSave.background.mode,
         pencilOnly: latest.pencilOnly,
         diagramJson: latest.diagram ? JSON.stringify(latest.diagram) : null,
+        diagramDirty: latest.diagramDirty,
+        diagramBaseRevision: latest.diagram?.revision ?? null,
         camera: latest.view,
         boardId: latest.boardId,
       });
@@ -1045,7 +1075,12 @@ export function DrawingStudio({
   sceneRef.current = scene;
   diagramRef.current = diagram;
   const currentSending = sending || localSending;
-  const editorLocked = readOnly || pendingDelivery !== null;
+  const editorLocked = readOnly
+    || draftRecoveryRequired
+    || pendingDelivery !== null
+    || previewBusy
+    || localSending
+    || sendAfterBuild;
   const pendingDeliveryMatchesTarget = pendingDelivery === null || Boolean(
     displayedTarget
     && pendingDelivery.expectedBridgeInstanceId === displayedTarget.bridgeInstanceId
@@ -1095,7 +1130,7 @@ export function DrawingStudio({
 
   const discardDeliveredDraft = useCallback(async (
     threadId: string,
-    checkpoint?: { checkpointId: string; scope: DrawingExportScope; imageNames: readonly string[] },
+    checkpoint?: { checkpointId: string; scope: DrawingExportScope; imageNames: readonly string[]; commandId?: string },
   ) => {
     draftPersistenceBlockedRef.current = true;
     setDraftReady(false);
@@ -1106,6 +1141,7 @@ export function DrawingStudio({
         checkpointId: retained.checkpointId,
         scope: retained.scope,
         imageNames: retained.images.map((image) => image.fileName),
+        commandId: retained.commandId,
       } : null);
       await (resolvedCheckpoint
         ? checkpointAndFinishDrawingBoard(threadId, {
@@ -1114,7 +1150,7 @@ export function DrawingStudio({
           status: "sent",
           scope: resolvedCheckpoint.scope,
           imageNames: resolvedCheckpoint.imageNames,
-        })
+        }, resolvedCheckpoint.commandId)
         : deleteDrawingDraft(threadId));
     });
   }, [enqueueDraftMutation, resetPointerState]);
@@ -1178,6 +1214,7 @@ export function DrawingStudio({
       dispatchDiagramHistory({ type: "reset", diagram: null });
       setInstruction("");
       setDraftReady(false);
+      setDraftRecoveryRequired(false);
       setView(INITIAL_VIEW);
       setBoardId(createUuidV4());
       setSavedBoards([]);
@@ -1188,6 +1225,7 @@ export function DrawingStudio({
       setDisplayedTarget(target ? { ...target } : null);
       setAvailableDiagrams([]);
       setIncomingDiagram(null);
+      setDiagramConflictOpen(false);
       setDiagramDirty(false);
       setDiagramSyncing(false);
       setDiagramMessage(null);
@@ -1269,6 +1307,9 @@ export function DrawingStudio({
         let restoredDiagram: DiagramDocument | null = null;
         setAvailableDiagrams(publishedDiagrams);
         if (draft) {
+          const recoveryWarning = "recoveryWarning" in draft && typeof draft.recoveryWarning === "string"
+            ? draft.recoveryWarning
+            : null;
           restoredScene = deserializeScene(draft.scene);
           restoredInstruction = draft.instruction;
           if (draft.diagramJson) {
@@ -1282,11 +1323,17 @@ export function DrawingStudio({
           dispatchHistory({ type: "reset", scene: restoredScene });
           setInstruction(restoredInstruction);
           setPencilOnly(draft.pencilOnly);
-          if ("boardId" in draft && typeof draft.boardId === "string") setBoardId(draft.boardId);
+          if (recoveryWarning) {
+            setBoardId(createUuidV4());
+          } else if ("boardId" in draft && typeof draft.boardId === "string") {
+            setBoardId(draft.boardId);
+          }
           if ("camera" in draft && draft.camera) setView(draft.camera);
-          setDraftMessage(draft.savedWorkingCopy
-            ? "Saved Drawing opened as an independent local working copy"
-            : "Draft restored on this iPad");
+          setDraftMessage(recoveryWarning
+            ? `${recoveryWarning} Available content was recovered into a new working board; the original remains in Boards.`
+            : draft.savedWorkingCopy
+              ? "Saved Drawing opened as an independent local working copy"
+              : "Draft restored on this iPad");
         } else {
           restoredScene = freshHistory().present;
           restoredInstruction = "";
@@ -1354,7 +1401,27 @@ export function DrawingStudio({
           setSelectionTransactions({ past: [], future: [] });
           if (latestPublished && latestIsUnseen) setIncomingDiagram(latestPublished);
         }
-        setDiagramDirty(false);
+        const persistedDiagramDirty = Boolean(
+          draft
+          && "diagramDirty" in draft
+          && draft.diagramDirty === true,
+        );
+        const persistedBaseRevision = draft && "diagramBaseRevision" in draft
+          ? draft.diagramBaseRevision
+          : null;
+        const restoredDiagramDirty = Boolean(
+          restoredDiagram
+          && draft
+          && !draft.savedWorkingCopy
+          && persistedDiagramDirty
+          && (persistedBaseRevision === null
+            || persistedBaseRevision === undefined
+            || persistedBaseRevision === restoredDiagram.revision),
+        );
+        setDiagramDirty(restoredDiagramDirty);
+        if (restoredDiagramDirty && restoredDiagram) {
+          setDiagramMessage(`Unsynced iPad edits restored from revision ${restoredDiagram.revision}`);
+        }
 
         const binding = storedDelivery;
         if (!binding || !isCurrentGeneration()) return;
@@ -1375,20 +1442,23 @@ export function DrawingStudio({
       })
       .catch(() => {
         if (!isCurrentGeneration()) return;
+        draftPersistenceBlockedRef.current = true;
+        setDraftRecoveryRequired(true);
         dispatchHistory({ type: "reset", scene: freshHistory().present });
         setInstruction("");
         setDraftMessage(storedDelivery
           ? "Previous sketch delivery is unresolved and its exact draft is unavailable"
-          : "Local draft unavailable");
+          : "The local board could not be decoded. Its stored data was not overwritten.");
+        setLocalError("Start a new working board to preserve the unreadable original in Boards.");
         if (storedDelivery) void reconcileDelivery(storedDelivery);
       })
       .finally(() => {
         if (isCurrentGeneration() && !draftPersistenceBlockedRef.current) {
           setDraftReady(true);
-          void listDrawingBoards(displayedTarget.threadId).then((boards) => {
-            if (isCurrentGeneration()) setSavedBoards(boards);
-          });
         }
+        void listDrawingBoards(displayedTarget.threadId).then((boards) => {
+          if (isCurrentGeneration()) setSavedBoards(boards);
+        });
       });
     return () => {
       active = false;
@@ -1402,6 +1472,7 @@ export function DrawingStudio({
     setDiagramDirty(false);
     setDiagramMessage(`Revision ${next.revision} from ${next.lastEditedBy === "codex" ? "Codex" : "this iPad"} loaded`);
     setIncomingDiagram(null);
+    setDiagramConflictOpen(false);
     setDiagramPickerOpen(false);
     setSelectedDiagramNodeId(next.nodes[0]?.id ?? null);
     setConnectTargetNodeId("");
@@ -1598,6 +1669,8 @@ export function DrawingStudio({
             background: sceneToSave.background.mode,
             pencilOnly,
             diagramJson: diagram ? JSON.stringify(diagram) : null,
+            diagramDirty,
+            diagramBaseRevision: diagram?.revision ?? null,
             camera: viewRef.current,
             boardId,
           });
@@ -1607,7 +1680,7 @@ export function DrawingStudio({
         if (announce) setDraftMessage("Draft could not be saved");
       }
     },
-    [boardId, diagram, displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
+    [boardId, diagram, diagramDirty, displayedTarget, draftReady, enqueueDraftMutation, instruction, pencilOnly],
   );
 
   useEffect(() => {
@@ -2248,17 +2321,92 @@ export function DrawingStudio({
     selectionPreviewRef.current = null;
     setSelectionPreview(null);
     setSelectionTransactions({ past: [], future: [] });
-    sceneRef.current = applySceneOperation(sceneRef.current, { type: "clear" });
+    const clearedScene = applySceneOperation(sceneRef.current, { type: "clear" });
+    const nextBoardId = createUuidV4();
+    const generation = studioGenerationRef.current;
+    sceneRef.current = clearedScene;
     dispatchHistory({ type: "commit", operation: { type: "clear" } });
     setInstruction("");
     setExportPreview(null);
+    setBoardId(nextBoardId);
     setClearPending(false);
-    setDraftMessage("New page");
+    setLocalError(null);
+    setDraftMessage("Preparing a clean page…");
     if (displayedTarget) {
       const threadId = displayedTarget.threadId;
-      void enqueueDraftMutation(() => deleteDrawingDraft(threadId));
+      draftPersistenceBlockedRef.current = true;
+      setDraftReady(false);
+      void enqueueDraftMutation(async () => {
+        // This is the Clear barrier: queued writes finish first, then the old
+        // unsent board is removed (sent history is retained), and only the new
+        // identity receives the blank scene.
+        await deleteDrawingDraft(threadId);
+        await saveDrawingDraft(threadId, {
+          boardId: nextBoardId,
+          scene: serializeScene(clearedScene),
+          instruction: "",
+          background: clearedScene.background.mode,
+          pencilOnly,
+          diagramJson: null,
+          diagramDirty: false,
+          diagramBaseRevision: null,
+          camera: viewRef.current,
+        });
+      }).then(async () => {
+        if (generation !== studioGenerationRef.current) return;
+        draftPersistenceBlockedRef.current = false;
+        setDraftReady(true);
+        setDraftMessage("New page");
+        setSavedBoards(await listDrawingBoards(threadId));
+      }).catch(() => {
+        if (generation !== studioGenerationRef.current) return;
+        setDraftRecoveryRequired(true);
+        setLocalError("The cleared page could not be saved. The previous board was not overwritten.");
+      });
     }
-  }, [displayedTarget, enqueueDraftMutation]);
+  }, [displayedTarget, enqueueDraftMutation, pencilOnly]);
+
+  const startFreshAfterRecovery = useCallback(() => {
+    if (!displayedTarget || !isExactDrawingTarget(displayedTarget)) return;
+    const generation = studioGenerationRef.current;
+    const nextBoardId = createUuidV4();
+    const freshScene = freshHistory().present;
+    setDraftReady(false);
+    draftPersistenceBlockedRef.current = true;
+    setLocalError(null);
+    setDraftMessage("Preparing a recoverable new board…");
+    setBoardId(nextBoardId);
+    sceneRef.current = freshScene;
+    dispatchHistory({ type: "reset", scene: freshScene });
+    dispatchDiagramHistory({ type: "reset", diagram: null });
+    diagramRef.current = null;
+    setDiagramDirty(false);
+    setInstruction("");
+    setSelection(new Set());
+    void enqueueDraftMutation(async () => {
+      await saveDrawingDraft(displayedTarget.threadId, {
+        boardId: nextBoardId,
+        scene: serializeScene(freshScene),
+        instruction: "",
+        background: freshScene.background.mode,
+        pencilOnly,
+        diagramJson: null,
+        diagramDirty: false,
+        diagramBaseRevision: null,
+        camera: INITIAL_VIEW,
+      });
+    }).then(async () => {
+      if (generation !== studioGenerationRef.current) return;
+      draftPersistenceBlockedRef.current = false;
+      setDraftRecoveryRequired(false);
+      setDraftReady(true);
+      setDraftMessage("New board ready · unreadable original preserved in Boards");
+      setSavedBoards(await listDrawingBoards(displayedTarget.threadId));
+    }).catch(() => {
+      if (generation !== studioGenerationRef.current) return;
+      setLocalError("A new board could not be saved. The original remains untouched.");
+    });
+  }, [displayedTarget, enqueueDraftMutation, pencilOnly]);
 
   const buildPreview = useCallback(async () => {
     if (!hasContent || previewBusy) return;
@@ -2284,12 +2432,16 @@ export function DrawingStudio({
         exportDiagram = synced;
       }
       const checkpointId = retained?.checkpointId ?? createUuidV4();
+      const sourceSceneSnapshot = sceneRef.current;
+      const sourceSceneJson = serializeScene(sourceSceneSnapshot);
+      const deliverySceneSnapshot = mergeDiagramIntoScene(sourceSceneSnapshot, exportDiagram);
+      const deliverySceneJson = serializeScene(deliverySceneSnapshot);
       const exported = retained ? {
         scope: retained.scope,
         images: retained.images,
         manifest: retained.manifest,
       } satisfies DrawingBoardExportPackage : await exportDrawingBoard({
-        scene: mergeDiagramIntoScene(sceneRef.current, exportDiagram),
+        scene: deliverySceneSnapshot,
         scope: exportScope,
         selectedBounds: selectedExportBounds,
         composerAttachmentMaxImages,
@@ -2306,6 +2458,11 @@ export function DrawingStudio({
         lockedInstruction: pendingDelivery ? instruction : null,
         boardId: retained?.boardId ?? boardId,
         checkpointId,
+        sourceSceneJson,
+        deliverySceneJson,
+        diagramJson: exportDiagram ? JSON.stringify(exportDiagram) : null,
+        background: sourceSceneSnapshot.background.mode,
+        camera: { ...viewRef.current },
         package: exported,
       };
       setPreviewBusy(false);
@@ -2342,8 +2499,11 @@ export function DrawingStudio({
     setLocalSending(true);
     setLocalError(null);
     try {
-      if (diagramRef.current && diagramDirty) {
-        setLocalError("The diagram changed after this package was prepared. Prepare the linked images again before sending.");
+      const currentDeliverySceneJson = serializeScene(
+        mergeDiagramIntoScene(sceneRef.current, diagramRef.current),
+      );
+      if (currentDeliverySceneJson !== exportPreview.deliverySceneJson) {
+        setLocalError("The board changed after this package was prepared. Prepare the linked images again before sending.");
         setExportPreview(null);
         return;
       }
@@ -2368,9 +2528,7 @@ export function DrawingStudio({
         }
       }
 
-      const serializedScene = serializeScene(
-        mergeDiagramIntoScene(scene, diagramRef.current),
-      );
+      const serializedScene = exportPreview.deliverySceneJson;
       const identity = await createDrawingDeliveryIdentity(serializedScene, deliveryInstruction);
       if (binding && !bindingMatchesDrawingDraft(binding, identity)) {
         setLocalError("The exact pending draft changed. A fresh transfer ID is blocked until its outcome is known.");
@@ -2379,12 +2537,16 @@ export function DrawingStudio({
 
       if (!binding) {
         await saveDrawingDraft(displayedTarget.threadId, {
-          scene: serializeScene(scene),
+          scene: exportPreview.sourceSceneJson,
           instruction: deliveryInstruction,
-          background: scene.background.mode,
+          background: exportPreview.background,
           pencilOnly,
-          diagramJson: diagramRef.current ? JSON.stringify(diagramRef.current) : null,
-          camera: view,
+          diagramJson: exportPreview.diagramJson,
+          diagramDirty: false,
+          diagramBaseRevision: exportPreview.diagramJson
+            ? DiagramDocumentSchema.parse(JSON.parse(exportPreview.diagramJson)).revision
+            : null,
+          camera: exportPreview.camera,
           boardId: exportPreview.boardId,
         });
         setInstruction(deliveryInstruction);
@@ -2436,7 +2598,7 @@ export function DrawingStudio({
         images: exportPreview.package.images,
         manifest: exportPreview.package.manifest,
         scene: JSON.parse(serializedScene) as unknown,
-        background: scene.background.mode,
+        background: exportPreview.background,
       });
       if (result && drawingDeliveryIsUnresolved(result)) {
         if (result.ok) {
@@ -2459,6 +2621,7 @@ export function DrawingStudio({
         checkpointId: exportPreview.checkpointId,
         scope: exportPreview.package.scope,
         imageNames: exportPreview.package.images.map((image) => image.fileName),
+        commandId: binding.commandId,
       });
       clearDeliveryBinding(binding.threadId);
       setDraftMessage("Sketch attached to the Mac composer");
@@ -2484,7 +2647,6 @@ export function DrawingStudio({
     clearDeliveryBinding,
     discardDeliveredDraft,
     displayedTarget,
-    diagramDirty,
     exportPreview,
     instruction,
     onSend,
@@ -2492,9 +2654,7 @@ export function DrawingStudio({
     pendingDelivery,
     pendingDeliveryMatchesTarget,
     reconcileDelivery,
-    scene,
     sendGuard.allowed,
-    view,
   ]);
 
   useEffect(() => {
@@ -2610,12 +2770,20 @@ export function DrawingStudio({
       setSelectionPreview(null);
       if (restored.diagramJson) {
         const parsed = DiagramDocumentSchema.safeParse(JSON.parse(restored.diagramJson));
-        dispatchDiagramHistory({ type: "reset", diagram: parsed.success ? parsed.data : null });
+        const restoredDiagram = parsed.success ? parsed.data : null;
+        dispatchDiagramHistory({ type: "reset", diagram: restoredDiagram });
+        diagramRef.current = restoredDiagram;
+        setDiagramDirty(Boolean(restoredDiagram && restored.diagramDirty));
       } else {
         dispatchDiagramHistory({ type: "reset", diagram: null });
+        diagramRef.current = null;
+        setDiagramDirty(false);
       }
+      setSavedBoards(await listDrawingBoards(displayedTarget.threadId));
       setBoardsOpen(false);
-      setDraftMessage("Sent board reopened for a new revision");
+      setDraftMessage(savedBoard.checkpoints.length > 0
+        ? "Sent board reopened for a new revision"
+        : "Local board restored on this iPad");
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : "The board could not be opened.");
     }
@@ -3028,7 +3196,9 @@ export function DrawingStudio({
               <button
                 className="drawing-diagram-update"
                 type="button"
-                onClick={() => openPublishedDiagram(incomingDiagram)}
+                onClick={() => diagramDirty
+                  ? setDiagramConflictOpen(true)
+                  : openPublishedDiagram(incomingDiagram)}
               >
                 <span aria-hidden="true"><DrawingIcon name="refresh" /></span>
                 <span>
@@ -3326,7 +3496,11 @@ export function DrawingStudio({
           <p className={localError || targetChanged ? "is-error" : ""} aria-live="polite">
             {statusText ?? "Send attaches the image to the Mac composer without submitting it. Add instructions afterward with Dictation."}
           </p>
-          {pendingDelivery !== null && !pendingDeliveryRetryable ? (
+          {draftRecoveryRequired ? (
+            <button className="drawing-review-button" type="button" onClick={startFreshAfterRecovery}>
+              Start a new board safely
+            </button>
+          ) : pendingDelivery !== null && !pendingDeliveryRetryable ? (
             <button
               className="drawing-review-button"
               type="button"
@@ -3426,16 +3600,21 @@ export function DrawingStudio({
 
       {boardsOpen && (
         <div className="drawing-overlay" role="presentation">
-          <section className="drawing-boards-sheet" role="dialog" aria-modal="true" aria-labelledby="drawing-boards-title">
+          <section ref={boardsDialogRef} className="drawing-boards-sheet" role="dialog" aria-modal="true" aria-labelledby="drawing-boards-title" tabIndex={-1}>
             <header>
               <span><small>COLLABORATIVE HISTORY</small><h3 id="drawing-boards-title">Boards</h3></span>
               <button type="button" onClick={() => setBoardsOpen(false)} aria-label="Close boards"><DrawingIcon name="close" /></button>
             </header>
-            <p>Sent boards stay available here. Reopen one to continue from its latest checkpoint.</p>
+            <p>Every local and sent board stays available here. Reopen one without losing the current board.</p>
             <div className="drawing-boards-sheet__list">
               {savedBoards.map((savedBoard) => (
                 <button key={savedBoard.boardId} type="button" onClick={() => void openSavedBoard(savedBoard)}>
-                  <span><strong>{savedBoard.title}</strong><small>{savedBoard.checkpoints.length} sent checkpoint{savedBoard.checkpoints.length === 1 ? "" : "s"}</small></span>
+                  <span>
+                    <strong>{savedBoard.title}</strong>
+                    <small>{savedBoard.checkpoints.length === 0
+                      ? "Local draft"
+                      : `${savedBoard.checkpoints.length} sent checkpoint${savedBoard.checkpoints.length === 1 ? "" : "s"}`}</small>
+                  </span>
                   <time>{new Date(savedBoard.updatedAt).toLocaleDateString()}</time>
                 </button>
               ))}
@@ -3453,6 +3632,20 @@ export function DrawingStudio({
             <div>
               <button ref={clearCancelRef} type="button" onClick={() => setClearPending(false)}>Keep drawing</button>
               <button type="button" className="is-destructive" onClick={confirmClear}>Clear page</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {diagramConflictOpen && incomingDiagram && (
+        <div className="drawing-overlay" role="presentation">
+          <section ref={diagramConflictDialogRef} className="drawing-confirm" role="alertdialog" aria-modal="true" aria-labelledby="diagram-conflict-title" tabIndex={-1}>
+            <span className="drawing-confirm__mark is-import" aria-hidden="true"><DrawingIcon name="refresh" /></span>
+            <h3 id="diagram-conflict-title">Choose the graph revision</h3>
+            <p>Your iPad has unsynced structural edits. Keep them, or replace only the structured graph with Codex revision {incomingDiagram.revision}. Pencil ink and imported images stay on this board.</p>
+            <div>
+              <button ref={diagramConflictCancelRef} type="button" onClick={() => setDiagramConflictOpen(false)}>Keep iPad edits</button>
+              <button type="button" className="is-destructive" onClick={() => openPublishedDiagram(incomingDiagram)}>Use Codex revision</button>
             </div>
           </section>
         </div>
@@ -3476,7 +3669,7 @@ export function DrawingStudio({
 
       {diagramPickerOpen && (
         <div className="drawing-overlay" role="presentation">
-          <section className="drawing-diagram-picker" role="dialog" aria-modal="true" aria-labelledby="diagram-picker-title">
+          <section ref={diagramPickerDialogRef} className="drawing-diagram-picker" role="dialog" aria-modal="true" aria-labelledby="diagram-picker-title" tabIndex={-1}>
             <header>
               <span>
                 <small>EXACT TASK · {displayedTarget?.threadId.slice(-8) ?? "UNBOUND"}</small>

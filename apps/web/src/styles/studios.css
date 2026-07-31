@@ -2745,4 +2745,9 @@
   .cp-app-content .review-studio button {
     min-height: 44px;
   }
+
+  .cp-browser-site__inks button {
+    width: 44px;
+    min-height: 44px;
+  }
 }

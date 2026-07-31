@@ -13,6 +13,7 @@ export type SlotStatus =
 export type ConnectionPhase =
   | "connecting"
   | "online"
+  | "update-required"
   | "reconnecting"
   | "offline"
   | "pairing";
@@ -105,6 +106,9 @@ export interface BridgeCapabilities {
 
 export interface BridgeSnapshot {
   readonly bridgeInstanceId: string;
+  readonly bridgeVersion: string | null;
+  readonly buildRevision: string | null;
+  readonly apiContractVersion: number | null;
   readonly codexVersion?: string | null;
   readonly seq: number;
   readonly capturedAt: string;

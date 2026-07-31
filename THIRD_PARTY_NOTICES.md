@@ -28,7 +28,7 @@ Versions and SPDX expressions below are the exact resolutions in
 | `ajv` | `8.20.0` | `MIT` | Copyright 2015-2021 Evgeny Poberezkin; [ajv-validator/ajv](https://github.com/ajv-validator/ajv) | Validate exact generated Codex request schemas during compatibility attestation. |
 | `@fastify/static` | `10.1.2` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-static](https://github.com/fastify/fastify-static) | Serve the built local PWA. |
 | `@fastify/websocket` | `11.3.0` | `MIT` | Copyright 2017-present The Fastify team; [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket) | Authenticated snapshot and event transport. |
-| `fastify` | `5.10.0` | `MIT` | Copyright 2016-present The Fastify team; [fastify/fastify](https://github.com/fastify/fastify) | Loopback HTTP bridge and API routing. |
+| `fastify` | `5.11.0` | `MIT` | Copyright 2016-present The Fastify team; [fastify/fastify](https://github.com/fastify/fastify) | Loopback HTTP bridge and API routing. |
 | `idb` | `8.0.3` | `ISC` | Copyright 2016 Jake Archibald; [jakearchibald/idb](https://github.com/jakearchibald/idb) | IndexedDB persistence in the PWA. |
 | `jsqr` | `1.4.0` | `Apache-2.0` | jsQR contributors; [cozmo/jsQR](https://github.com/cozmo/jsQR) | Decode the short-lived pairing QR inside an already installed PWA. |
 | `perfect-freehand` | `1.2.3` | `MIT` | Copyright 2021 Stephen Ruiz Ltd; [steveruizok/perfect-freehand](https://github.com/steveruizok/perfect-freehand) | Pressure-sensitive pen and highlighter stroke outlines. |

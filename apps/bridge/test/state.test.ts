@@ -261,7 +261,7 @@ describe("BridgeStateService stale snapshots", () => {
       })),
       listPendingApprovals: vi.fn(() => []),
     } as unknown as ThreadTransport;
-    const service = new BridgeStateService({ adapter, transport });
+    const service = new BridgeStateService({ adapter, transport, skillsRefreshIntervalMs: 0 });
     await service.refresh();
 
     const backgroundRefresh = service.refresh();
@@ -272,6 +272,65 @@ describe("BridgeStateService stale snapshots", () => {
     expect(adapter.refresh).toHaveBeenCalledTimes(3);
     releaseSkills?.();
     await backgroundRefresh;
+  });
+
+  it("bounds task and Skills catalog reads while invalidating immediately on task change", async () => {
+    let now = 1_000;
+    let selectedThreadId = THREAD_ID;
+    const adapter = {
+      refresh: vi.fn(async () => nativeState(false, false, null, selectedThreadId)),
+      close: vi.fn(),
+    } as unknown as CodexDesktopAdapter;
+    const transport = {
+      health: vi.fn(async () => ({
+        mode: "injected-test-transport" as const,
+        connected: true,
+        initialized: true,
+        selectedThreadId,
+        localImageSteerVerified: false,
+        multiImageInputVerified: false,
+        desktopOwnershipVerified: true,
+        serverUserAgent: "test",
+        queuedSketches: 0,
+      })),
+      threadRead: vi.fn(async (threadId: string) => ({
+        threadId,
+        status: "idle" as const,
+        activeTurnId: null,
+        cwd: `/tmp/${threadId}`,
+        refreshedAt: new Date(now).toISOString(),
+        raw: {},
+      })),
+      listSkills: vi.fn(async () => []),
+      listModels: vi.fn(async () => []),
+      listPendingApprovals: vi.fn(() => []),
+    } as unknown as ThreadTransport;
+    const service = new BridgeStateService({
+      adapter,
+      transport,
+      now: () => now,
+      skillsRefreshIntervalMs: 10_000,
+    });
+
+    await service.refresh();
+    now = 5_000;
+    await service.refresh();
+    expect(transport.threadRead).toHaveBeenCalledTimes(1);
+    expect(transport.listSkills).toHaveBeenCalledTimes(1);
+
+    selectedThreadId = OTHER_THREAD_ID;
+    await service.refresh();
+    expect(transport.threadRead).toHaveBeenCalledTimes(2);
+    expect(transport.listSkills).toHaveBeenCalledTimes(2);
+
+    now = 14_999;
+    await service.refresh();
+    expect(transport.threadRead).toHaveBeenCalledTimes(2);
+    now = 15_000;
+    await service.refresh();
+    expect(transport.threadRead).toHaveBeenCalledTimes(3);
+    expect(transport.listSkills).toHaveBeenCalledTimes(3);
+    expect(transport.listModels).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the global skill catalog when the selected Desktop task is not readable yet", async () => {
@@ -658,9 +717,13 @@ describe("BridgeStateService stale snapshots", () => {
   it("keeps Drawing attachment available while the managed app-server is offline", async () => {
     const native = nativeState(false);
     const attachImageToComposer = vi.fn(async () => native);
+    const appendTextToComposer = vi.fn(async () => native);
+    const attachFilesToComposer = vi.fn(async () => native);
     const adapter = {
       refresh: vi.fn(async () => native),
       attachImageToComposer,
+      appendTextToComposer,
+      attachFilesToComposer,
       close: vi.fn(),
     } as unknown as CodexDesktopAdapter;
     const transport = {
@@ -679,7 +742,7 @@ describe("BridgeStateService stale snapshots", () => {
       clearSelectedThread: vi.fn(),
     } as unknown as ThreadTransport;
     const service = new BridgeStateService({ adapter, transport });
-    await service.refresh();
+    const snapshot = await service.refresh();
 
     expect(service.capabilities()).toMatchObject({ drawing: true, review: false });
     expect(service.capabilities().commands).toContain("sendSketch");
@@ -693,6 +756,36 @@ describe("BridgeStateService stale snapshots", () => {
       expectedThreadId: THREAD_ID,
       fileName: "Codex Pad Drawing.png",
       pngBase64: expect.stringMatching(/^iVBOR/u),
+    });
+    await service.appendTextToComposer(
+      snapshot.sequence,
+      THREAD_ID,
+      0,
+      "\n\nUse the following skills for this task: github:github.",
+    );
+    expect(appendTextToComposer).toHaveBeenCalledWith({
+      expectedThreadId: THREAD_ID,
+      text: "\n\nUse the following skills for this task: github:github.",
+    });
+    await service.attachFilesToComposer(
+      service.current().sequence,
+      THREAD_ID,
+      0,
+      [{
+        expectedThreadId: THREAD_ID,
+        fileName: "context.txt",
+        mimeType: "text/plain",
+        dataBase64: "aGVsbG8=",
+      }],
+    );
+    expect(attachFilesToComposer).toHaveBeenCalledWith({
+      expectedThreadId: THREAD_ID,
+      files: [{
+        expectedThreadId: THREAD_ID,
+        fileName: "context.txt",
+        mimeType: "text/plain",
+        dataBase64: "aGVsbG8=",
+      }],
     });
   });
 

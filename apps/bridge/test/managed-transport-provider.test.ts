@@ -189,6 +189,7 @@ describe("ReconnectingManagedTransport", () => {
 
   it("backs failed connection attempts off exponentially without a timer loop", async () => {
     let now = 0;
+    const logger = vi.fn();
     const connect = vi.spyOn(AppServerClient, "connectManaged")
       .mockRejectedValue(new Error("managed daemon unavailable"));
     const transport = new ReconnectingManagedTransport({
@@ -196,6 +197,7 @@ describe("ReconnectingManagedTransport", () => {
       random: () => 1,
       retryDelayMs: 100,
       retryMaxDelayMs: 400,
+      logger,
     });
 
     const firstHealth = await transport.health();
@@ -229,15 +231,19 @@ describe("ReconnectingManagedTransport", () => {
     now = 700;
     await transport.health();
     expect(connect).toHaveBeenCalledTimes(4);
+    expect(logger).toHaveBeenCalledTimes(1);
+    expect(logger).toHaveBeenCalledWith("Managed app-server connection failed (UNKNOWN)");
   });
 
   it("resets the failure count after success and uses the initial delay after disconnect", async () => {
     let now = 0;
+    const logger = vi.fn();
     const firstClient = fakeManagedClient();
     const secondClient = fakeManagedClient();
     const connect = vi.spyOn(AppServerClient, "connectManaged")
       .mockRejectedValueOnce(new Error("first attempt failed"))
       .mockResolvedValueOnce(firstClient.connection)
+      .mockRejectedValueOnce(new Error("second failure after recovery"))
       .mockResolvedValueOnce(secondClient.connection);
     const transport = new ReconnectingManagedTransport({
       now: () => now,
@@ -245,6 +251,7 @@ describe("ReconnectingManagedTransport", () => {
       retryDelayMs: 100,
       retryMaxDelayMs: 800,
       ownershipVerifier: verifiedOwnership(),
+      logger,
     });
 
     await transport.health();
@@ -258,8 +265,66 @@ describe("ReconnectingManagedTransport", () => {
     expect(connect).toHaveBeenCalledTimes(2);
 
     now = 200;
-    await expect(transport.health()).resolves.toMatchObject({ connected: true });
+    await expect(transport.health()).resolves.toMatchObject({ connected: false });
     expect(connect).toHaveBeenCalledTimes(3);
+    expect(logger.mock.calls.filter(([message]) => (
+      message === "Managed app-server connection failed (UNKNOWN)"
+    ))).toHaveLength(2);
+
+    now = 400;
+    await expect(transport.health()).resolves.toMatchObject({ connected: true });
+    expect(connect).toHaveBeenCalledTimes(4);
+  });
+
+  it("bounds full ownership probes during frequent read-only health polling", async () => {
+    let now = 1_000;
+    const managed = fakeManagedClient();
+    const verifier = verifiedOwnership();
+    vi.spyOn(AppServerClient, "connectManaged").mockResolvedValueOnce(managed.connection);
+    const transport = new ReconnectingManagedTransport({
+      now: () => now,
+      ownershipRefreshIntervalMs: 10_000,
+      ownershipVerifier: verifier,
+    });
+
+    await expect(transport.health()).resolves.toMatchObject({
+      connected: true,
+      desktopOwnershipVerified: true,
+    });
+    expect(verifier.verify).toHaveBeenCalledTimes(1);
+
+    now = 5_000;
+    await transport.health();
+    now = 10_999;
+    await transport.health();
+    expect(verifier.verify).toHaveBeenCalledTimes(1);
+
+    now = 11_000;
+    await transport.health();
+    expect(verifier.verify).toHaveBeenCalledTimes(2);
+    await transport.close();
+  });
+
+  it("still performs a fresh ownership probe immediately before every app-server write", async () => {
+    let now = 1_000;
+    const managed = fakeManagedClient();
+    const verifier = verifiedOwnership();
+    vi.spyOn(AppServerClient, "connectManaged").mockResolvedValueOnce(managed.connection);
+    const transport = new ReconnectingManagedTransport({
+      now: () => now,
+      ownershipRefreshIntervalMs: 60_000,
+      ownershipVerifier: verifier,
+    });
+
+    await transport.health();
+    now = 2_000;
+    await transport.health();
+    expect(verifier.verify).toHaveBeenCalledTimes(1);
+
+    await transport.newThread({ commandId: "command-strict-write-probe-0001" });
+    expect(verifier.verify).toHaveBeenCalledTimes(2);
+    expect(managed.streamWrites).toEqual(["thread/start"]);
+    await transport.close();
   });
 
   it("rejects task creation and exact-target selection when ownership is unattested", async () => {
@@ -343,7 +408,10 @@ describe("ReconnectingManagedTransport", () => {
   it("revokes an issued topology token before stream write when a concurrent health probe begins", async () => {
     const managed = fakeManagedClient();
     vi.spyOn(AppServerClient, "connectManaged").mockResolvedValueOnce(managed.connection);
-    const transport = new ReconnectingManagedTransport({ ownershipVerifier: verifiedOwnership() });
+    const transport = new ReconnectingManagedTransport({
+      ownershipRefreshIntervalMs: 0,
+      ownershipVerifier: verifiedOwnership(),
+    });
     await expect(transport.health()).resolves.toMatchObject({
       connected: true,
       desktopOwnershipVerified: true,

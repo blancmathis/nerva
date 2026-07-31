@@ -10,7 +10,7 @@ Touch, Pencil and camera make the iPad useful before the user knows which Codex 
 
 Persistently assigning an Inbox item to a Session also creates unnecessary administration. The product need is simpler: enter the intended Session first, open the shared Inbox there, and choose the context to use now. The same reference may be useful in several Sessions.
 
-Treating captures as an outbound queue would be unsafe. Reconnecting the Mac could deliver stale or sensitive material without a current user decision, and the existing Codex transports do not prove arbitrary file attachments.
+Treating captures as an outbound queue would be unsafe. Reconnecting the Mac could deliver stale or sensitive material without a current user decision. Generic file attachment therefore remains an explicit, exact-target composer action rather than Inbox state.
 
 ## Decision
 
@@ -19,7 +19,7 @@ Nerva provides a separate Capture Inbox page. Photo, document-photo, sketch, arb
 The page has two contexts:
 
 - from Home, it captures, searches, previews and deletes neutral local items;
-- from a Session, it displays that exact Session temporarily and allows compatible selected items to be copied into its local Review through `Use in session`.
+- from a Session, it displays that exact Session temporarily and offers two disjoint actions: compatible notes/images are copied into its local Review through `Use in session`; file-only batches use `Attach to composer`.
 
 The Session context is navigation state, not Inbox data. No destination, routing label, prepared mark or usage history is persisted on a capture. The same capture remains available for every Session after use.
 
@@ -34,7 +34,7 @@ For currently compatible media, `Use in session` prepares the exact thread's loc
 - the originals remain untouched in Capture Inbox;
 - the user still previews and confirms the existing Review send separately.
 
-Non-image files remain local because the current Codex Review transport does not prove them. Nerva refuses the preparation instead of dropping, flattening or pretending to attach unsupported content.
+File-only selections do not enter Review. Nerva accepts one to four files, validates safe unique names and bounded MIME/base64 data, enforces 8 MiB per file and 16 MiB for the batch, and asks the bridge to paste the batch into the exact visible Codex composer. The native boundary revalidates the Session before and during confirmation, dispatches one paste event, waits for every unique attachment label, and contains no submit primitive. A rejected, partial, or unknown result preserves the originals and selection; reconnect never retries it.
 
 Capture Inbox has no Voice action and never requests microphone access. Session Dictation and Site QA checkpoint voice are independent features with separate authority and storage.
 
@@ -47,7 +47,7 @@ The IndexedDB schema version 2 removes legacy destination and Review-preparation
 - IndexedDB unavailable or quota/limit exceeded: the capture is rejected with an actionable local-storage error.
 - A selected Session disappears before use: the exact contextual target is no longer available and no substitute Session is chosen.
 - One selected item changes or disappears before a Review transaction: the operation fails rather than partially applying a batch.
-- Unsupported Review media: all originals remain in Capture Inbox.
+- Mixed notes/images/files, oversized file batches, unavailable exact target, or failed/uncertain native attachment: all originals remain in Capture Inbox and no fallback destination is chosen.
 - Mac offline, bridge restart or reconnect: no delivery runs.
 
 ## Consequences
@@ -57,7 +57,7 @@ The IndexedDB schema version 2 removes legacy destination and Review-preparation
 - There is no Inbox assignment workflow to maintain or misunderstand.
 - A capture can be reused across multiple Sessions without duplication or movement.
 - Local-only material does not synchronize to a replacement iPad.
-- Supporting arbitrary-file delivery later requires a new verified Codex transport and a separate product decision; it cannot be inferred from local storage support.
+- Generic-file attachment is deliberately narrower than a file-delivery queue: it is bounded, exact-composer, user-triggered, non-submitting, and has no persisted replay state.
 
 ## Rejected alternatives
 
@@ -65,5 +65,5 @@ The IndexedDB schema version 2 removes legacy destination and Review-preparation
 - Auto-use in the active Mac Session: active focus is not destination authority.
 - Auto-send after reconnect: violates explicit user control and can disclose stale context.
 - Keep a Voice recorder in the Inbox: not needed for this capture library and duplicates better-defined voice surfaces.
-- Convert documents into screenshots: loses the original and falsely claims transport support.
+- Convert documents into screenshots: loses the original and bypasses the explicit generic-file attachment contract.
 - Store the Inbox in Mac Product State: contradicts the confirmed local-only product boundary and expands sensitive synchronization.

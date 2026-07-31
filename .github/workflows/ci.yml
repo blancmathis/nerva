@@ -16,7 +16,7 @@ jobs:
   ci:
     name: Node.js 22
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -53,6 +53,12 @@ jobs:
       - name: Test iPad PWA flows
         run: npm run test:e2e
 
+      - name: Test the production bridge boundary
+        run: npm run test:e2e:bridge
+
+      - name: Verify public screenshots
+        run: npm run screenshots:check
+
       - name: Audit release artifacts
         run: npm run audit:release
 
@@ -61,3 +67,66 @@ jobs:
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics-${{ github.run_attempt }}
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  macos-setup-check:
+    name: macOS setup check (read-only)
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared packages
+        run: npm run build:packages
+
+      - name: Inspect Mac setup without mutation
+        shell: bash
+        run: |
+          set +e
+          npx tsx apps/bridge/src/cli.ts setup-check --json > setup-check.json
+          setup_check_exit=$?
+          set -e
+          SETUP_CHECK_EXIT="$setup_check_exit" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const report = JSON.parse(readFileSync("setup-check.json", "utf8"));
+          const exitCode = Number(process.env.SETUP_CHECK_EXIT);
+          const expectedExit = report.installationState === "blocked" ? 1 : 0;
+          if (!["ready", "limited", "degraded", "blocked"].includes(report.installationState)) {
+            throw new Error(`Unknown setup state: ${String(report.installationState)}`);
+          }
+          if (exitCode !== expectedExit) {
+            throw new Error(`setup-check returned ${exitCode}; expected ${expectedExit} for ${report.installationState}`);
+          }
+          NODE
+
+      - name: Upload read-only setup report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-setup-check-${{ github.run_attempt }}
+          path: setup-check.json
+          if-no-files-found: error
+          retention-days: 7

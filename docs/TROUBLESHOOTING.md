@@ -83,7 +83,7 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
-On the 26 July 2026 reference machine, the socket is present and the different Desktop `0.146.0-alpha.3.1` / daemon `0.145.0` versions pass Nerva's schema and live read-only compatibility probe. Doctor reports **Ready with limitations** because Desktop ownership on that exact socket is not attested. Three independent stdio writers are listed for diagnosis but do not block an unrelated socket. Hand-written attestations and killing unknown writers are not accepted workarounds.
+On the 31 July 2026 reference machine, the installed Desktop-bundled `0.146.0-alpha.9.2` binary receives no answer from the managed socket. The standalone package is `0.146.0`, but version strings alone do not establish compatibility. Doctor reports **Ready with limitations** and grants no app-server capability because there is no live protocol probe, exact current schema attestation, or Desktop ownership proof. Four independent stdio writers are listed for diagnosis but are not assumed to own the missing socket. Hand-written attestations and killing unknown writers are not accepted workarounds.
 
 Expected path:
 
@@ -359,7 +359,9 @@ Open Capture Inbox from Home and confirm Photo, Scan, Sketch, File and Note are 
 
 Photo, Scan, Sketch and File records are limited to 32 MiB each. The Inbox holds at most 200 items and 256 MiB of counted media. Remove old local originals manually if a limit is reached. Do not clear all site data unless removing the pairing credential, local Draw/Review drafts and the complete Capture Inbox is intended.
 
-To use a capture, open the exact Session first, tap `Capture Inbox`, select compatible notes/images and tap `Use in session`. The local Review should open for that Session while every original remains in the Inbox. There is no routing or assignment state to repair. Reconnect never sends anything; Review still requires its own preview and confirmation. Non-image files currently have no verified Codex attachment transport and stay local.
+To use a capture, open the exact Session first and tap `Capture Inbox`. Compatible notes/images use `Use in session` and open that Session's local Review while every original remains in the Inbox. File-only selections use `Attach to composer`: 1–4 files, 8 MiB each and 16 MiB total. The exact Mac composer must be live and verified; the action adds one native paste and never submits it. Mixed selections are intentionally refused so Nerva cannot guess between Review and composer attachment.
+
+If a file batch is rejected, partial, or unknown, inspect the exact composer on the Mac before retrying. The originals and selection remain local, reconnect never resumes the action, and Nerva must not attach only the missing remainder. There is no routing or assignment state to repair.
 
 ## Moving a Home card changed native state
 

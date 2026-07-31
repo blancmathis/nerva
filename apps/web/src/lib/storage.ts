@@ -126,15 +126,23 @@ async function database() {
 
 export async function saveLastSnapshot(snapshot: BridgeSnapshot): Promise<void> {
   const db = await database();
-  await db.put(STORE, {
-    ...snapshot,
-    slots: snapshot.slots.map((slot) => ({ ...slot, activityLabel: null })),
-  }, SNAPSHOT_KEY);
+  try {
+    await db.put(STORE, {
+      ...snapshot,
+      slots: snapshot.slots.map((slot) => ({ ...slot, activityLabel: null })),
+    }, SNAPSHOT_KEY);
+  } finally {
+    db.close();
+  }
 }
 
 export async function loadLastSnapshot(): Promise<BridgeSnapshot | null> {
   const db = await database();
-  return normalizeSnapshot(await db.get(STORE, SNAPSHOT_KEY));
+  try {
+    return normalizeSnapshot(await db.get(STORE, SNAPSHOT_KEY));
+  } finally {
+    db.close();
+  }
 }
 
 export function loadPreferences(): UiPreferences {

@@ -12,6 +12,7 @@ import { resolveModelReasoningPresets } from "../lib/model-presets";
 import { groupSkills } from "../lib/skill-groups";
 import type { ProductSession } from "../lib/session-presentation";
 import { relativeSessionActivity, sessionStatusLabel } from "../lib/session-presentation";
+import { useModalFocus } from "../lib/use-modal-focus";
 import {
   BoltIcon,
   CameraIcon,
@@ -118,6 +119,16 @@ export function SessionWorkspace({
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [expandedSkillGroupIds, setExpandedSkillGroupIds] = useState<readonly string[]>([]);
   const [approvalDetail, setApprovalDetail] = useState<PendingApproval | null>(null);
+  const skillsDialogRef = useRef<HTMLDivElement | null>(null);
+  const approvalDialogRef = useRef<HTMLElement | null>(null);
+  useModalFocus(skillsDialogRef, () => setSkillsOpen(false), {
+    active: skillsOpen,
+    initialFocus: "[aria-label='Close Skills']",
+  });
+  useModalFocus(approvalDialogRef, () => setApprovalDetail(null), {
+    active: approvalDetail !== null,
+    initialFocus: "[aria-label='Close command details']",
+  });
   const modelPresets = useMemo(
     () => resolveModelReasoningPresets(modelReasoningPresets, models),
     [modelReasoningPresets, models],
@@ -297,7 +308,7 @@ export function SessionWorkspace({
         <div className="cp-section-heading"><div><p className="cp-overline">Next message</p><h2 id="session-controls-title">Agent controls.</h2></div></div>
         <div className="cp-session-controls__grid">
           <div className="cp-skill-control">
-            <button type="button" className="cp-control-header" aria-expanded={skillsOpen} onClick={() => setSkillsOpen((value) => !value)}>
+            <button type="button" className="cp-control-header" aria-expanded={skillsOpen} aria-controls="skill-library-dialog" onClick={() => setSkillsOpen((value) => !value)}>
               <span><SparkIcon /></span><span><strong>Skills</strong><small>{selectedSkillIds.length > 0 ? `${selectedSkillIds.length} armed for the next send` : `${skills.length} available`}</small></span><ChevronIcon />
             </button>
             {selectedSkillIds.length > 0 && (
@@ -306,11 +317,11 @@ export function SessionWorkspace({
               </div>
             )}
             {skillsOpen && typeof document !== "undefined" && createPortal(
-              <div className="cp-skill-picker" aria-label="Available skill groups">
+              <div ref={skillsDialogRef} id="skill-library-dialog" className="cp-skill-picker" role="dialog" aria-modal="true" aria-labelledby="skill-library-title" tabIndex={-1}>
                 {skillGroups.length > 0 ? (
                   <>
                     <header className="cp-skill-picker__header">
-                      <span><strong>Skill library</strong><small>Grouped automatically by provider · {skills.length} available</small></span>
+                      <span><strong id="skill-library-title">Skill library</strong><small>Grouped automatically by provider · {skills.length} available</small></span>
                       <button type="button" aria-label="Close Skills" onClick={() => setSkillsOpen(false)}><CloseIcon /></button>
                     </header>
                     <div className="cp-skill-groups">
@@ -458,7 +469,7 @@ export function SessionWorkspace({
 
       {approvalDetail && (
         <div className="cp-modal-layer" role="presentation">
-          <section className="cp-command-detail" role="dialog" aria-modal="true" aria-labelledby="command-detail-title">
+          <section ref={approvalDialogRef} className="cp-command-detail" role="dialog" aria-modal="true" aria-labelledby="command-detail-title" tabIndex={-1}>
             <button type="button" className="cp-icon-button" aria-label="Close command details" onClick={() => setApprovalDetail(null)}><CloseIcon /></button>
             <p className="cp-overline">{approvalKind(approvalDetail.kind)}</p>
             <h2 id="command-detail-title">Review the exact request.</h2>

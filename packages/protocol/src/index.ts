@@ -9,6 +9,7 @@ export * from "./primitives.js";
 export * from "./product-state.js";
 export * from "./review.js";
 export * from "./runtime.js";
+export * from "./runtime-identity.js";
 export * from "./saved-drawings.js";
 export * from "./site-qa.js";
 export * from "./snapshot.js";

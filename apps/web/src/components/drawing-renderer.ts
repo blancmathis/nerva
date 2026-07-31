@@ -1,5 +1,7 @@
 import {
   ElementSpatialIndex,
+  elementsInPaintOrder,
+  estimateTextSize,
   getStrokePolygon,
   type Bounds,
   type Scene,
@@ -45,14 +47,10 @@ export type DrawingPreview = ShapePreview | StrokePreview | null;
 const MAX_DECODED_IMAGES = 2;
 const imageCache = new Map<string, HTMLImageElement>();
 const imagesLoading = new Set<string>();
-const spatialIndexCache = new WeakMap<object, ElementSpatialIndex>();
+const spatialIndex = new ElementSpatialIndex([]);
 
 function visibleElements(scene: Scene, metrics: CanvasMetrics, view: CanvasView): readonly SceneElement[] {
-  let index = spatialIndexCache.get(scene.elements as object);
-  if (!index) {
-    index = new ElementSpatialIndex(scene.elements);
-    spatialIndexCache.set(scene.elements as object, index);
-  }
+  spatialIndex.update(scene.elements);
   const scale = metrics.fitScale * view.zoom;
   const margin = 96 / Math.max(scale, 0.0001);
   const width = metrics.width / scale;
@@ -65,7 +63,7 @@ function visibleElements(scene: Scene, metrics: CanvasMetrics, view: CanvasView)
     width: width + margin * 2,
     height: height + margin * 2,
   };
-  return index.query(bounds);
+  return spatialIndex.query(bounds);
 }
 
 function cacheImage(source: string, image: HTMLImageElement): void {
@@ -206,22 +204,20 @@ function drawShape(context: CanvasRenderingContext2D, shape: ShapeElement): void
   context.lineJoin = "round";
   context.setLineDash(shape.shape === "rectangle" ? [0] : []);
 
-  if (shape.shape === "arrow") {
-    drawArrow(context, shape);
-  } else if (shape.shape === "rectangle") {
+  const centerX = shape.x + shape.width / 2;
+  const centerY = shape.y + shape.height / 2;
+  if (shape.rotation !== 0) {
+    context.translate(centerX, centerY);
+    context.rotate(shape.rotation);
+    context.translate(-centerX, -centerY);
+  }
+  if (shape.shape === "arrow") drawArrow(context, { ...shape, rotation: 0 });
+  else if (shape.shape === "rectangle") {
     if (shape.fillColor) context.fillRect(shape.x, shape.y, shape.width, shape.height);
     context.strokeRect(shape.x, shape.y, shape.width, shape.height);
   } else {
     context.beginPath();
-    context.ellipse(
-      shape.x + shape.width / 2,
-      shape.y + shape.height / 2,
-      Math.abs(shape.width / 2),
-      Math.abs(shape.height / 2),
-      0,
-      0,
-      Math.PI * 2,
-    );
+    context.ellipse(centerX, centerY, Math.abs(shape.width / 2), Math.abs(shape.height / 2), 0, 0, Math.PI * 2);
     if (shape.fillColor) context.fill();
     context.stroke();
   }
@@ -237,6 +233,14 @@ function drawText(
   context.fillStyle = element.color;
   context.font = `${element.fontWeight} ${element.fontSize}px ${element.fontFamily}`;
   context.textBaseline = "top";
+  const estimated = estimateTextSize(element);
+  if (element.rotation !== 0) {
+    const centerX = element.x + estimated.width / 2;
+    const centerY = element.y + estimated.height / 2;
+    context.translate(centerX, centerY);
+    context.rotate(element.rotation);
+    context.translate(-centerX, -centerY);
+  }
   const lines = element.text.split("\n");
   lines.forEach((line, index) => {
     context.fillText(
@@ -261,6 +265,13 @@ function drawImage(
     cacheImage(source, cached);
     context.save();
     context.globalAlpha = element.opacity;
+    if (element.rotation !== 0) {
+      const centerX = element.x + element.width / 2;
+      const centerY = element.y + element.height / 2;
+      context.translate(centerX, centerY);
+      context.rotate(element.rotation);
+      context.translate(-centerX, -centerY);
+    }
     context.drawImage(cached, element.x, element.y, element.width, element.height);
     context.restore();
     return;
@@ -342,10 +353,7 @@ export function renderDrawingCanvas(
   drawWorldGrid(context, metrics, view);
 
   const visible = visibleElements(scene, metrics, view);
-  const orderedElements = [
-    ...visible.filter((element) => element.kind === "image" && element.isBackground),
-    ...visible.filter((element) => element.kind !== "image" || !element.isBackground),
-  ];
+  const orderedElements = elementsInPaintOrder(visible);
   for (const element of orderedElements) {
     if (element.kind === "stroke" || element.kind === "eraser") {
       drawFreehand(context, element, fill);

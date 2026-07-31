@@ -126,7 +126,12 @@ describe("runCli", () => {
       stderr: output.writeError,
       preflightMacSetup: async () => ({
         installationState: "blocked",
-        nativeIntegration: { state: "degraded", reasons: [] },
+        nativeIntegration: {
+          state: "limited",
+          desktopCodexVersion: "0.146.0-alpha.9.2",
+          standaloneCodexVersion: "0.146.0",
+          reasons: [],
+        },
         blockers: [{
           code: "funnel-not-disabled",
           detail: "Funnel is active.",
@@ -138,7 +143,162 @@ describe("runCli", () => {
     expect(code).toBe(1);
     expect(JSON.parse(output.stdout.join("\n"))).toMatchObject({
       installationState: "blocked",
+      nativeIntegration: {
+        desktopCodexVersion: "0.146.0-alpha.9.2",
+        standaloneCodexVersion: "0.146.0",
+      },
       blockers: [{ code: "funnel-not-disabled" }],
+    });
+  });
+
+  it("keeps observed Codex versions in the human blocked setup report", async () => {
+    const output = io();
+    const code = await runCli(["setup-check"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      preflightMacSetup: async () => ({
+        installationState: "blocked",
+        nativeIntegration: {
+          state: "limited",
+          desktopCodexVersion: "0.146.0-alpha.9.2",
+          standaloneCodexVersion: "0.146.0",
+          reasons: [],
+        },
+        blockers: [{
+          code: "tailscale-unavailable",
+          detail: "Tailscale is offline.",
+          remediation: ["Sign in to Tailscale."],
+        }],
+      }),
+    });
+
+    expect(code).toBe(1);
+    expect(output.stderr).toEqual([]);
+    expect(output.stdout).toEqual([
+      "Nerva setup check: BLOCKED\n"
+        + "Codex Desktop CLI: 0.146.0-alpha.9.2\n"
+        + "Standalone Codex CLI: 0.146.0\n"
+        + "- [tailscale-unavailable] Tailscale is offline.\n"
+        + "  Next: Sign in to Tailscale.",
+    ]);
+  });
+
+  it("keeps Mac uninstall read-only by default and reports every retained path", async () => {
+    const output = io();
+    const inspectMacUninstall = vi.fn(async () => ({
+      state: "ready" as const,
+      launchAgent: { state: "owned" as const, path: "/tmp/com.codex-pad.bridge.plist", detail: "Exact Nerva LaunchAgent." },
+      serve: { state: "owned" as const, path: "https://mac.example.ts.net", detail: "Exact Nerva route." },
+      retainedDataRoot: "/tmp/CodexPad",
+      retainedRuntime: "/tmp/CodexPad/runtime",
+    }));
+    const uninstallMac = vi.fn();
+
+    const code = await runCli(["uninstall-mac"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      inspectMacUninstall,
+      uninstallMac,
+    });
+
+    expect(code).toBe(0);
+    expect(inspectMacUninstall).toHaveBeenCalledOnce();
+    expect(uninstallMac).not.toHaveBeenCalled();
+    expect(output.stdout.join("\n")).toContain("Nerva uninstall inspection: READY");
+    expect(output.stdout.join("\n")).toContain("No Nerva service, Serve route, or product data was changed");
+    expect(output.stdout.join("\n")).toContain("/tmp/CodexPad/runtime");
+  });
+
+  it("requires the semantic confirmation flag before applying the exact Mac uninstall", async () => {
+    const output = io();
+    const uninstallMac = vi.fn(async () => ({
+      inspection: {
+        state: "ready" as const,
+        launchAgent: { state: "owned" as const, detail: "Exact Nerva LaunchAgent." },
+        serve: { state: "owned" as const, detail: "Exact Nerva route." },
+        retainedDataRoot: "/tmp/CodexPad",
+        retainedRuntime: "/tmp/CodexPad/runtime",
+      },
+      state: "complete" as const,
+      launchAgentRemoved: true,
+      serveRemoved: true,
+      dataRetained: true as const,
+      logsRetained: true as const,
+      errors: [],
+    }));
+
+    const code = await runCli(["uninstall-mac", "--confirm-uninstall"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      uninstallMac,
+    });
+
+    expect(code).toBe(0);
+    expect(uninstallMac).toHaveBeenCalledOnce();
+    expect(output.stdout.join("\n")).toContain("Removed the exact Nerva private Serve route");
+    expect(output.stdout.join("\n")).toContain("Removed the exact Nerva LaunchAgent");
+    expect(output.stdout.join("\n")).toContain("Retained product data");
+    expect(output.stdout.join("\n")).toContain("global launchd environment were not changed");
+  });
+
+  it("emits uninstall JSON without mutation and rejects ambiguous flags", async () => {
+    const output = io();
+    const inspectMacUninstall = vi.fn(async () => ({
+      state: "blocked" as const,
+      launchAgent: { state: "blocked" as const, detail: "Unsafe owner." },
+      serve: { state: "absent" as const, detail: "No route." },
+      retainedDataRoot: "/tmp/CodexPad",
+      retainedRuntime: "/tmp/CodexPad/runtime",
+    }));
+    const code = await runCli(["uninstall-mac", "--dry-run", "--json"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      inspectMacUninstall,
+    });
+    expect(code).toBe(1);
+    expect(JSON.parse(output.stdout.join("\n"))).toMatchObject({
+      dryRun: true,
+      state: "blocked",
+      launchAgent: { state: "blocked" },
+    });
+
+    const ambiguous = io();
+    expect(await runCli(["uninstall-mac", "--dry-run", "--confirm-uninstall"], {
+      stdout: ambiguous.writeOut,
+      stderr: ambiguous.writeError,
+    })).toBe(1);
+    expect(ambiguous.stderr.join("\n")).toContain("either --dry-run or --confirm-uninstall");
+  });
+
+  it("reports a confirmed partial uninstall with a nonzero exit", async () => {
+    const output = io();
+    const code = await runCli(["uninstall-mac", "--confirm-uninstall", "--json"], {
+      stdout: output.writeOut,
+      stderr: output.writeError,
+      uninstallMac: async () => ({
+        inspection: {
+          state: "ready",
+          launchAgent: { state: "owned", detail: "Exact Nerva LaunchAgent." },
+          serve: { state: "owned", detail: "Exact Nerva route." },
+          retainedDataRoot: "/tmp/CodexPad",
+          retainedRuntime: "/tmp/CodexPad/runtime",
+        },
+        state: "partial",
+        launchAgentRemoved: false,
+        serveRemoved: true,
+        dataRetained: true,
+        logsRetained: true,
+        errors: ["LaunchAgent changed while uninstalling."],
+      }),
+    });
+
+    expect(code).toBe(1);
+    expect(JSON.parse(output.stdout.join("\n"))).toMatchObject({
+      dryRun: false,
+      state: "partial",
+      launchAgentRemoved: false,
+      serveRemoved: true,
+      errors: ["LaunchAgent changed while uninstalling."],
     });
   });
 

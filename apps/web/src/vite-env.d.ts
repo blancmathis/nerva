@@ -2,3 +2,4 @@
 
 declare const __NERVA_VERSION__: string;
 declare const __NERVA_BUILD_ID__: string;
+declare const __NERVA_BUILD_REVISION__: string;

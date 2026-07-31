@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  ApiContractVersionSchema,
+  BridgeVersionSchema,
+  BuildRevisionSchema,
+} from "./runtime-identity.js";
+
 import { EpochMillisSchema, SequenceSchema, ThreadIdSchema, UuidSchema } from "./primitives.js";
 import { mapNativeStatus, VisualStatusSchema } from "./status.js";
 
@@ -199,6 +205,14 @@ export const MicroSnapshotSchema = z
     bridgeInstanceId: BridgeInstanceIdSchema,
     sequence: SequenceSchema,
     timestamp: EpochMillisSchema,
+    /**
+     * Optional only so a newly installed client can parse one final snapshot
+     * from a pre-identity bridge and fail closed before its next mutation.
+     * Current bridges always emit all three fields.
+     */
+    bridgeVersion: BridgeVersionSchema.optional(),
+    buildRevision: BuildRevisionSchema.optional(),
+    apiContractVersion: ApiContractVersionSchema.optional(),
     codexVersion: z.string().trim().min(1).max(100).nullable(),
     bridgeHealth: BridgeHealthSchema,
     agentSource: AgentSourceSchema,

@@ -40,7 +40,7 @@ export interface BrowserSnapshotTab {
   readonly pageKey: string | null;
   readonly url: string;
   readonly title: string;
-  readonly ownerRoutePath: string;
+  readonly ownerRoutePath: string | null;
   readonly mountGeneration: number;
   readonly active: boolean;
   readonly loading: boolean;
@@ -150,7 +150,7 @@ function pageTitle(value: string | undefined, url: URL): string {
 
 function opaqueTabId(tab: BrowserSnapshotTab): string {
   return `tab_${createHash("sha256")
-    .update(`${tab.conversationId}\0${tab.browserTabId}`, "utf8")
+    .update(`${tab.conversationId}\0${tab.browserTabId}\0${tab.pageKey ?? ""}\0${tab.mountGeneration}`, "utf8")
     .digest("hex")
     .slice(0, 24)}`;
 }
@@ -165,7 +165,8 @@ function safeDebuggerUrl(value: string | undefined): string | null {
   }
 }
 
-function canonicalThreadFromOwnerRoute(value: string): string | null {
+function canonicalThreadFromOwnerRoute(value: string | null): string | null {
+  if (value === null) return null;
   const match = value.match(/^\/local\/([0-9a-f-]{36})(?:\/|$)/iu);
   return match?.[1] && UUID_PATTERN.test(match[1]) ? match[1].toLowerCase() : null;
 }
@@ -186,13 +187,14 @@ export function parseBrowserSnapshot(value: unknown): BrowserSnapshot {
     const conversationId = boundedString(tab.conversationId, 160);
     const browserTabId = boundedString(tab.browserTabId, 160);
     const pageKey = tab.pageKey === null || tab.pageKey === undefined ? null : boundedString(tab.pageKey, 256);
-    const ownerRoutePath = boundedString(tab.ownerRoutePath, 512);
+    const ownerRoutePath = tab.ownerRoutePath === null || tab.ownerRoutePath === undefined
+      ? null
+      : boundedString(tab.ownerRoutePath, 512);
     const url = typeof tab.url === "string" && tab.url.length <= MAX_PRIVATE_URL_LENGTH ? tab.url : null;
     const title = typeof tab.title === "string" ? tab.title.slice(0, MAX_TITLE_LENGTH) : "";
     if (
       conversationId === null
       || browserTabId === null
-      || ownerRoutePath === null
       || url === null
       || (tab.guestWebContentsId !== null && tab.guestWebContentsId !== undefined && (
         typeof tab.guestWebContentsId !== "number"
@@ -216,8 +218,58 @@ export function parseBrowserSnapshot(value: unknown): BrowserSnapshot {
       loading: tab.isLoading === true || tab.loading === true,
     }];
   });
-  if (tabs.length !== source.tabs.length) throw new Error("Codex Browser returned a tab with an unknown shape.");
+  // Codex owns this private snapshot and can add transient or unrelated record
+  // shapes between Desktop releases. A single unknown record must not hide the
+  // exact-task pages that we can still prove. Keep the collection boundary
+  // strict, but validate and retain records independently.
+  if (source.tabs.length > 0 && tabs.length === 0) {
+    throw new Error("Codex Browser returned only tabs with unknown shapes.");
+  }
   return { tabs };
+}
+
+function sameSnapshotIdentity(left: BrowserSnapshotTab, right: BrowserSnapshotTab): boolean {
+  return left.conversationId === right.conversationId
+    && left.browserTabId === right.browserTabId
+    && left.pageKey === right.pageKey
+    && left.mountGeneration === right.mountGeneration
+    && left.ownerRoutePath === right.ownerRoutePath
+    && left.guestWebContentsId === right.guestWebContentsId
+    && left.url === right.url;
+}
+
+function snapshotLogicalKey(tab: BrowserSnapshotTab): string {
+  return `${tab.conversationId}\0${tab.browserTabId}`;
+}
+
+function snapshotGenerationKey(tab: BrowserSnapshotTab): string {
+  return `${snapshotLogicalKey(tab)}\0${tab.pageKey ?? ""}\0${tab.mountGeneration}`;
+}
+
+/**
+ * Codex can briefly retain an earlier mount while the replacement webview is
+ * joining the snapshot. Only the newest unambiguous generation may establish
+ * ownership or a control target. An ambiguity at the newest generation is
+ * isolated to that logical tab instead of degrading unrelated pages.
+ */
+function currentBrowserTabs(snapshot: BrowserSnapshot): readonly BrowserSnapshotTab[] {
+  const current = new Map<string, {
+    readonly generation: number;
+    readonly tab: BrowserSnapshotTab | null;
+  }>();
+  for (const tab of snapshot.tabs) {
+    const key = snapshotLogicalKey(tab);
+    const existing = current.get(key);
+    if (existing === undefined || tab.mountGeneration > existing.generation) {
+      current.set(key, { generation: tab.mountGeneration, tab });
+      continue;
+    }
+    if (tab.mountGeneration < existing.generation || existing.tab === null) continue;
+    if (!sameSnapshotIdentity(existing.tab, tab)) {
+      current.set(key, { generation: tab.mountGeneration, tab: null });
+    }
+  }
+  return [...current.values()].flatMap(({ tab }) => tab === null ? [] : [tab]);
 }
 
 async function evaluateDebugger(debuggerUrl: string, expression: string, awaitPromise = false): Promise<unknown> {
@@ -411,7 +463,8 @@ async function discoverResolvedTabs(
   if (!UUID_PATTERN.test(threadId)) throw new Error("A canonical task UUID is required for Browser discovery.");
   const inventory = await discoverInventory(transport, options);
   const snapshot = await (options.readBrowserSnapshot ?? readBrowserSnapshot)(inventory);
-  const owned = snapshot.tabs.filter((tab) => canonicalThreadFromOwnerRoute(tab.ownerRoutePath) === threadId.toLowerCase());
+  const owned = currentBrowserTabs(snapshot)
+    .filter((tab) => canonicalThreadFromOwnerRoute(tab.ownerRoutePath) === threadId.toLowerCase());
   const liveOwned = owned.filter((tab) => safePageUrl(tab.url) !== null && tab.guestWebContentsId !== null && tab.pageKey !== null);
   const targetCandidates = liveOwned.length === 0 ? [] : await readTargetCandidates(inventory, options);
   const resolved = await Promise.all(owned.map(async (tab) => ({
@@ -438,7 +491,7 @@ async function discoverResolvedTabs(
     listedTabs,
     snapshot,
     discovery: { available: true, reason: null },
-    control: liveOwned.length === 0 || entries.length > 0
+    control: listedTabs.length === 0 || entries.length > 0
       ? { available: true, reason: null }
       : { available: false, reason: "The exact Browser pages were found, but this Codex build did not expose a unique control target." },
   };
@@ -501,9 +554,10 @@ export async function openCodexBrowserTab(
   const inventory = await discoverInventory(transport, options);
   const readSnapshot = options.readBrowserSnapshot ?? readBrowserSnapshot;
   const before = await readSnapshot(inventory);
-  const beforeOwned = before.tabs.filter((tab) => canonicalThreadFromOwnerRoute(tab.ownerRoutePath) === threadId.toLowerCase());
-  const beforeKeys = new Set(beforeOwned.map((tab) => `${tab.browserTabId}\0${tab.pageKey}\0${tab.mountGeneration}`));
-  const beforeByBrowserTabId = new Map(beforeOwned.map((tab) => [tab.browserTabId, tab]));
+  const beforeOwned = currentBrowserTabs(before)
+    .filter((tab) => canonicalThreadFromOwnerRoute(tab.ownerRoutePath) === threadId.toLowerCase());
+  const beforeKeys = new Set(beforeOwned.map(snapshotGenerationKey));
+  const beforeByLogicalKey = new Map(beforeOwned.map((tab) => [snapshotLogicalKey(tab), tab]));
   const dispatch = options.dispatchOpenBrowserTab ?? (async (currentInventory, expectedThreadId, initialUrl) => {
     await evaluateDebugger(
       rendererDebuggerUrl(currentInventory),
@@ -518,11 +572,12 @@ export async function openCodexBrowserTab(
   while (Date.now() <= deadline) {
     const nextInventory = await discoverInventory(transport, options).catch(() => inventory);
     const after = await readSnapshot(nextInventory).catch(() => null);
-    const observed = after?.tabs.some((tab) => {
+    const observed = after !== null && after !== undefined && currentBrowserTabs(after).some((tab) => {
       if (canonicalThreadFromOwnerRoute(tab.ownerRoutePath) !== threadId.toLowerCase()) return false;
-      if (!beforeKeys.has(`${tab.browserTabId}\0${tab.pageKey}\0${tab.mountGeneration}`)) return true;
-      const previous = beforeByBrowserTabId.get(tab.browserTabId);
-      return previous !== undefined && privatePageUrl(previous.url) === null && tab.url === url;
+      if (tab.pageKey === null || privatePageUrl(tab.url) !== url) return false;
+      if (!beforeKeys.has(snapshotGenerationKey(tab))) return true;
+      const previous = beforeByLogicalKey.get(snapshotLogicalKey(tab));
+      return previous !== undefined && privatePageUrl(previous.url) === null;
     });
     if (observed) return;
     await sleep(250);

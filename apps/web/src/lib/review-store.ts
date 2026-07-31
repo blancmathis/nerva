@@ -43,7 +43,21 @@ interface StoredPendingDelivery {
   readonly key: string;
   readonly commandId: string;
   readonly draftUpdatedAt: number;
+  readonly expectedBridgeInstanceId?: string;
+  readonly targetThreadKey?: string;
+  readonly snapshotSeq?: number;
+  readonly instructionSuffix?: string;
+  readonly skillIds?: readonly string[];
   readonly createdAt: string;
+}
+
+export interface PendingReviewDeliveryIdentity {
+  readonly commandId: string;
+  readonly expectedBridgeInstanceId: string;
+  readonly targetThreadKey: string;
+  readonly snapshotSeq: number;
+  readonly instructionSuffix: string;
+  readonly skillIds: readonly string[];
 }
 
 interface StoredMaintenanceState {
@@ -710,16 +724,47 @@ export async function loadPendingReviewDelivery(
   return stored?.draftUpdatedAt === draftUpdatedAt ? stored.commandId : null;
 }
 
+export async function loadPendingReviewDeliveryIdentity(
+  threadId: string,
+  draftUpdatedAt: number,
+): Promise<PendingReviewDeliveryIdentity | null> {
+  const stored = await runStore<StoredPendingDelivery>(DELIVERY_STORE, "readonly", (store) =>
+    store.get(reviewDraftKey(threadId)),
+  );
+  if (
+    stored?.draftUpdatedAt !== draftUpdatedAt
+    || typeof stored.expectedBridgeInstanceId !== "string"
+    || stored.expectedBridgeInstanceId.length === 0
+    || typeof stored.targetThreadKey !== "string"
+    || stored.targetThreadKey.length === 0
+    || !Number.isSafeInteger(stored.snapshotSeq)
+    || (stored.snapshotSeq ?? -1) < 0
+    || typeof stored.instructionSuffix !== "string"
+    || !Array.isArray(stored.skillIds)
+    || stored.skillIds.some((skillId) => typeof skillId !== "string")
+  ) return null;
+  return {
+    commandId: stored.commandId,
+    expectedBridgeInstanceId: stored.expectedBridgeInstanceId,
+    targetThreadKey: stored.targetThreadKey,
+    snapshotSeq: stored.snapshotSeq!,
+    instructionSuffix: stored.instructionSuffix,
+    skillIds: stored.skillIds,
+  };
+}
+
 export async function savePendingReviewDelivery(
   threadId: string,
   draftUpdatedAt: number,
   commandId: string,
+  authority?: Omit<PendingReviewDeliveryIdentity, "commandId">,
 ): Promise<void> {
   const result = await runStore<IDBValidKey>(DELIVERY_STORE, "readwrite", (store) =>
     store.put({
       key: reviewDraftKey(threadId),
       commandId,
       draftUpdatedAt,
+      ...(authority ?? {}),
       createdAt: new Date().toISOString(),
     } satisfies StoredPendingDelivery),
   );

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { BridgeHealthSchema } from "./snapshot.js";
+import {
+  ApiContractVersionSchema,
+  BuildRevisionSchema,
+} from "./runtime-identity.js";
 
 export const RuntimeCapabilityIdSchema = z.enum([
   "sessions",
@@ -44,6 +48,9 @@ export const RuntimeDiagnosticsSchema = z
   .object({
     protocolVersion: z.literal(1),
     bridgeVersion: z.string().trim().min(1).max(100),
+    /** Optional only while one pre-identity runtime generation may still reply. */
+    buildRevision: BuildRevisionSchema.optional(),
+    apiContractVersion: ApiContractVersionSchema.optional(),
     codexVersion: z.string().trim().min(1).max(100).nullable(),
     snapshotSequence: z.number().int().nonnegative(),
     capturedAt: z.number().int().nonnegative(),

@@ -20,11 +20,17 @@ export interface StoredDrawingDraft {
   pencilOnly: boolean;
   /** Structured collaborative diagram layer, separate from freehand scene marks. */
   diagramJson: string | null;
+  /** True when the restored diagram contains iPad edits not yet accepted by the Mac. */
+  diagramDirty?: boolean;
+  /** Revision the local edits were based on, used for explicit conflict handling. */
+  diagramBaseRevision?: number | null;
   updatedAt: string;
   /** Present for v2 board-backed drafts. */
   boardId?: string;
   /** Present for v2 board-backed drafts. */
   camera?: DrawingBoardCamera;
+  /** The recoverable part of a damaged board was opened as a new working copy. */
+  recoveryWarning?: string;
 }
 
 export interface SaveDrawingDraftInput {
@@ -33,6 +39,8 @@ export interface SaveDrawingDraftInput {
   background: DrawingBackground;
   pencilOnly: boolean;
   diagramJson?: string | null;
+  diagramDirty?: boolean;
+  diagramBaseRevision?: number | null;
   updatedAt?: string;
   camera?: DrawingBoardCamera;
   boardId?: string;
@@ -65,6 +73,8 @@ export interface StoredDrawingBoard {
   background: DrawingBackground;
   pencilOnly: boolean;
   diagramJson: string | null;
+  diagramDirty?: boolean;
+  diagramBaseRevision?: number | null;
   camera: DrawingBoardCamera;
   checkpoints: readonly DrawingBoardCheckpoint[];
   createdAt: string;
@@ -137,7 +147,11 @@ export function makeStoredDrawingDraft(
     background: input.background,
     pencilOnly: input.pencilOnly,
     diagramJson: input.diagramJson ?? null,
+    diagramDirty: input.diagramDirty ?? false,
+    diagramBaseRevision: input.diagramBaseRevision ?? null,
     updatedAt: input.updatedAt ?? new Date().toISOString(),
+    ...(input.boardId ? { boardId: input.boardId } : {}),
+    ...(input.camera ? { camera: input.camera } : {}),
   };
 }
 
@@ -226,11 +240,20 @@ async function readActiveBoard(database: IDBDatabase, threadId: string): Promise
 async function hydrateBoard(database: IDBDatabase, board: StoredDrawingBoard): Promise<StoredDrawingDraft> {
   const transaction = database.transaction(BOARD_ELEMENT_STORE_NAME, "readonly");
   const store = transaction.objectStore(BOARD_ELEMENT_STORE_NAME);
-  const elements = await Promise.all(board.elementIds.map(async (elementId) => {
+  const missingElementIds: string[] = [];
+  const elements = (await Promise.all(board.elementIds.map(async (elementId) => {
     const record = await requestResult(store.get(`${board.boardId}:${elementId}`)) as BoardElementRecord | undefined;
-    if (!record) throw new Error(`Drawing board element ${elementId} is missing.`);
-    return JSON.parse(record.json) as unknown;
-  }));
+    if (!record) {
+      missingElementIds.push(elementId);
+      return null;
+    }
+    try {
+      return JSON.parse(record.json) as unknown;
+    } catch {
+      missingElementIds.push(elementId);
+      return null;
+    }
+  }))).filter((element): element is Exclude<typeof element, null> => element !== null);
   const header = JSON.parse(board.sceneHeader) as Record<string, unknown>;
   return {
     version: DRAFT_VERSION,
@@ -241,10 +264,24 @@ async function hydrateBoard(database: IDBDatabase, board: StoredDrawingBoard): P
     background: board.background,
     pencilOnly: board.pencilOnly,
     diagramJson: board.diagramJson,
+    diagramDirty: board.diagramDirty ?? false,
+    diagramBaseRevision: board.diagramBaseRevision ?? null,
     updatedAt: board.updatedAt,
     boardId: board.boardId,
     camera: board.camera,
+    ...(missingElementIds.length > 0
+      ? { recoveryWarning: `${missingElementIds.length} damaged board element${missingElementIds.length === 1 ? " was" : "s were"} omitted.` }
+      : {}),
   };
+}
+
+async function readBoard(
+  database: IDBDatabase,
+  boardId: string,
+): Promise<StoredDrawingBoard | null> {
+  return await requestResult(
+    database.transaction(BOARD_STORE_NAME, "readonly").objectStore(BOARD_STORE_NAME).get(boardId),
+  ) as StoredDrawingBoard | undefined ?? null;
 }
 
 async function withStore<T>(
@@ -286,6 +323,10 @@ export async function loadDrawingDraft(
   return {
     ...value,
     diagramJson: typeof value.diagramJson === "string" ? value.diagramJson : null,
+    diagramDirty: value.diagramDirty === true,
+    diagramBaseRevision: typeof value.diagramBaseRevision === "number"
+      ? value.diagramBaseRevision
+      : null,
   };
 }
 
@@ -299,11 +340,19 @@ export async function saveDrawingDraft(
     throw new Error("IndexedDB is unavailable; the drawing draft was not saved.");
   }
   try {
-    const current = await readActiveBoard(database, normalizedThreadId);
+    const active = await readActiveBoard(database, normalizedThreadId);
+    const requested = input.boardId ? await readBoard(database, input.boardId) : null;
+    if (requested && requested.threadId !== normalizedThreadId) {
+      throw new Error("This drawing board does not belong to the exact task.");
+    }
+    // An explicit board identity is the caller's write authority. In
+    // particular, a Saved Drawing opens as a new working copy and must never
+    // inherit or overwrite the task's previously active board.
+    const current = input.boardId ? requested : active;
     const parsed = JSON.parse(input.scene) as Record<string, unknown>;
     const elements = Array.isArray(parsed.elements) ? parsed.elements : [];
     const sceneHeader = JSON.stringify({ ...parsed, elements: undefined });
-    const boardId = current?.boardId ?? input.boardId ?? newBoardId();
+    const boardId = input.boardId ?? current?.boardId ?? newBoardId();
     const now = input.updatedAt ?? new Date().toISOString();
     const elementIds: string[] = [];
     const elementDigests: Record<string, string> = {};
@@ -328,6 +377,8 @@ export async function saveDrawingDraft(
       background: input.background,
       pencilOnly: input.pencilOnly,
       diagramJson: input.diagramJson ?? null,
+      diagramDirty: input.diagramDirty ?? false,
+      diagramBaseRevision: input.diagramBaseRevision ?? null,
       camera: input.camera ?? current?.camera ?? { centerX: 720, centerY: 450, zoom: 1 },
       checkpoints: current?.checkpoints ?? [],
       createdAt: current?.createdAt ?? now,
@@ -389,21 +440,46 @@ export async function deleteDrawingDraft(threadId: string): Promise<void> {
 export async function checkpointAndFinishDrawingBoard(
   threadId: string,
   checkpoint: DrawingBoardCheckpoint,
+  commandId?: string,
 ): Promise<void> {
   const normalized = normalizeThreadId(threadId);
   const database = await openDraftDatabase();
   if (!database) throw new Error("IndexedDB is unavailable; the sent board could not be checkpointed.");
   try {
-    const current = await readActiveBoard(database, normalized);
-    if (!current) throw new Error("The active drawing board is unavailable.");
-    const transaction = database.transaction([BOARD_STORE_NAME, ACTIVE_BOARD_STORE_NAME], "readwrite");
-    transaction.objectStore(BOARD_STORE_NAME).put({
-      ...current,
-      revision: current.revision + 1,
-      checkpoints: [...current.checkpoints, checkpoint],
-      updatedAt: checkpoint.createdAt,
-    });
-    transaction.objectStore(ACTIVE_BOARD_STORE_NAME).delete(normalized);
+    const transaction = database.transaction(
+      [BOARD_STORE_NAME, ACTIVE_BOARD_STORE_NAME, PENDING_BOARD_EXPORT_STORE_NAME],
+      "readwrite",
+    );
+    const boardStore = transaction.objectStore(BOARD_STORE_NAME);
+    const activeStore = transaction.objectStore(ACTIVE_BOARD_STORE_NAME);
+    const pendingStore = transaction.objectStore(PENDING_BOARD_EXPORT_STORE_NAME);
+    const [active, pending, boards] = await Promise.all([
+      requestResult(activeStore.get(normalized)) as Promise<ActiveBoardRecord | undefined>,
+      requestResult(pendingStore.get(normalized)) as Promise<PendingDrawingBoardExportRecord | undefined>,
+      requestResult(boardStore.getAll()) as Promise<StoredDrawingBoard[]>,
+    ]);
+    if (commandId && pending && pending.commandId !== commandId) {
+      transaction.abort();
+      throw new Error("The retained drawing export belongs to a different delivery.");
+    }
+    const boardId = active?.boardId ?? (commandId && pending?.commandId === commandId ? pending.boardId : undefined);
+    const current = boardId ? boards.find((board) => board.boardId === boardId && board.threadId === normalized) : undefined;
+    const alreadyCheckpointed = boards.some((board) => board.threadId === normalized
+      && board.checkpoints.some((candidate) => candidate.checkpointId === checkpoint.checkpointId));
+    if (!current && !alreadyCheckpointed) {
+      transaction.abort();
+      throw new Error("The active drawing board is unavailable.");
+    }
+    if (current && !current.checkpoints.some((candidate) => candidate.checkpointId === checkpoint.checkpointId)) {
+      boardStore.put({
+        ...current,
+        revision: current.revision + 1,
+        checkpoints: [...current.checkpoints, checkpoint],
+        updatedAt: checkpoint.createdAt,
+      });
+    }
+    activeStore.delete(normalized);
+    if (commandId && (!pending || pending.commandId === commandId)) pendingStore.delete(normalized);
     await transactionDone(transaction);
   } finally {
     database.close();
@@ -416,8 +492,40 @@ export async function listDrawingBoards(threadId: string): Promise<readonly Stor
   if (!database) return [];
   try {
     const all = await requestResult(database.transaction(BOARD_STORE_NAME, "readonly").objectStore(BOARD_STORE_NAME).getAll()) as StoredDrawingBoard[];
-    return all.filter((board) => board.threadId === normalized && board.checkpoints.length > 0)
+    return all.filter((board) => board.threadId === normalized)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  } finally {
+    database.close();
+  }
+}
+
+export async function deleteDrawingBoard(threadId: string, boardId: string): Promise<void> {
+  const normalized = normalizeThreadId(threadId);
+  const database = await openDraftDatabase();
+  if (!database) throw new Error("IndexedDB is unavailable.");
+  try {
+    const transaction = database.transaction(
+      [BOARD_STORE_NAME, BOARD_ELEMENT_STORE_NAME, ACTIVE_BOARD_STORE_NAME],
+      "readwrite",
+    );
+    const boardStore = transaction.objectStore(BOARD_STORE_NAME);
+    const elementStore = transaction.objectStore(BOARD_ELEMENT_STORE_NAME);
+    const activeStore = transaction.objectStore(ACTIVE_BOARD_STORE_NAME);
+    const [board, active] = await Promise.all([
+      requestResult(boardStore.get(boardId)) as Promise<StoredDrawingBoard | undefined>,
+      requestResult(activeStore.get(normalized)) as Promise<ActiveBoardRecord | undefined>,
+    ]);
+    if (!board || board.threadId !== normalized) {
+      transaction.abort();
+      throw new Error("This board does not belong to the exact task.");
+    }
+    if (active?.boardId === boardId) {
+      transaction.abort();
+      throw new Error("The active board cannot be deleted while it is open.");
+    }
+    boardStore.delete(boardId);
+    for (const elementId of board.elementIds) elementStore.delete(`${boardId}:${elementId}`);
+    await transactionDone(transaction);
   } finally {
     database.close();
   }

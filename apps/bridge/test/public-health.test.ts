@@ -87,6 +87,9 @@ describe("public bridge health", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toMatchObject({
+      bridgeVersion: "0.1.0",
+      buildRevision: expect.stringMatching(/^(?:[0-9a-f]{7,64}(?:-dirty)?|development)$/u),
+      apiContractVersion: 1,
       state: "stale",
       reason: "Native Codex state is temporarily stale.",
     });

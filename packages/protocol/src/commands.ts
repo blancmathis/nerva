@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { PngBase64Schema } from "./image.js";
+import { decodedBase64Length, PngBase64Schema } from "./image.js";
 import { CommandIdSchema, EpochMillisSchema, SequenceSchema, ThreadIdSchema } from "./primitives.js";
 import { OrderedReviewFramesSchema } from "./review.js";
 import {
@@ -45,6 +45,19 @@ export const SkillNameSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9_:-]*$/, "Expected an allowlisted skill name");
 
+export const MAX_CAPTURE_COMPOSER_FILE_BYTES = 8 * 1024 * 1024;
+export const MAX_CAPTURE_COMPOSER_BATCH_BYTES = 16 * 1024 * 1024;
+
+const ComposerFileNameSchema = z.string().trim().min(1).max(160)
+  .refine((value) => value !== "." && value !== ".." && !/[\/\\\u0000-\u001f\u007f]/u.test(value), "Expected a safe display filename");
+const ComposerMimeTypeSchema = z.string().trim().toLowerCase().min(3).max(160)
+  .regex(/^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,127}$/u, "Expected a bounded MIME type");
+const ComposerFileBase64Schema = z.string().min(4)
+  .max(Math.ceil(MAX_CAPTURE_COMPOSER_FILE_BYTES / 3) * 4)
+  .regex(/^[A-Za-z0-9+/]+={0,2}$/u, "Expected base64 data without a data URL prefix")
+  .refine((value) => value.length % 4 === 0, "Expected padded base64 data")
+  .refine((value) => decodedBase64Length(value) <= MAX_CAPTURE_COMPOSER_FILE_BYTES, "File exceeds the composer attachment limit");
+
 const CommandMetadataShape = {
   commandId: CommandIdSchema,
   expectedBridgeInstanceId: BridgeInstanceIdSchema,
@@ -74,10 +87,25 @@ export const RunMicroActionCommandSchema = z
     expectedThreadId: ThreadIdSchema,
     gesture: z.enum(["tap", "begin", "end"]).optional(),
     gestureId: CommandIdSchema.nullable().optional(),
+    skillNames: z.array(SkillNameSchema).min(1).max(16)
+      .refine((names) => new Set(names).size === names.length, "Skill names must be unique")
+      .optional(),
   })
   .strict()
   .superRefine((command, context) => {
     const gesture = command.gesture ?? "tap";
+    if (command.skillNames !== undefined && (
+      gesture !== "tap"
+      || command.actionSlot !== "ACT12"
+      || command.expectedKeycapId !== "CODEX"
+      || (command.expectedNativeCommandId !== "composer.submit" && command.expectedNativeCommandId !== null)
+    )) {
+      context.addIssue({
+        code: "custom",
+        message: "Skills can be appended only by the exact native Send Prompt action",
+        path: ["skillNames"],
+      });
+    }
     if (gesture === "tap") {
       if (command.gestureId !== undefined && command.gestureId !== null) {
         context.addIssue({ code: "custom", message: "Tap actions cannot carry a gestureId", path: ["gestureId"] });
@@ -377,6 +405,32 @@ export const RunSkillCommandSchema = z
     }
   });
 
+export const AttachCaptureFilesCommandSchema = z
+  .object({
+    ...CommandMetadataShape,
+    type: z.literal("attachCaptureFiles"),
+    targetThreadId: ThreadIdSchema,
+    expectedThreadId: ThreadIdSchema,
+    files: z.array(z.object({
+      fileName: ComposerFileNameSchema,
+      mimeType: ComposerMimeTypeSchema,
+      dataBase64: ComposerFileBase64Schema,
+    }).strict()).min(1).max(4),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.targetThreadId !== command.expectedThreadId) {
+      context.addIssue({ code: "custom", message: "targetThreadId must match expectedThreadId", path: ["targetThreadId"] });
+    }
+    if (new Set(command.files.map((file) => file.fileName)).size !== command.files.length) {
+      context.addIssue({ code: "custom", message: "Composer attachment filenames must be unique", path: ["files"] });
+    }
+    const totalBytes = command.files.reduce((total, file) => total + decodedBase64Length(file.dataBase64), 0);
+    if (totalBytes > MAX_CAPTURE_COMPOSER_BATCH_BYTES) {
+      context.addIssue({ code: "custom", message: "Composer attachment batch exceeds 16 MiB", path: ["files"] });
+    }
+  });
+
 export const RefreshSnapshotCommandSchema = z
   .object({
     ...CommandMetadataShape,
@@ -400,6 +454,7 @@ export const CommandSchema = z.union([
   OpenSessionCommandSchema,
   OpenBrowserTabCommandSchema,
   RunSkillCommandSchema,
+  AttachCaptureFilesCommandSchema,
   RefreshSnapshotCommandSchema,
 ]);
 
@@ -505,6 +560,7 @@ export type RunLibraryCommand = z.infer<typeof RunLibraryCommandSchema>;
 export type OpenSessionCommand = z.infer<typeof OpenSessionCommandSchema>;
 export type OpenBrowserTabCommand = z.infer<typeof OpenBrowserTabCommandSchema>;
 export type RunSkillCommand = z.infer<typeof RunSkillCommandSchema>;
+export type AttachCaptureFilesCommand = z.infer<typeof AttachCaptureFilesCommandSchema>;
 export type RefreshSnapshotCommand = z.infer<typeof RefreshSnapshotCommandSchema>;
 export type Command = z.infer<typeof CommandSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;

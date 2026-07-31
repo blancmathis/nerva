@@ -63,6 +63,10 @@ The bridge advertises one or twelve composer attachments independently from Revi
 
 The build emits an immutable asset graph, a build-specific service worker and `app-meta.json`. The service worker installs a complete new cache before activation and deletes obsolete Nerva caches only after the new worker activates.
 
+The root application build resolves one revision once, passes it to both Web and Bridge, and verifies their emitted runtime identities before succeeding. Browser fixtures build into process-owned temporary directories, so screenshots and E2E runs cannot replace production `apps/web/dist` with a synthetic build.
+
+At bridge startup, Nerva copies that generated distribution into a private process-scoped snapshot and verifies its `buildRevision` and API contract against the bridge's compiled identity before listening. The running process serves only that snapshot; a later repository build cannot replace its JavaScript, CSS, service worker or fallback document underneath an active exact-build gate. A missing or mismatched production identity aborts startup, and the private snapshot is removed on clean shutdown.
+
 The active document is not silently reloaded. When a new worker controls the origin, Nerva shows a reload banner. Reload is disabled while Drawing, image Review or Site Review is active so an unsaved working surface is not discarded. The user can finish or leave that surface, then reload explicitly.
 
 The update monitor also checks when the app returns to the foreground and at a bounded interval. Pairing credentials and drafts remain in their separate IndexedDB stores and are not placed in the service-worker cache.

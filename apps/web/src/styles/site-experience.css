@@ -203,8 +203,7 @@
   .cp-sites-hub__toolbar label { width: 100%; }
   .cp-browser-site__topbar { grid-template-columns: auto minmax(0,1fr); }
   .cp-browser-site__navigation { display: none; }
-  .cp-browser-site__address { grid-template-columns: auto minmax(0,1fr) auto; }
-  .cp-browser-site__address > button[type="submit"] { display: none; }
+  .cp-browser-site__address { grid-template-columns: auto minmax(0,1fr) auto auto; }
   .cp-site-issue-sheet { right: 0; bottom: 0; width: 100%; max-height: min(70dvh, 680px); padding-bottom: max(14px, env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
   .cp-site-issue-sheet__handle { display: block; width: 38px; height: 5px; margin: -5px auto 10px; border-radius: 999px; background: var(--cp-stroke-strong); }
   .cp-site-issue-sheet__fields { grid-template-columns: 1fr; }

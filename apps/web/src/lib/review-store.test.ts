@@ -12,6 +12,7 @@ import {
   getReviewBlob,
   initializeReviewStore,
   loadPendingReviewDelivery,
+  loadPendingReviewDeliveryIdentity,
   loadReviewDraft,
   putReviewBlob,
   reviewDraftKey,
@@ -443,6 +444,24 @@ describe("review IndexedDB persistence", () => {
     await expect(loadPendingReviewDelivery(THREAD_ID, 1_235)).resolves.toBeNull();
     await expect(clearPendingReviewDelivery(THREAD_ID, 1_234, commandId)).resolves.toBe(true);
     await expect(loadPendingReviewDelivery(THREAD_ID, 1_234)).resolves.toBeNull();
+  });
+
+  it("retains the exact bridge authority needed for a byte-identical retry after reload", async () => {
+    const commandId = "019f7ec2-68eb-7183-bb3a-0e67312a8bb4";
+    const authority = {
+      expectedBridgeInstanceId: "019f7ec2-68eb-7183-bb3a-0e67312a8bc1",
+      targetThreadKey: `thread:${THREAD_ID}`,
+      snapshotSeq: 73,
+      instructionSuffix: "\n\nUse the following skills for this task: website-qa.",
+      skillIds: ["website-qa"],
+    };
+    await savePendingReviewDelivery(THREAD_ID, 1_240, commandId, authority);
+
+    await expect(loadPendingReviewDeliveryIdentity(THREAD_ID, 1_240)).resolves.toEqual({
+      commandId,
+      ...authority,
+    });
+    await expect(loadPendingReviewDeliveryIdentity(THREAD_ID, 1_241)).resolves.toBeNull();
   });
 
   it("never lets an old acknowledgement clear a newer tab's pending delivery", async () => {

@@ -1,10 +1,11 @@
-import { chmod, mkdir, mkdtemp } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CachedDesktopSignatureVerifier,
   collectDesktopOwnershipEvidence,
   createDesktopOwnershipAttestation,
   inspectDesktopOwnership,
@@ -146,6 +147,48 @@ describe("Desktop ownership attestation", () => {
     };
     await expect(verifyOfficialDesktopSignature(installation, command)).resolves.toBe(true);
     await expect(verifyOfficialDesktopSignature({ ...installation, bundleId: "invalid.bundle" }, command)).resolves.toBe(false);
+  });
+
+  it("caches static signature trust by the exact signed installation fingerprint", async () => {
+    const paths = await fixture();
+    const appPath = join(paths.root, "ChatGPT.app");
+    const executablePath = join(appPath, "Contents", "MacOS", "ChatGPT");
+    const binaryPath = join(appPath, "Contents", "Resources", "codex");
+    const resourcesPath = join(appPath, "Contents", "_CodeSignature", "CodeResources");
+    await mkdir(join(appPath, "Contents", "MacOS"), { recursive: true });
+    await mkdir(join(appPath, "Contents", "Resources"), { recursive: true });
+    await mkdir(join(appPath, "Contents", "_CodeSignature"), { recursive: true });
+    await Promise.all([
+      writeFile(executablePath, "desktop-v1"),
+      writeFile(binaryPath, "codex-v1"),
+      writeFile(resourcesPath, "signature-v1"),
+    ]);
+    const localInstallation: DesktopOwnershipInstallation = {
+      ...installation,
+      appPath,
+      binaryPath,
+      daemonBinaryPath: binaryPath,
+    };
+    const verify = vi.fn(async () => true);
+    const verifier = new CachedDesktopSignatureVerifier({ verify });
+
+    await expect(verifier.verify(localInstallation, unusedCommand)).resolves.toBe(true);
+    await expect(verifier.verify(localInstallation, unusedCommand)).resolves.toBe(true);
+    expect(verify).toHaveBeenCalledTimes(1);
+
+    await writeFile(binaryPath, "codex-v2-with-new-fingerprint");
+    await expect(verifier.verify(localInstallation, unusedCommand)).resolves.toBe(true);
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a failed static signature verification", async () => {
+    const fingerprint = vi.fn(async () => "a".repeat(64));
+    const verify = vi.fn(async () => false);
+    const verifier = new CachedDesktopSignatureVerifier({ fingerprint, verify });
+
+    await expect(verifier.verify(installation, unusedCommand)).resolves.toBe(false);
+    await expect(verifier.verify(installation, unusedCommand)).resolves.toBe(false);
+    expect(verify).toHaveBeenCalledTimes(2);
   });
 
   it("keeps mutation unavailable when the attestation is missing", async () => {

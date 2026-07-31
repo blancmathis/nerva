@@ -1,3 +1,5 @@
+import { E2E_FIXTURE_BUILD_REVISION } from "../src/web-build-revision";
+
 export const THREADS = [
   { id: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1", title: "Release checklist", nativeStatus: "idle", visualStatus: "idle", project: "codex-pad", projectId: "project:2s0Pz0PBpeLguK5w-d_3b0a_sA4KbOC5OyKV_pKml2I" },
   { id: "019f7ec2-68eb-7183-bb3a-0e67312a8ba2", title: "Bridge hardening", nativeStatus: "working", visualStatus: "working", project: "codex-pad", projectId: "project:2s0Pz0PBpeLguK5w-d_3b0a_sA4KbOC5OyKV_pKml2I" },
@@ -18,6 +20,7 @@ export const CATALOG_SESSION = {
 
 export const INITIAL_BRIDGE_INSTANCE_ID = "7d35b974-62cc-4db8-9b4e-5a8dc8a4d812";
 export const RESTARTED_BRIDGE_INSTANCE_ID = "0bb7bb32-f477-4792-ad7b-06fef8287138";
+export const FIXTURE_BUILD_REVISION = E2E_FIXTURE_BUILD_REVISION;
 
 export function fixtureRuntimeDiagnostics(sequence = 73) {
   const capturedAt = Date.now();
@@ -34,6 +37,8 @@ export function fixtureRuntimeDiagnostics(sequence = 73) {
     data: {
       protocolVersion: 1,
       bridgeVersion: "0.1.0-test-fixture",
+      buildRevision: FIXTURE_BUILD_REVISION,
+      apiContractVersion: 1,
       codexVersion: "0.145.0-test-fixture",
       snapshotSequence: sequence,
       capturedAt,
@@ -105,6 +110,9 @@ export function fixtureSnapshot(state: FixtureState) {
   const selectedThread = THREADS.find((thread) => thread.id === activeThreadId) ?? null;
   return {
     bridgeInstanceId: state.bridgeInstanceId,
+    bridgeVersion: "0.1.0-test-fixture",
+    buildRevision: FIXTURE_BUILD_REVISION,
+    apiContractVersion: 1,
     sequence: state.sequence,
     timestamp,
     codexVersion: "0.145.0-test-fixture",
@@ -172,6 +180,7 @@ export function fixtureCapabilities() {
         "runSkill",
         "runLibraryCommand",
         "sendSketch",
+        "attachCaptureFiles",
         "sendReview",
         "openSession",
       ],

@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -377,6 +379,38 @@ describe("AppServerClient", () => {
     expect(() => validateManagedSocketPath(missing)).toThrowError(
       expect.objectContaining({ code: "INVALID_MANAGED_SOCKET" }),
     );
+  });
+
+  it("rejects a stale managed socket without emitting an unhandled stream error", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-pad-refused-socket-"));
+    const binaryPath = join(root, "codex");
+    const socketPath = join(root, "app-server.sock");
+    await writeFile(binaryPath, "#!/bin/sh\nexit 0\n");
+    await chmod(binaryPath, 0o700);
+
+    const child = spawn(process.execPath, [
+      "-e",
+      "const net=require('node:net');const server=net.createServer();server.listen(process.argv[1],()=>process.stdout.write('ready'));setInterval(()=>{},1000);",
+      socketPath,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+
+    try {
+      await once(child.stdout, "data");
+      child.kill("SIGKILL");
+      await once(child, "exit");
+      await chmod(socketPath, 0o600);
+
+      await expect(AppServerClient.connectManaged({
+        codexBinaryPath: binaryPath,
+        socketPath,
+        requestTimeoutMs: 250,
+      })).rejects.toMatchObject({
+        code: "MANAGED_PROXY_EXITED",
+      });
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("uses the managed daemon's WebSocket protocol over its private Unix socket", async () => {

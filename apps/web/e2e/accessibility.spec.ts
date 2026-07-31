@@ -44,10 +44,16 @@ test("rendered Nerva surfaces have no serious or critical axe violations", async
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page, "Home");
+  await page.getByRole("button", { name: /Unpinned Sessions/ }).click();
+  await expectNoSeriousAccessibilityViolations(page, "Unpinned Sessions dialog");
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page, "Session");
+  await page.getByRole("button", { name: /Skills/ }).click();
+  await expectNoSeriousAccessibilityViolations(page, "Skills dialog");
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
@@ -102,4 +108,6 @@ test("rendered Nerva surfaces have no serious or critical axe violations", async
   await page.getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page, "Settings");
+  await page.getByRole("button", { name: /Open System Diagnostics/ }).click();
+  await expectNoSeriousAccessibilityViolations(page, "System Diagnostics dialog");
 });

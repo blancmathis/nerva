@@ -107,6 +107,41 @@ describe("flattened PNG export", () => {
     expect(fake.context.fillRect).toHaveBeenCalledWith(0, 0, rendered.geometry.width, rendered.geometry.height);
   });
 
+  it("uses the same background-first visual stack even when a migrated scene is out of order", async () => {
+    const shape = createShapeElement({
+      id: "ink-above-photo",
+      shape: "ellipse",
+      x: 20,
+      y: 20,
+      width: 50,
+      height: 30,
+      strokeColor: "#00f",
+      strokeWidth: 2,
+    });
+    const image = createImageElement({
+      id: "background-photo",
+      x: 0,
+      y: 0,
+      width: 80,
+      height: 60,
+      source: { kind: "blobRef", blobId: "indexed-db-key", metadata },
+      isBackground: true,
+    });
+    const fake = fakeCanvas();
+
+    await renderSceneToCanvas(
+      { ...createScene(), elements: [shape, image] },
+      {
+        canvasFactory: fake.factory,
+        imageResolver: async () => ({}) as CanvasImageSource,
+      },
+    );
+
+    expect(fake.context.drawImage.mock.invocationCallOrder[0]).toBeLessThan(
+      fake.context.ellipse.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("returns a PNG blob and bounds its physical canvas", async () => {
     const scene = createScene({ width: 20_000, height: 10_000, background: "transparent" });
     const fake = fakeCanvas();

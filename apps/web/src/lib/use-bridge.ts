@@ -306,6 +306,7 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
   const [savedDrawings, setSavedDrawings] = useState<readonly SavedDrawingSummary[]>([]);
   const [savedDrawingsLoaded, setSavedDrawingsLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [compatibilityIssue, setCompatibilityIssue] = useState<string | null>(null);
   const [pairing, setPairing] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [cached, setCached] = useState(false);
@@ -647,6 +648,10 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
           clearConnectionSecondaryData();
         }
       },
+      onCompatibility(compatible, detail) {
+        if (!active) return;
+        setCompatibilityIssue(compatible ? null : detail ?? "Refresh Nerva before using Mac controls");
+      },
       onUnauthorized() {
         if (!active) return;
         connectedRef.current = false;
@@ -795,9 +800,19 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       setPairing(false);
       setInitializing(true);
       window.history.replaceState({}, "", "/");
-      await client.refreshSnapshot();
-      await Promise.all([refreshSecondary(), refreshProductState(), refreshDevices(), refreshCodexUsage(), refreshRuntimeDiagnostics(), refreshContextRoomStatus(), refreshPushStatus()]);
+      // Pairing is complete once the one-time credential is issued. Resume the
+      // attested socket immediately; optional catalogs and product metadata
+      // must never keep the Pairing screen pending on a slow iPadOS fetch.
       client.setVisible(true);
+      void Promise.allSettled([
+        refreshSecondary(),
+        refreshProductState(),
+        refreshDevices(),
+        refreshCodexUsage(),
+        refreshRuntimeDiagnostics(),
+        refreshContextRoomStatus(),
+        refreshPushStatus(),
+      ]);
     }
     return result;
   }, [refreshCodexUsage, refreshContextRoomStatus, refreshDevices, refreshProductState, refreshPushStatus, refreshRuntimeDiagnostics, refreshSecondary]);
@@ -839,10 +854,11 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
 
   const phase = useMemo<ConnectionPhase>(() => {
     if (pairing) return "pairing";
+    if (compatibilityIssue !== null) return "update-required";
     if (connected) return "online";
     if (initializing) return "connecting";
     return snapshot ? "reconnecting" : "offline";
-  }, [connected, initializing, pairing, snapshot]);
+  }, [compatibilityIssue, connected, initializing, pairing, snapshot]);
 
   const saveGlobalProductState = useCallback(async (
     homeLayout: HomeLayout,

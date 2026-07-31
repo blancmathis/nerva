@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { z, ZodError } from "zod";
@@ -11,11 +11,14 @@ import {
   CommandAckSchema,
   CommandRequestSchema,
   CommandStatusResponseSchema,
+  API_CONTRACT_HEADER,
+  BUILD_REVISION_HEADER,
   DiagramUpdateRequestSchema,
   ProductStateUpdateRequestSchema,
   SavedDrawingCreateRequestSchema,
   SiteQaRecordedActionSchema,
   RuntimeDiagnosticsSchema,
+  RuntimeIdentitySchema,
   ServerWsMessageSchema,
   type ApiError,
   type BridgeHealth,
@@ -27,6 +30,7 @@ import {
   type ContextRoomStatus,
   type RuntimeCapabilityCheck,
   type RuntimeDiagnostics,
+  type RuntimeIdentity,
   type RuntimeSchemaCompatibility,
 } from "@codex-pad/protocol";
 import { CodexDesktopAdapter } from "@codex-pad/codex-desktop";
@@ -99,8 +103,9 @@ import {
   VapidKeyStore,
   type PushDelivery,
 } from "./push-notifications.js";
+import { BRIDGE_RUNTIME_IDENTITY } from "./runtime-identity.js";
+import { createImmutableWebBuildSnapshot } from "./web-build-snapshot.js";
 
-const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
 const MAX_HTTP_BODY_BYTES = 34 * 1024 * 1024;
@@ -210,6 +215,8 @@ export interface StartBridgeOptions {
   adapter?: CodexDesktopAdapter;
   transport?: ThreadTransport;
   codexVersion?: string | null;
+  /** Test seam; production uses the build-time identity embedded by tsup. */
+  runtimeIdentity?: RuntimeIdentity;
   schemaCompatibility?: RuntimeSchemaCompatibility;
   contextRoomOrigin?: string;
   multiImageInputCapability?: VerifiedMultiImageInputCapability;
@@ -462,6 +469,7 @@ async function startBridgeWithLifetimeLease(
   const port = options.port ?? Number(process.env.CODEX_PAD_PORT ?? config?.bridge.port ?? DEFAULT_PORT);
   const unsafeLan = options.unsafeLan ?? process.env.CODEX_PAD_UNSAFE_LAN === "1";
   const publicOrigin = options.publicOrigin ?? process.env.CODEX_PAD_PUBLIC_ORIGIN ?? await pairingOrigin(paths, unsafeLan);
+  const runtimeIdentity = RuntimeIdentitySchema.parse(options.runtimeIdentity ?? BRIDGE_RUNTIME_IDENTITY);
   const developmentOrigins = process.env.NODE_ENV === "development"
     ? ["http://127.0.0.1:5173", "http://localhost:5173"]
     : [];
@@ -510,6 +518,7 @@ async function startBridgeWithLifetimeLease(
     adapter,
     transport,
     targetAuthorityIssuer: targetAuthorityDomain.stateIssuer,
+    runtimeIdentity,
     ...(options.codexVersion === undefined ? {} : { codexVersion: options.codexVersion }),
   });
   const notificationEngine = new IntelligentNotificationEngine({
@@ -689,6 +698,8 @@ async function startBridgeWithLifetimeLease(
     reply.header("Permissions-Policy", "camera=(self), geolocation=(), microphone=(self), payment=(), usb=()");
     reply.header("Cross-Origin-Resource-Policy", "same-origin");
     reply.header("Cache-Control", request.url.startsWith("/api/") ? "no-store" : "no-cache");
+    reply.header(BUILD_REVISION_HEADER, runtimeIdentity.buildRevision);
+    reply.header(API_CONTRACT_HEADER, String(runtimeIdentity.apiContractVersion));
     // Migration only: delete the former host-wide credential cookies so an
     // upgraded browser cannot send them to sibling review ports.
     reply.header("Set-Cookie", legacyCookieClearHeaders(!unsafeLan));
@@ -759,7 +770,37 @@ async function startBridgeWithLifetimeLease(
     return origin;
   }
 
-  async function allowMutation(device: AuthenticatedDevice, reply: FastifyReply): Promise<boolean> {
+  async function allowMutation(
+    request: FastifyRequest,
+    device: AuthenticatedDevice,
+    reply: FastifyReply,
+  ): Promise<boolean> {
+    const presented = request.headers[API_CONTRACT_HEADER];
+    const presentedBuild = request.headers[BUILD_REVISION_HEADER];
+    const clientContract = typeof presented === "string" && /^[1-9][0-9]{0,4}$/u.test(presented)
+      ? Number(presented)
+      : null;
+    const clientBuild = typeof presentedBuild === "string" ? presentedBuild : null;
+    const identityRequired = runtimeIdentity.buildRevision !== "development";
+    if (
+      (presented !== undefined && clientContract !== runtimeIdentity.apiContractVersion)
+      || (presentedBuild !== undefined && clientBuild !== runtimeIdentity.buildRevision)
+      || (identityRequired && (clientContract === null || clientBuild === null))
+    ) {
+      await reply.code(409).send({
+        ok: false,
+        error: {
+          ...apiError("CONFLICT", "Nerva client and bridge builds are incompatible. Refresh Nerva before retrying."),
+          details: {
+            clientContractVersion: clientContract,
+            serverContractVersion: runtimeIdentity.apiContractVersion,
+            clientBuildRevision: clientBuild,
+            serverBuildRevision: runtimeIdentity.buildRevision,
+          },
+        },
+      });
+      return false;
+    }
     const decision = mutationLimit.consume(device.id);
     if (decision.allowed) return true;
     await sendRateLimit(reply, decision.retryAfterSeconds, "Device mutations are temporarily limited");
@@ -782,7 +823,7 @@ async function startBridgeWithLifetimeLease(
   async function admitCommandRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const presentedCommandId = request.headers["x-codex-pad-command-id"];
     if (presentedCommandId !== undefined) {
       const { commandId } = commandParamsSchema.parse({ commandId: presentedCommandId });
@@ -809,7 +850,7 @@ async function startBridgeWithLifetimeLease(
   async function admitWebSocketTicketRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const origin = requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     webSocketTicketOrigins.set(request, origin);
   }
 
@@ -929,7 +970,7 @@ async function startBridgeWithLifetimeLease(
     ];
     return RuntimeDiagnosticsSchema.parse({
       protocolVersion: 1,
-      bridgeVersion: VERSION,
+      ...runtimeIdentity,
       codexVersion: capabilities.codexVersion,
       snapshotSequence: snapshot.sequence,
       capturedAt: Date.now(),
@@ -956,7 +997,8 @@ async function startBridgeWithLifetimeLease(
     return {
       ok: true,
       data: {
-        version: VERSION,
+        version: runtimeIdentity.bridgeVersion,
+        ...runtimeIdentity,
         state: healthState,
         reason: publicHealthReason(healthState),
         pairingConfigured: (await pairingStore.show()) !== null,
@@ -1110,7 +1152,7 @@ async function startBridgeWithLifetimeLease(
   app.put("/api/push/subscription", { bodyLimit: 8_192 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const subscription = PushSubscriptionInputSchema.parse(request.body);
     await pushSubscriptions.upsert(device.id, subscription);
     return { ok: true, data: { subscribed: true } };
@@ -1119,7 +1161,7 @@ async function startBridgeWithLifetimeLease(
   app.delete("/api/push/subscription", { bodyLimit: 1 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     await pushSubscriptions.removeDevice(device.id);
     return { ok: true, data: { subscribed: false } };
   });
@@ -1127,7 +1169,7 @@ async function startBridgeWithLifetimeLease(
   app.put("/api/product-state", { bodyLimit: 128 * 1024 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const input = ProductStateUpdateRequestSchema.parse(request.body);
     try {
       return { ok: true, data: await productStateStore.update(input) };
@@ -1159,7 +1201,7 @@ async function startBridgeWithLifetimeLease(
   app.post("/api/saved-drawings", { bodyLimit: 16 * 1024 * 1024 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const lease = savedDrawingConcurrency.tryAcquire(device.id);
     if (lease === null) return sendRateLimit(reply, 1, "Another Saved Drawings change is still in progress");
     try {
@@ -1173,7 +1215,7 @@ async function startBridgeWithLifetimeLease(
   app.delete("/api/saved-drawings/:id", async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { id } = savedDrawingParamsSchema.parse(request.params);
     const lease = savedDrawingConcurrency.tryAcquire(device.id);
     if (lease === null) return sendRateLimit(reply, 1, "Another Saved Drawings change is still in progress");
@@ -1200,7 +1242,7 @@ async function startBridgeWithLifetimeLease(
   app.put("/api/diagrams/:id", { bodyLimit: 512 * 1024 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { id } = diagramParamsSchema.parse(request.params);
     const { threadId } = diagramQuerySchema.parse(request.query);
     const lease = diagramConcurrency.tryAcquire(device.id);
@@ -1293,7 +1335,7 @@ async function startBridgeWithLifetimeLease(
   app.post("/api/browser-tabs/:tabId/control", { bodyLimit: 8_192 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { tabId } = browserTabParamsSchema.parse(request.params);
     const { threadId } = siteManagementQuerySchema.parse(request.query);
     const action = browserTabControlSchema.parse(request.body);
@@ -1318,7 +1360,7 @@ async function startBridgeWithLifetimeLease(
   app.post("/api/browser-tabs/:tabId/recorded-control", { bodyLimit: 8_192 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { tabId } = browserTabParamsSchema.parse(request.params);
     const { threadId } = siteManagementQuerySchema.parse(request.query);
     const action = SiteQaRecordedActionSchema.parse(request.body);
@@ -1343,7 +1385,7 @@ async function startBridgeWithLifetimeLease(
   app.post("/api/sites", { bodyLimit: 4_096 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const body = siteCreateBodySchema.parse(request.body);
     const context = await sessions.resolveSiteManagementContext(body.threadId);
     if (body.scope === "project" && context.projectId === undefined) {
@@ -1376,7 +1418,7 @@ async function startBridgeWithLifetimeLease(
   app.delete("/api/sites/:siteId", async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { siteId } = siteParamsSchema.parse(request.params);
     const { threadId } = siteManagementQuerySchema.parse(request.query);
     const context = await sessions.resolveSiteManagementContext(threadId);
@@ -1398,7 +1440,7 @@ async function startBridgeWithLifetimeLease(
   app.post("/api/sites/:siteId/capture", { bodyLimit: 4_096 }, async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { siteId } = siteParamsSchema.parse(request.params);
     const body = siteCaptureBodySchema.parse(request.body);
     if (siteCaptureService === null) {
@@ -1537,7 +1579,7 @@ async function startBridgeWithLifetimeLease(
   app.delete("/api/devices/:id", async (request, reply) => {
     requireOrigin(request);
     const device = await authenticate(request, reply);
-    if (device === null || !await allowMutation(device, reply)) return;
+    if (device === null || !await allowMutation(request, device, reply)) return;
     const { id } = deviceParamsSchema.parse(request.params);
     const revoked = await credentialStore.revoke(id);
     if (!revoked) return reply.code(404).send({ ok: false, error: apiError("NOT_FOUND", "Device was not found") });
@@ -1709,18 +1751,19 @@ async function startBridgeWithLifetimeLease(
   refreshState();
 
   const defaultWebRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
-  const webRoot = options.webRoot ?? defaultWebRoot;
-  const hasWeb = await access(webRoot).then(() => true, () => false);
-  if (hasWeb) {
-    // The web build uses content-hashed asset names. Keep the wildcard route so
-    // a running bridge can serve assets generated by a later frontend rebuild.
-    await app.register(fastifyStatic, { root: webRoot, prefix: "/" });
+  const webSnapshot = await createImmutableWebBuildSnapshot(
+    options.webRoot ?? defaultWebRoot,
+    runtimeIdentity,
+  );
+  if (webSnapshot !== null) {
+    startupCleanups.push(() => webSnapshot.release());
+    await app.register(fastifyStatic, { root: webSnapshot.root, prefix: "/" });
   }
   app.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith("/api/") || request.url === "/ws") {
       return reply.code(404).send({ ok: false, error: apiError("NOT_FOUND", "Route not found") });
     }
-    if (hasWeb) return reply.type("text/html").sendFile("index.html");
+    if (webSnapshot !== null) return reply.type("text/html").sendFile("index.html");
     return reply.type("text/html").send("<!doctype html><meta charset=utf-8><title>Codex Pad</title><p>Build apps/web before serving the PWA.</p>");
   });
 
@@ -1745,6 +1788,7 @@ async function startBridgeWithLifetimeLease(
     for (const record of sockets) record.socket.close(1001, "bridge stopping");
     await attempt(() => runtimeCleanup.stop());
     await attempt(() => app.close());
+    if (webSnapshot !== null) await attempt(() => webSnapshot.release());
     await attempt(async () => {
       await Promise.all([...pendingDeviceCleanup.values()]);
     });

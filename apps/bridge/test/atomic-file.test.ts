@@ -1,8 +1,28 @@
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, utimes, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { withPrivateFileLock, type PrivateFileLockOptions } from "../src/atomic-file.js";
+import {
+  assertPrivateRegularFile,
+  atomicWritePrivateJson,
+  ensurePrivateDirectory,
+  withPrivateFileLock,
+  type PrivateFileLockOptions,
+} from "../src/atomic-file.js";
 
 const temporaryRoots: string[] = [];
 
@@ -28,6 +48,77 @@ function controlledProcessOptions(overrides: PrivateFileLockOptions = {}): Priva
     ...overrides,
   };
 }
+
+describe("private filesystem artifacts", () => {
+  it("creates and tightens a current-user directory to mode 0700", async () => {
+    const { root } = await temporaryTarget();
+    const privateDirectory = join(root, "private");
+
+    await mkdir(privateDirectory, { mode: 0o755 });
+    await chmod(privateDirectory, 0o755);
+    await ensurePrivateDirectory(privateDirectory);
+
+    const details = await stat(privateDirectory);
+    expect(details.isDirectory()).toBe(true);
+    expect(details.mode & 0o777).toBe(0o700);
+  });
+
+  it("refuses a symlinked private directory without tightening its target", async () => {
+    const { root } = await temporaryTarget();
+    const targetDirectory = join(root, "target");
+    const privateDirectory = join(root, "private");
+
+    await mkdir(targetDirectory, { mode: 0o755 });
+    await chmod(targetDirectory, 0o755);
+    await symlink(targetDirectory, privateDirectory);
+
+    await expect(ensurePrivateDirectory(privateDirectory)).rejects.toThrow(/symbolic link/u);
+    expect((await stat(targetDirectory)).mode & 0o777).toBe(0o755);
+  });
+
+  it("accepts only a single-link, current-user regular file in exact mode 0600", async () => {
+    const { root } = await temporaryTarget();
+    const privateFile = join(root, "private.json");
+    await writeFile(privateFile, "{}\n", { mode: 0o600 });
+    await chmod(privateFile, 0o600);
+
+    await expect(assertPrivateRegularFile(privateFile)).resolves.toBeUndefined();
+
+    await chmod(privateFile, 0o700);
+    await expect(assertPrivateRegularFile(privateFile)).rejects.toThrow(/expected mode 0600/u);
+    await chmod(privateFile, 0o600);
+
+    const symbolicLink = join(root, "private-link.json");
+    await symlink(privateFile, symbolicLink);
+    await expect(assertPrivateRegularFile(symbolicLink)).rejects.toThrow(/symbolic link/u);
+
+    const hardLink = join(root, "private-hard-link.json");
+    await link(privateFile, hardLink);
+    await expect(assertPrivateRegularFile(privateFile)).rejects.toThrow(/hard-linked/u);
+    await expect(assertPrivateRegularFile(hardLink)).rejects.toThrow(/hard-linked/u);
+  });
+
+  it("atomically replaces a final symlink without modifying the symlink target", async () => {
+    const { root } = await temporaryTarget();
+    const privateDirectory = join(root, "private");
+    const outsideTarget = join(root, "outside.json");
+    const privateFile = join(privateDirectory, "state.json");
+
+    await ensurePrivateDirectory(privateDirectory);
+    await writeFile(outsideTarget, "sentinel\n", { mode: 0o600 });
+    await chmod(outsideTarget, 0o600);
+    await symlink(outsideTarget, privateFile);
+
+    await atomicWritePrivateJson(privateFile, { state: "new" });
+
+    expect(await readFile(outsideTarget, "utf8")).toBe("sentinel\n");
+    const finalDetails = await lstat(privateFile);
+    expect(finalDetails.isFile()).toBe(true);
+    expect(finalDetails.isSymbolicLink()).toBe(false);
+    expect(finalDetails.mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(privateFile, "utf8"))).toEqual({ state: "new" });
+  });
+});
 
 async function writeSeedLock(
   lockPath: string,
@@ -246,7 +337,11 @@ describe("withPrivateFileLock", () => {
         activeOperations -= 1;
         return index;
       },
-      controlledProcessOptions({ timeoutMs: 1_000 }),
+      // Reclaiming the seeded generation, serializing six owners, and proving
+      // every release can be delayed by the root suite's parallel browser
+      // workers. This is only the test acquisition deadline; stale ownership
+      // and generation checks remain unchanged and fail closed.
+      controlledProcessOptions({ timeoutMs: 3_000 }),
     )));
     expect(results.sort((left, right) => left - right)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(maximumActiveOperations).toBe(1);

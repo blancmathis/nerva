@@ -33,13 +33,17 @@ import {
 } from "./image-input-capability.js";
 import {
   createMacPairing,
+  inspectMacUninstall,
   preflightMacSetup,
   setupMac,
+  uninstallMac,
   waitForPairingConsumption,
   type MacPairingResult,
   type MacSetupDependencies,
   type MacSetupPreflight,
   type MacSetupResult,
+  type MacUninstallInspection,
+  type MacUninstallResult,
 } from "./mac-setup.js";
 import { setupCodexPad, type SetupDependencies } from "./setup.js";
 import type { VerifiedMultiImageInputCapability } from "./thread-transport.js";
@@ -161,6 +165,8 @@ export interface CliDependencies {
   readonly setupMac?: (dependencies?: MacSetupDependencies) => Promise<MacSetupResult>;
   readonly preflightMacSetup?: (dependencies?: MacSetupDependencies) => Promise<MacSetupPreflight>;
   readonly createMacPairing?: (dependencies?: MacSetupDependencies) => Promise<MacPairingResult>;
+  readonly inspectMacUninstall?: (dependencies?: MacSetupDependencies) => Promise<MacUninstallInspection>;
+  readonly uninstallMac?: (dependencies?: MacSetupDependencies) => Promise<MacUninstallResult>;
   readonly waitForPairingConsumption?: (homeDirectory?: string, pollMs?: number) => Promise<"consumed" | "expired" | "missing">;
 }
 
@@ -180,6 +186,11 @@ function flagValue(arguments_: readonly string[], name: string): string | undefi
 
 function hasFlag(arguments_: readonly string[], name: string): boolean {
   return arguments_.includes(name);
+}
+
+function assertOnlyFlags(arguments_: readonly string[], allowed: ReadonlySet<string>): void {
+  const unknown = arguments_.find((argument) => !allowed.has(argument));
+  if (unknown !== undefined) throw new CliUsageError(`Unknown option: ${unknown}`);
 }
 
 function parsePort(arguments_: readonly string[]): number | undefined {
@@ -353,6 +364,7 @@ const HELP = `Codex Pad — local macOS bridge and iPad control surface
 Usage from a source checkout:
   npm run setup:check [-- --json]
   npm run setup:mac [-- --no-wait]
+  npm run uninstall:mac [-- --dry-run | --confirm-uninstall] [--json]
   npm run pair [-- --no-wait]
   npm run setup -- [--generate-schemas] [--attest-desktop-ownership] [--pair-origin https://mac.tailnet.ts.net] [--device-name "iPad"] [--json]
   npm run doctor -- [--json]
@@ -381,6 +393,9 @@ Safety defaults:
   and sets the exact private Serve route; it never resets Serve or Funnel or
   restarts Desktop. A limited native preflight still installs the safe bridge
   and pairing surface while native mutations remain unavailable.
+  uninstall:mac is read-only unless --confirm-uninstall is present. It removes
+  only the exact Nerva LaunchAgent and exact associated Serve route. Product
+  data, pairing records, drawings, captures, settings, and logs are retained.
   --unsafe-lan is development-only; authentication and Origin checks remain on.`;
 
 function formatMacSetupPreflight(preflight: MacSetupPreflight): string {
@@ -405,6 +420,18 @@ function formatMacSetupPreflight(preflight: MacSetupPreflight): string {
   }
   if (preflight.installationState === "limited" || preflight.installationState === "degraded") {
     lines.push("Nerva can install and pair. Only the capabilities listed as unavailable remain disabled; maintainers can use `npm run doctor -- --strict-native` for the full release gate.");
+  }
+  return lines.join("\n");
+}
+
+function formatMacUninstallInspection(inspection: MacUninstallInspection): string {
+  const lines = [`Nerva uninstall inspection: ${inspection.state === "ready" ? "READY" : "BLOCKED"}`];
+  lines.push(`LaunchAgent: ${inspection.launchAgent.state} — ${inspection.launchAgent.detail}`);
+  lines.push(`Private Serve route: ${inspection.serve.state} — ${inspection.serve.detail}`);
+  lines.push(`Retained product data: ${inspection.retainedDataRoot}`);
+  lines.push(`Retained logs: ${inspection.retainedRuntime}`);
+  if (inspection.state === "ready") {
+    lines.push("No Nerva service, Serve route, or product data was changed. Rerun with --confirm-uninstall to remove only the targets listed above.");
   }
   return lines.join("\n");
 }
@@ -567,6 +594,37 @@ export async function runCli(
       if (hasFlag(rest, "--json")) printJson(stdout, result);
       else stdout(formatMacSetupPreflight(result));
       return result.installationState === "blocked" ? 1 : 0;
+    }
+
+    if (command === "uninstall-mac") {
+      assertOnlyFlags(rest, new Set(["--dry-run", "--confirm-uninstall", "--json"]));
+      const dryRun = hasFlag(rest, "--dry-run");
+      const confirmed = hasFlag(rest, "--confirm-uninstall");
+      if (dryRun && confirmed) {
+        throw new CliUsageError("Choose either --dry-run or --confirm-uninstall, not both.");
+      }
+      if (!confirmed) {
+        const inspection = await (dependencies.inspectMacUninstall ?? inspectMacUninstall)();
+        if (hasFlag(rest, "--json")) printJson(stdout, { dryRun: true, ...inspection });
+        else stdout(formatMacUninstallInspection(inspection));
+        return inspection.state === "blocked" ? 1 : 0;
+      }
+      const result = await (dependencies.uninstallMac ?? uninstallMac)();
+      if (hasFlag(rest, "--json")) {
+        printJson(stdout, { dryRun: false, ...result });
+        return result.state === "complete" ? 0 : 1;
+      }
+      stdout(result.serveRemoved
+        ? "Removed the exact Nerva private Serve route."
+        : "No exact Nerva private Serve route was installed.");
+      stdout(result.launchAgentRemoved
+        ? "Removed the exact Nerva LaunchAgent."
+        : "No Nerva LaunchAgent was installed.");
+      stdout(`Retained product data, pairing records, drawings, settings, and captures at ${result.inspection.retainedDataRoot}.`);
+      stdout(`Retained bridge logs at ${result.inspection.retainedRuntime}.`);
+      stdout("Codex Desktop, its managed daemon, and the global launchd environment were not changed.");
+      for (const error of result.errors) stderr(`Partial uninstall: ${error}`);
+      return result.state === "complete" ? 0 : 1;
     }
 
     if (command === "setup-mac") {

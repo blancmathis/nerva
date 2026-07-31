@@ -5,6 +5,8 @@ import {
   NATIVE_CONTROL_IDENTIFIERS,
   type NativeComposerImageAttachment,
   type NativeComposerImageBatch,
+  type NativeComposerTextAppend,
+  type NativeComposerFileBatch,
   type NativeDispatch,
 } from "./types.js";
 
@@ -574,6 +576,84 @@ export function buildFixedDispatchExpression(event: NativeDispatch): string {
 const MAX_COMPOSER_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_COMPOSER_BATCH_BYTES = 24 * 1024 * 1024;
 
+/** Append one bounded, validated Skills suffix to the exact visible composer. */
+export function buildFixedComposerTextAppendExpression(input: NativeComposerTextAppend): string {
+  validateComposerTextAppend(input);
+  return `(() => {
+    let codexPadTextPasteMayHaveFired = false;
+    try {
+      const expectedThreadId = ${JSON.stringify(input.expectedThreadId)};
+      const text = ${JSON.stringify(input.text)};
+      const canonicalThreadId = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value.toLowerCase() : null;
+      const assertExpectedComposer = () => {
+        const sidebarValue = document.querySelector('[data-sidebar-thread-id]')?.getAttribute('data-sidebar-thread-id') ?? null;
+        const composerValue = document.querySelector('[data-above-composer-conversation-id]')?.getAttribute('data-above-composer-conversation-id') ?? null;
+        const sidebar = canonicalThreadId(sidebarValue);
+        const composer = canonicalThreadId(composerValue);
+        const current = sidebar ?? composer;
+        if (current !== expectedThreadId || (sidebar !== null && composer !== null && sidebar !== composer)) {
+          throw new Error('The exact Codex composer changed before text insertion.');
+        }
+      };
+      assertExpectedComposer();
+      const controls = [...document.querySelectorAll('button[data-composer-navigation-target="add-context"]')];
+      if (controls.length !== 1) throw new Error('The exact Codex composer paste control is unavailable.');
+      let pasteTarget = controls[0].parentElement;
+      while (pasteTarget) {
+        const propsKey = Object.getOwnPropertyNames(pasteTarget).find((name) => name.startsWith('__reactProps$'));
+        if (propsKey && typeof pasteTarget[propsKey]?.onPaste === 'function') break;
+        pasteTarget = pasteTarget.parentElement;
+      }
+      if (!pasteTarget || typeof DataTransfer !== 'function' || typeof ClipboardEvent !== 'function') {
+        throw new Error('The live Codex text paste handler is unavailable.');
+      }
+      const editors = [...pasteTarget.querySelectorAll('textarea, [contenteditable="true"]')].filter((editor) => {
+        const style = getComputedStyle(editor);
+        return style.display !== 'none' && style.visibility !== 'hidden' && editor.getClientRects().length > 0;
+      });
+      if (editors.length !== 1) throw new Error('The exact visible Codex composer editor is ambiguous.');
+      const editor = editors[0];
+      const readText = () => editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement
+        ? editor.value
+        : editor.innerText ?? editor.textContent ?? '';
+      if (readText().endsWith(text)) return true;
+      editor.focus();
+      if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
+        editor.setSelectionRange(editor.value.length, editor.value.length);
+      } else {
+        const selection = globalThis.getSelection?.();
+        const range = document.createRange?.();
+        if (!selection || !range) throw new Error('The Codex composer caret could not be positioned.');
+        range.selectNodeContents(editor); range.collapse(false); selection.removeAllRanges(); selection.addRange(range);
+      }
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', text);
+      const event = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+      codexPadTextPasteMayHaveFired = true;
+      pasteTarget.dispatchEvent(event);
+      if (!event.defaultPrevented) throw new Error('The live Codex composer did not accept the text paste event.');
+      const deadline = Date.now() + 2000;
+      return new Promise((resolve, reject) => {
+        const inspect = () => {
+          try {
+            assertExpectedComposer();
+            if (readText().endsWith(text)) { resolve(true); return; }
+            if (Date.now() >= deadline) { reject(new Error('The Codex composer did not confirm the Skills suffix.')); return; }
+            setTimeout(inspect, 25);
+          } catch (error) { reject(error); }
+        };
+        inspect();
+      });
+    } catch (error) {
+      if (codexPadTextPasteMayHaveFired) {
+        const message = error instanceof Error ? error.message : 'Native composer text insertion failed after it may have fired.';
+        throw new Error('CODEX_PAD_DELIVERY_UNKNOWN: ' + message);
+      }
+      throw error;
+    }
+  })()`;
+}
+
 /**
  * Builds the only native composer mutation Codex Pad supports: append one
  * validated PNG File to the exact visible composer through its live paste
@@ -725,6 +805,81 @@ export function buildFixedComposerBatchAttachmentExpression(batch: NativeCompose
   })()`;
 }
 
+/** One bounded paste event containing user-selected Capture Inbox files. */
+export function buildFixedComposerFileBatchAttachmentExpression(batch: NativeComposerFileBatch): string {
+  validateComposerFileBatch(batch);
+  return String.raw`(async () => {
+    let codexPadAttachmentMayHaveFired = false;
+    try {
+      const expectedThreadId = ${JSON.stringify(batch.expectedThreadId)};
+      const files = ${JSON.stringify(batch.files)};
+      const canonicalThreadId = (value) => typeof value === 'string'
+        ? value.match(/(?:^|[^0-9a-f])([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?=$|[^0-9a-f])/i)?.[1]?.toLowerCase() ?? null
+        : null;
+      const assertExpectedComposer = () => {
+        const sidebarValue = document.querySelector('[data-app-action-sidebar-thread-id][aria-current="page"]')?.getAttribute('data-app-action-sidebar-thread-id') ?? null;
+        const composerValue = document.querySelector('[data-above-composer-conversation-id]')?.getAttribute('data-above-composer-conversation-id') ?? null;
+        const isClientNewThreadKey = (value) => typeof value === 'string'
+          && /^local:client-new-thread:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+        const composer = canonicalThreadId(composerValue);
+        const sidebar = isClientNewThreadKey(sidebarValue) ? null : canonicalThreadId(sidebarValue);
+        if (isClientNewThreadKey(sidebarValue) && composer === expectedThreadId) return;
+        if ((sidebar ?? composer) !== expectedThreadId || (sidebar !== null && composer !== null && sidebar !== composer)) {
+          throw new Error('The exact Codex composer changed before file attachment.');
+        }
+      };
+      assertExpectedComposer();
+      const controls = [...document.querySelectorAll('button[data-composer-navigation-target="add-context"]')];
+      if (controls.length !== 1) throw new Error('The exact Codex composer attachment control is unavailable.');
+      let pasteTarget = controls[0].parentElement;
+      while (pasteTarget) {
+        const propsKey = Object.getOwnPropertyNames(pasteTarget).find((name) => name.startsWith('__reactProps$'));
+        if (propsKey && typeof pasteTarget[propsKey]?.onPaste === 'function') break;
+        pasteTarget = pasteTarget.parentElement;
+      }
+      if (!pasteTarget || typeof File !== 'function' || typeof DataTransfer !== 'function' || typeof ClipboardEvent !== 'function') {
+        throw new Error('The live Codex file paste handler is unavailable.');
+      }
+      const counts = new Map(files.map((file) => {
+        const label = 'Remove ' + file.fileName;
+        return [label, [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length];
+      }));
+      const transfer = new DataTransfer();
+      for (const input of files) {
+        const raw = atob(input.dataBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+        transfer.items.add(new File([bytes], input.fileName, { type: input.mimeType, lastModified: Date.now() }));
+      }
+      const event = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+      codexPadAttachmentMayHaveFired = true;
+      pasteTarget.dispatchEvent(event);
+      if (!event.defaultPrevented) throw new Error('The live Codex composer did not accept the file batch.');
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        assertExpectedComposer();
+        const confirmed = [...counts].every(([label, before]) =>
+          [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length > before,
+        );
+        if (confirmed) return true;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      const confirmedNames = [...counts]
+        .filter(([label, before]) => [...document.querySelectorAll('button')].filter((node) => node.getAttribute('aria-label') === label).length > before)
+        .map(([label]) => label.slice('Remove '.length));
+      if (confirmedNames.length === 0) throw new Error('CODEX_PAD_BATCH_NONE: No named file from the batch is visible in the exact composer.');
+      throw new Error('CODEX_PAD_BATCH_PARTIAL: ' + confirmedNames.join(', '));
+    } catch (error) {
+      if (codexPadAttachmentMayHaveFired) {
+        const message = error instanceof Error ? error.message : 'Native composer file batch failed after it may have fired.';
+        if (message.startsWith('CODEX_PAD_BATCH_NONE:') || message.startsWith('CODEX_PAD_BATCH_PARTIAL:')) throw error;
+        throw new Error('CODEX_PAD_DELIVERY_UNKNOWN: ' + message);
+      }
+      throw error;
+    }
+  })()`;
+}
+
 function validateComposerAttachment(attachment: NativeComposerImageAttachment): void {
   const threadId = extractThreadId(attachment.expectedThreadId);
   if (threadId === null || threadId !== attachment.expectedThreadId) {
@@ -754,6 +909,60 @@ function validateComposerAttachment(attachment: NativeComposerImageAttachment): 
     || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   ) {
     throw new CodexDesktopAdapterError("control-not-configured", "Refusing an invalid native composer PNG.");
+  }
+}
+
+function validateComposerTextAppend(input: NativeComposerTextAppend): void {
+  const threadId = extractThreadId(input.expectedThreadId);
+  if (threadId === null || threadId !== input.expectedThreadId) {
+    throw new CodexDesktopAdapterError("invalid-thread-key", "Refusing composer text insertion without a canonical expected thread UUID.");
+  }
+  if (
+    input.text.length === 0
+    || input.text.length > 2_048
+    || !/^\n\nUse the following skills for this task: [A-Za-z0-9][A-Za-z0-9_:-]*(?:, [A-Za-z0-9][A-Za-z0-9_:-]*){0,15}\.$/u.test(input.text)
+  ) {
+    throw new CodexDesktopAdapterError("control-not-configured", "Refusing an invalid native composer Skills suffix.");
+  }
+}
+
+function validateComposerFileBatch(batch: NativeComposerFileBatch): void {
+  const threadId = extractThreadId(batch.expectedThreadId);
+  if (threadId === null || threadId !== batch.expectedThreadId || batch.files.length < 1 || batch.files.length > 4) {
+    throw new CodexDesktopAdapterError("invalid-thread-key", "Refusing an invalid native composer file batch.");
+  }
+  const names = new Set<string>();
+  let total = 0;
+  for (const file of batch.files) {
+    if (
+      file.expectedThreadId !== batch.expectedThreadId
+      || names.has(file.fileName)
+      || file.fileName !== file.fileName.trim()
+      || file.fileName.length < 1
+      || file.fileName.length > 160
+      || file.fileName === "."
+      || file.fileName === ".."
+      || /[\/\\\u0000-\u001f\u007f]/u.test(file.fileName)
+      || !/^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,127}$/u.test(file.mimeType)
+      || file.dataBase64.length === 0
+      || file.dataBase64.length % 4 !== 0
+      || file.dataBase64.length > Math.ceil(MAX_COMPOSER_IMAGE_BYTES / 3) * 4
+    ) {
+      throw new CodexDesktopAdapterError("control-not-configured", "Refusing an invalid native composer file attachment.");
+    }
+    const bytes = Buffer.from(file.dataBase64, "base64");
+    if (
+      bytes.length === 0
+      || bytes.length > MAX_COMPOSER_IMAGE_BYTES
+      || bytes.toString("base64") !== file.dataBase64
+    ) {
+      throw new CodexDesktopAdapterError("control-not-configured", "Refusing invalid native composer file bytes.");
+    }
+    names.add(file.fileName);
+    total += bytes.length;
+  }
+  if (total > 16 * 1024 * 1024) {
+    throw new CodexDesktopAdapterError("control-not-configured", "Refusing a native composer file batch above 16 MiB.");
   }
 }
 

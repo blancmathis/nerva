@@ -3,12 +3,13 @@ import type {
   RuntimeCapabilityState,
   RuntimeDiagnostics,
 } from "@codex-pad/protocol";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import type { ConnectionPhase } from "../lib/model";
 import type { PwaUpdateSnapshot } from "../lib/pwa-updates";
 import type { PushServerStatus } from "../lib/bridge-client";
 import { CheckIcon, ChevronIcon, CloseIcon, RefreshIcon } from "./Icons";
+import { useModalFocus } from "../lib/use-modal-focus";
 
 interface CapabilityCenterProps {
   readonly phase: ConnectionPhase;
@@ -143,6 +144,11 @@ export function CapabilityCenter({
   const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const dialogRef = useRef<HTMLElement | null>(null);
+  useModalFocus(dialogRef, () => setOpen(false), {
+    active: open,
+    initialFocus: "[aria-label^='Close System Diagnostics']",
+  });
   const clientCheck = useMemo(() => notificationsCheck(pushStatus, pushStatusLoaded), [open, pushStatus, pushStatusLoaded]);
   const checks = diagnostics?.checks ?? [];
   const summary = phase === "offline" || phase === "pairing"
@@ -191,7 +197,7 @@ export function CapabilityCenter({
         <div className="cp-capability-layer" role="presentation" onPointerDown={(event) => {
           if (event.target === event.currentTarget) setOpen(false);
         }}>
-          <section className="cp-capability-center" role="dialog" aria-modal="true" aria-labelledby="system-diagnostics-title">
+          <section ref={dialogRef} className="cp-capability-center" role="dialog" aria-modal="true" aria-labelledby="system-diagnostics-title" tabIndex={-1}>
             <header>
               <div>
                 <p className="cp-overline">Nerva health</p>

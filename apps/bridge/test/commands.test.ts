@@ -46,8 +46,10 @@ function fixture(overrides: {
   assertExactTarget?: BridgeStateService["assertExactTarget"];
   revalidateExactTarget?: BridgeStateService["revalidateExactTarget"];
   invokeActionSlot?: BridgeStateService["invokeActionSlot"];
+  appendTextToComposer?: BridgeStateService["appendTextToComposer"];
   attachImageToComposer?: BridgeStateService["attachImageToComposer"];
   attachImagesToComposer?: BridgeStateService["attachImagesToComposer"];
+  attachFilesToComposer?: BridgeStateService["attachFilesToComposer"];
   assertSnapshotIdentity?: BridgeStateService["assertSnapshotIdentity"];
   current?: BridgeStateService["current"];
   normalizeSketch?: ProtocolCommandExecutorOptions["normalizeSketch"];
@@ -67,8 +69,16 @@ function fixture(overrides: {
     }) as never),
     refresh: overrides.refresh ?? vi.fn(async () => ({ sequence: 13 })),
     invokeActionSlot: overrides.invokeActionSlot ?? vi.fn(async () => ({ sequence: 13 })),
+    appendTextToComposer: overrides.appendTextToComposer ?? vi.fn(async () => ({ sequence: 13 })),
+    capabilities: vi.fn(() => ({
+      skills: [
+        { id: "github:github", label: "github:github", description: "", enabled: true, group: "github" },
+        { id: "disabled:skill", label: "disabled:skill", description: "", enabled: false, group: "other" },
+      ],
+    })),
     attachImageToComposer: overrides.attachImageToComposer ?? vi.fn(async () => ({ sequence: 13 })),
     attachImagesToComposer: overrides.attachImagesToComposer ?? vi.fn(async () => ({ sequence: 13 })),
+    attachFilesToComposer: overrides.attachFilesToComposer ?? vi.fn(async () => ({ sequence: 13 })),
   } as unknown as BridgeStateService;
   const transport = {
     selectThread: overrides.selectThread ?? vi.fn(async () => undefined),
@@ -204,6 +214,90 @@ describe("ProtocolCommandExecutor outcome preservation", () => {
       ...end,
       commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd3",
     })).rejects.toMatchObject({ code: "GESTURE_NOT_FOUND" });
+  });
+
+  it("appends selected Skills before submitting the exact native composer", async () => {
+    const appendTextToComposer = vi.fn(async () => ({ sequence: 13 })) as unknown as BridgeStateService["appendTextToComposer"];
+    const invokeActionSlot = vi.fn(async () => ({ sequence: 14 })) as unknown as BridgeStateService["invokeActionSlot"];
+    const { executor } = fixture({ appendTextToComposer, invokeActionSlot });
+    const command = CommandSchema.parse({
+      type: "runMicroAction",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd4",
+      expectedSequence: 12,
+      expectedBridgeInstanceId: BRIDGE_INSTANCE_ID,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+      actionSlot: "ACT12",
+      expectedKeycapId: "CODEX",
+      expectedNativeCommandId: "composer.submit",
+      skillNames: ["github:github"],
+    });
+
+    await expect(executor.execute(command)).resolves.toMatchObject({
+      sequence: 14,
+      targetThreadId: THREAD_ID,
+    });
+    expect(appendTextToComposer).toHaveBeenCalledWith(
+      12,
+      THREAD_ID,
+      0,
+      "\n\nUse the following skills for this task: github:github.",
+    );
+    expect(invokeActionSlot).toHaveBeenCalledWith(
+      13,
+      THREAD_ID,
+      0,
+      "ACT12",
+      "CODEX",
+      "composer.submit",
+      "tap",
+    );
+  });
+
+  it("does not mutate the composer when a selected Skill is no longer enabled", async () => {
+    const appendTextToComposer = vi.fn(async () => ({ sequence: 13 })) as unknown as BridgeStateService["appendTextToComposer"];
+    const invokeActionSlot = vi.fn(async () => ({ sequence: 14 })) as unknown as BridgeStateService["invokeActionSlot"];
+    const { executor } = fixture({ appendTextToComposer, invokeActionSlot });
+    const command = CommandSchema.parse({
+      type: "runMicroAction",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd5",
+      expectedSequence: 12,
+      expectedBridgeInstanceId: BRIDGE_INSTANCE_ID,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+      actionSlot: "ACT12",
+      expectedKeycapId: "CODEX",
+      expectedNativeCommandId: "composer.submit",
+      skillNames: ["disabled:skill"],
+    });
+
+    await expect(executor.execute(command)).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    expect(appendTextToComposer).not.toHaveBeenCalled();
+    expect(invokeActionSlot).not.toHaveBeenCalled();
+  });
+
+  it("attaches Capture Inbox files to the exact composer without submitting a turn", async () => {
+    const attachFilesToComposer = vi.fn(async () => ({ sequence: 13 })) as unknown as BridgeStateService["attachFilesToComposer"];
+    const invokeActionSlot = vi.fn(async () => ({ sequence: 14 })) as unknown as BridgeStateService["invokeActionSlot"];
+    const { executor } = fixture({ attachFilesToComposer, invokeActionSlot });
+    const command = CommandSchema.parse({
+      type: "attachCaptureFiles",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd6",
+      expectedSequence: 12,
+      expectedBridgeInstanceId: BRIDGE_INSTANCE_ID,
+      expectedThreadId: THREAD_ID,
+      targetThreadId: THREAD_ID,
+      files: [{ fileName: "context.txt", mimeType: "text/plain", dataBase64: "aGVsbG8=" }],
+    });
+
+    await expect(executor.execute(command)).resolves.toMatchObject({ sequence: 13, targetThreadId: THREAD_ID });
+    expect(attachFilesToComposer).toHaveBeenCalledWith(12, THREAD_ID, 0, [{
+      expectedThreadId: THREAD_ID,
+      fileName: "context.txt",
+      mimeType: "text/plain",
+      dataBase64: "aGVsbG8=",
+    }]);
+    expect(invokeActionSlot).not.toHaveBeenCalled();
   });
 
   it("revalidates native selection after selectThread before a library command can write", async () => {

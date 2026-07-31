@@ -269,11 +269,30 @@ export interface NativeComposerImageBatch {
   readonly images: readonly NativeComposerImageAttachment[];
 }
 
+export interface NativeComposerTextAppend {
+  readonly expectedThreadId: string;
+  readonly text: string;
+}
+
+export interface NativeComposerFileAttachment {
+  readonly expectedThreadId: string;
+  readonly fileName: string;
+  readonly mimeType: string;
+  readonly dataBase64: string;
+}
+
+export interface NativeComposerFileBatch {
+  readonly expectedThreadId: string;
+  readonly files: readonly NativeComposerFileAttachment[];
+}
+
 /** A semantic seam for tests; it intentionally exposes no arbitrary Runtime.evaluate API. */
 export interface NativeMicroRuntime {
   readonly desktopIdentity?: DesktopProcessIdentity;
   readSnapshot(): Promise<unknown>;
   dispatch(event: NativeDispatch): Promise<void>;
+  appendTextToComposer?(input: NativeComposerTextAppend): Promise<void>;
+  attachFilesToComposer?(batch: NativeComposerFileBatch): Promise<void>;
   attachImageToComposer?(attachment: NativeComposerImageAttachment): Promise<void>;
   attachImagesToComposer?(batch: NativeComposerImageBatch): Promise<void>;
   close(): void;

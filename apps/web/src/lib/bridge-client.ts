@@ -1,5 +1,8 @@
 import {
+  API_CONTRACT_HEADER,
+  API_CONTRACT_VERSION,
   AllSessionsApiResponseSchema,
+  BUILD_REVISION_HEADER,
   CommandAckApiResponseSchema,
   CommandStatusApiResponseSchema,
   ContextRoomStatusApiResponseSchema,
@@ -72,6 +75,7 @@ export class BridgeHttpError extends Error {
 export interface BridgeClientCallbacks {
   readonly onSnapshot: (snapshot: BridgeSnapshot) => void;
   readonly onConnection: (connected: boolean) => void;
+  readonly onCompatibility?: (compatible: boolean, detail: string | null) => void;
   readonly onUnauthorized: () => void;
   readonly onAck?: (ack: CommandAck) => void;
 }
@@ -236,18 +240,17 @@ function managedSitesFrom(value: unknown): readonly ManagedSite[] | null {
 
 function openBrowserTabsFrom(value: unknown): OpenBrowserTabsResult | null {
   const data = sourceRecord(sourceRecord(value).data);
-  if (!Array.isArray(data.tabs) || data.tabs.length > 64 || typeof data.detail !== "string") return null;
+  if (!Array.isArray(data.tabs) || data.tabs.length > 64 || typeof data.detail !== "string" || data.detail.length > 500) return null;
   const tabs = data.tabs.flatMap((item): OpenBrowserTab[] => {
     const source = sourceRecord(item);
     if (
       typeof source.id !== "string"
-      || !/^tab_[a-z0-9_-]{1,63}$/u.test(source.id)
+      || !/^tab_[a-f0-9]{24}$/u.test(source.id)
       || typeof source.title !== "string"
       || source.title.length > 160
-      || typeof source.url !== "string"
-      || source.url.length > 2_048
+      || !isSafeBrowserUrl(source.url)
       || typeof source.controllable !== "boolean"
-      || (source.reason !== null && typeof source.reason !== "string")
+      || (source.reason !== null && (typeof source.reason !== "string" || source.reason.length > 300))
     ) return [];
     return [{
       id: source.id,
@@ -259,7 +262,8 @@ function openBrowserTabsFrom(value: unknown): OpenBrowserTabsResult | null {
   });
   const capability = (candidate: unknown): BrowserCapability | null => {
     const source = sourceRecord(candidate);
-    return typeof source.available === "boolean" && (source.reason === null || typeof source.reason === "string")
+    return typeof source.available === "boolean"
+      && (source.reason === null || (typeof source.reason === "string" && source.reason.length <= 300))
       ? { available: source.available, reason: source.reason as string | null }
       : null;
   };
@@ -283,8 +287,7 @@ function browserTabFrameDataFrom(value: unknown, expectedTabId: string): Browser
     data.tabId !== expectedTabId
     || typeof data.title !== "string"
     || data.title.length > 160
-    || typeof data.url !== "string"
-    || data.url.length > 2_048
+    || !isSafeBrowserUrl(data.url)
     || typeof data.imageBase64 !== "string"
     || data.imageBase64.length < 16
     || data.imageBase64.length > 16 * 1024 * 1024
@@ -302,8 +305,14 @@ function browserTabFrameDataFrom(value: unknown, expectedTabId: string): Browser
     || data.deviceScaleFactor < 1
     || data.deviceScaleFactor > 4
     || typeof data.scrollX !== "number"
+    || !Number.isFinite(data.scrollX)
+    || Math.abs(data.scrollX) > 1_000_000
     || typeof data.scrollY !== "number"
+    || !Number.isFinite(data.scrollY)
+    || Math.abs(data.scrollY) > 1_000_000
     || typeof data.capturedAt !== "number"
+    || !Number.isSafeInteger(data.capturedAt)
+    || data.capturedAt <= 0
   ) return null;
   return data as unknown as BrowserTabFrame;
 }
@@ -334,6 +343,18 @@ async function responseJson(response: Response): Promise<unknown> {
 
 function sourceRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function isSafeBrowserUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length < 1 || value.length > 2_048) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:")
+      && url.username === ""
+      && url.password === "";
+  } catch {
+    return false;
+  }
 }
 
 function messageFrom(value: unknown, fallback: string): string {
@@ -420,17 +441,30 @@ export class BridgeClient {
   private snapshotRevision = 0;
   private readonly supersededBridgeInstanceIds = new Set<string>();
   private socketTrusted = false;
+  private runtimeCompatible: boolean | null = null;
+  private runtimeCompatibilityDetail: string | null = null;
+  private credentialRevision = 0;
+  private credentialLoadPending = false;
 
   constructor(
     private readonly callbacks: BridgeClientCallbacks,
     private readonly commandResponseTimeoutMs = 8_000,
+    private readonly loadBearer: () => Promise<string | null> = loadBridgeBearer,
   ) {}
 
   async start(): Promise<boolean> {
     if (!this.stopped) return this.bearerToken !== null;
     this.stopped = false;
     this.suspended = false;
-    this.bearerToken = await loadBridgeBearer();
+    const credentialRevision = this.credentialRevision;
+    this.credentialLoadPending = true;
+    let storedBearer: string | null;
+    try {
+      storedBearer = await this.loadBearer();
+    } finally {
+      this.credentialLoadPending = false;
+    }
+    if (this.credentialRevision === credentialRevision) this.bearerToken = storedBearer;
     if (this.bearerToken === null) {
       this.callbacks.onUnauthorized();
       return false;
@@ -464,7 +498,10 @@ export class BridgeClient {
     }
     this.suspended = false;
     if (this.bearerToken === null) {
-      this.callbacks.onUnauthorized();
+      // iPadOS can emit pageshow while the initial IndexedDB read is still in
+      // flight. Let start() decide whether pairing is actually required so a
+      // resume signal cannot race a valid stored or newly issued credential.
+      if (!this.credentialLoadPending) this.callbacks.onUnauthorized();
       return;
     }
     void this.refreshSnapshot();
@@ -474,6 +511,7 @@ export class BridgeClient {
 
   private invalidateCredential(expectedBearer: string): void {
     if (this.bearerToken !== expectedBearer) return;
+    this.credentialRevision += 1;
     this.bearerToken = null;
     const socket = this.socket;
     this.socket = null;
@@ -485,7 +523,7 @@ export class BridgeClient {
   }
 
   private async authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
-    const storedBearer = this.bearerToken ?? await loadBridgeBearer();
+    const storedBearer = this.bearerToken ?? await this.loadBearer();
     // Pairing may complete while IndexedDB is resolving. In that case the
     // newer in-memory bearer wins over the stale value read above.
     const bearerToken = this.bearerToken ?? storedBearer;
@@ -496,13 +534,35 @@ export class BridgeClient {
     this.bearerToken = bearerToken;
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${bearerToken}`);
+    const method = (init.method ?? "GET").toUpperCase();
+    const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+    if (mutating) {
+      if (this.runtimeCompatible === false) {
+        throw new BridgeHttpError(409, this.runtimeCompatibilityDetail ?? "Nerva must refresh before it can safely change anything on the Mac");
+      }
+      headers.set(API_CONTRACT_HEADER, String(API_CONTRACT_VERSION));
+      headers.set(BUILD_REVISION_HEADER, __NERVA_BUILD_REVISION__);
+    }
     const response = await fetch(input, {
       ...init,
       credentials: "omit",
       headers,
     });
+    this.observeResponseIdentity(response);
     if (response.status === 401) this.invalidateCredential(bearerToken);
     return response;
+  }
+
+  private observeResponseIdentity(response: Response): void {
+    const responseContract = response.headers.get(API_CONTRACT_HEADER);
+    const responseRevision = response.headers.get(BUILD_REVISION_HEADER);
+    if (
+      (responseContract !== null && responseContract !== String(API_CONTRACT_VERSION))
+      || (responseRevision !== null && responseRevision !== __NERVA_BUILD_REVISION__)
+    ) {
+      this.setRuntimeCompatibility(false, "Nerva was updated on the Mac. Refresh this app before using controls.");
+      this.setSocketTrusted(false);
+    }
   }
 
   async refreshSnapshot(): Promise<boolean> {
@@ -971,6 +1031,7 @@ export class BridgeClient {
     if (envelope.ok !== true || !isBridgeBearer(data.bearerToken)) {
       return { ok: false, message: "The bridge returned an invalid pairing credential" };
     }
+    this.credentialRevision += 1;
     this.bearerToken = data.bearerToken;
     const persisted = await saveBridgeBearer(data.bearerToken);
     return {
@@ -1083,6 +1144,14 @@ export class BridgeClient {
     this.callbacks.onConnection(trusted);
   }
 
+  private setRuntimeCompatibility(compatible: boolean, detail: string | null): void {
+    if (this.runtimeCompatible === compatible && this.runtimeCompatibilityDetail === detail) return;
+    this.runtimeCompatible = compatible;
+    this.runtimeCompatibilityDetail = detail;
+    this.callbacks.onCompatibility?.(compatible, detail);
+    if (!compatible) this.setSocketTrusted(false);
+  }
+
   private acceptSnapshot(
     value: unknown,
     source: "http" | "socket",
@@ -1090,6 +1159,12 @@ export class BridgeClient {
   ): SnapshotAcceptance {
     const snapshot = normalizeSnapshot(value);
     if (!snapshot) return "rejected";
+    const compatible = snapshot.apiContractVersion === API_CONTRACT_VERSION
+      && snapshot.buildRevision === __NERVA_BUILD_REVISION__;
+    this.setRuntimeCompatibility(
+      compatible,
+      compatible ? null : "Nerva was updated on the Mac. Refresh this app before using controls.",
+    );
     const current = this.currentSnapshotCursor();
     if (
       current !== null
@@ -1203,7 +1278,7 @@ export class BridgeClient {
           return;
         }
         const acceptance = this.acceptSnapshot(message.snapshot, "socket");
-        if (acceptance !== "rejected" && attestedBridgeInstanceId === null) {
+        if (acceptance !== "rejected" && attestedBridgeInstanceId === null && this.runtimeCompatible === true) {
           attestedBridgeInstanceId = message.snapshot.bridgeInstanceId;
           this.attempt = 0;
           this.setSocketTrusted(true);

@@ -14,6 +14,7 @@ import { ArrowDownIcon, ArrowUpIcon, InboxIcon, MacIcon, MissionControlIcon, Mor
 import { CodexUsageCard } from "./CodexUsageCard";
 import { DIRECT_HOME_DROP_TARGET, SessionCard } from "./SessionCard";
 import { UnpinnedSessionsDrawer } from "./UnpinnedSessionsDrawer";
+import { useModalFocus } from "../lib/use-modal-focus";
 
 interface HomeDashboardProps {
   readonly layout: HomeLayout;
@@ -116,6 +117,11 @@ export function HomeDashboard({
   const [replacementThreadId, setReplacementThreadId] = useState<string | null>(null);
   const [focus, setFocus] = useState<HomeFocus>("manual");
   const suppressSessionOpenUntil = useRef(0);
+  const replacementDialogRef = useRef<HTMLElement | null>(null);
+  useModalFocus(replacementDialogRef, () => setReplacementThreadId(null), {
+    active: replacementThreadId !== null,
+    initialFocus: ".cp-secondary-button",
+  });
 
   useEffect(() => {
     if (attentionRequestKey > 0) setFocus("priority");
@@ -397,7 +403,7 @@ export function HomeDashboard({
 
       {replacementThreadId && (
         <div className="cp-modal-layer" role="presentation">
-          <section className="cp-replace-modal" role="dialog" aria-modal="true" aria-labelledby="replace-title">
+          <section ref={replacementDialogRef} className="cp-replace-modal" role="dialog" aria-modal="true" aria-labelledby="replace-title" tabIndex={-1}>
             <p className="cp-overline">Home limit reached</p>
             <h2 id="replace-title">Choose a session to unpin.</h2>
             <p>Home holds up to 12 sessions. Nothing is deleted from Codex.</p>

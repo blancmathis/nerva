@@ -383,6 +383,11 @@ class ManagedSocketJsonlDuplex implements JsonlDuplex {
   private constructor(websocket: WebSocket) {
     this.websocket = websocket;
     this.messageStream = new Readable({ read() {} });
+    // A refused UDS can emit before AppServerClient starts consuming the
+    // async iterable. Keep the EventEmitter error handled during that narrow
+    // pre-reader window; an active async iterator still observes the destroy
+    // error and closes the client through readLoop.
+    this.messageStream.on("error", () => undefined);
     this.readable = this.messageStream;
     websocket.on("message", (data: RawData, isBinary: boolean) => {
       if (isBinary) {

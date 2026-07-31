@@ -45,6 +45,27 @@ async function drawPenStroke(canvas: Locator): Promise<void> {
   }
 }
 
+async function drawTouchStroke(canvas: Locator): Promise<void> {
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("Sketch canvas has no rendered bounds");
+  const points = [[.28, .42], [.47, .58], [.7, .39]] as const;
+  for (const [index, [x, y]] of points.entries()) {
+    await canvas.dispatchEvent(index === 0 ? "pointerdown" : index === points.length - 1 ? "pointerup" : "pointermove", {
+      pointerId: 52,
+      pointerType: "touch",
+      isPrimary: true,
+      button: index === 1 ? -1 : 0,
+      buttons: index === points.length - 1 ? 0 : 1,
+      pressure: index === points.length - 1 ? 0 : .55,
+      clientX: box.x + box.width * x,
+      clientY: box.y + box.height * y,
+    });
+    await canvas.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    }));
+  }
+}
+
 async function dragSiteCanvas(
   canvas: Locator,
   pointerType: "touch" | "pen",
@@ -306,6 +327,40 @@ test("Capture Inbox stays neutral, persists, and is reused from the exact open S
   expect(bridge.commandRequests).toBe(commandCountBeforeSecondUse);
 });
 
+test("Capture Inbox attaches a selected file to the exact Mac composer without submitting", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  const commandBaseline = bridge.commands.length;
+  await page.getByRole("button", { name: /Capture Inbox/ }).click();
+  await page.getByLabel("Keep received file").setInputFiles({
+    name: "architecture notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Exact local context", "utf8"),
+  });
+  await expect(page.getByText("File saved locally.")).toBeVisible();
+  await page.getByRole("button", { name: "Select architecture notes.txt" }).click();
+  await page.getByRole("button", { name: "Attach to composer" }).click();
+
+  await expect.poll(() => bridge.commands.length).toBe(commandBaseline + 1);
+  expect(bridge.commands.at(-1)).toMatchObject({
+    type: "attachCaptureFiles",
+    expectedThreadId: THREADS[0].id,
+    targetThreadId: THREADS[0].id,
+    files: [{
+      fileName: "architecture notes.txt",
+      mimeType: "text/plain",
+      dataBase64: Buffer.from("Exact local context", "utf8").toString("base64"),
+    }],
+  });
+  expect(bridge.commands.slice(commandBaseline).some((command) => (
+    command.type === "runMicroAction" && command.actionSlot === "ACT12"
+  ))).toBe(false);
+  await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
+
+  await page.getByRole("button", { name: /Capture Inbox/ }).click();
+  await expect(page.getByRole("heading", { name: "architecture notes.txt" })).toBeVisible();
+});
+
 test("Capture Inbox keeps a Pencil sketch without choosing a session", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   const commandCount = bridge.commandRequests;
@@ -320,6 +375,111 @@ test("Capture Inbox keeps a Pencil sketch without choosing a session", async ({ 
   await expect(page.locator(".cp-capture-card.kind-sketch")).toHaveCount(1);
   await expect(page.getByText("Available in every Session")).toBeVisible();
   expect(bridge.commandRequests).toBe(commandCount);
+});
+
+test("Capture Inbox lets a phone draw with one finger immediately", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("iPhone"), "Phone-only touch input regression");
+  const bridge = await openAuthenticatedApp(page);
+  const commandCount = bridge.commandRequests;
+  await page.getByRole("button", { name: /Capture Inbox/ }).click();
+  await page.getByRole("button", { name: /Sketch Pencil-ready canvas/ }).click();
+  await expect(page.getByRole("dialog", { name: "Draw now. Use later." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Finger + Pencil" })).toBeVisible();
+  const canvas = page.getByRole("img", { name: /Frame annotation canvas/ });
+  await drawTouchStroke(canvas);
+  await expect(page.getByRole("button", { name: "Keep in Inbox" })).toBeEnabled();
+  await page.getByRole("button", { name: "Keep in Inbox" }).click();
+  await expect(page.getByText("Sketch saved locally.")).toBeVisible();
+  await expect(page.locator(".cp-capture-card.kind-sketch")).toHaveCount(1);
+  expect(bridge.commandRequests).toBe(commandCount);
+});
+
+test("Capture Inbox dialogs contain focus, close with Escape, and restore the trigger", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Capture Inbox/ }).click();
+  const noteTrigger = page.getByRole("button", { name: /Note Catch a quick idea/ });
+  await noteTrigger.click();
+  const note = page.getByRole("dialog", { name: "Quick note" });
+  await expect(note).toBeVisible();
+  await expect(page.getByLabel("Quick note text")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(note).toBeHidden();
+  await expect(noteTrigger).toBeFocused();
+
+  const sketchTrigger = page.getByRole("button", { name: /Sketch Pencil-ready canvas/ });
+  await sketchTrigger.click();
+  const sketch = page.getByRole("dialog", { name: "Draw now. Use later." });
+  await expect(sketch).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close sketch" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => sketch.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(sketch).toBeHidden();
+  await expect(sketchTrigger).toBeFocused();
+});
+
+test("global modal surfaces contain focus, close with Escape, and restore their triggers", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await showHome(page);
+
+  const unpinnedTrigger = page.getByRole("button", { name: /Unpinned Sessions/ });
+  await unpinnedTrigger.focus();
+  await page.keyboard.press("Enter");
+  const unpinned = page.getByRole("dialog", { name: "Unpinned Sessions" });
+  await expect(page.getByPlaceholder("Search sessions or projects")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => unpinned.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(unpinned).toBeHidden();
+  await expect(unpinnedTrigger).toBeFocused();
+
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  const skillsTrigger = page.getByRole("button", { name: /Skills/ });
+  await skillsTrigger.focus();
+  await page.keyboard.press("Enter");
+  const skills = page.getByRole("dialog", { name: "Skill library" });
+  await expect(page.getByRole("button", { name: "Close Skills" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => skills.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(skills).toBeHidden();
+  await expect(skillsTrigger).toBeFocused();
+
+  bridge.setDiagrams([{
+    version: 1,
+    diagramId: "319f7ec2-68eb-4183-ab3a-0e67312a8ba1",
+    threadId: THREADS[0].id,
+    revision: 0,
+    title: "Focus-safe graph",
+    nodes: [{ id: "focus", label: "Focus remains contained", x: 180, y: 210, width: 320, height: 116, shape: "rectangle", tone: "blue" }],
+    edges: [],
+    createdAt: 1,
+    updatedAt: 1,
+    createdBy: "codex",
+    lastEditedBy: "codex",
+    sourceLabel: "Playwright focus fixture",
+  }]);
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  const graphTrigger = page.getByRole("button", { name: /Open graphs\. Current graph Focus-safe graph/ });
+  await graphTrigger.focus();
+  await page.keyboard.press("Enter");
+  const graphPicker = page.getByRole("dialog", { name: "Agent diagrams" });
+  await expect(page.getByRole("button", { name: "Close agent diagrams" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(graphPicker).toBeHidden();
+  await expect(graphTrigger).toBeFocused();
+  await page.getByRole("button", { name: "Close drawing studio" }).click();
+
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  await page.getByRole("button", { name: "Open Settings" }).click();
+  const diagnosticsTrigger = page.getByRole("button", { name: /Open System Diagnostics/ });
+  await diagnosticsTrigger.focus();
+  await page.keyboard.press("Enter");
+  const diagnostics = page.getByRole("dialog", { name: "System Diagnostics" });
+  await expect(page.getByRole("button", { name: "Close System Diagnostics" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(diagnostics).toBeHidden();
+  await expect(diagnosticsTrigger).toBeFocused();
 });
 
 test("opens one exact pinned session on both surfaces", async ({ page }) => {
@@ -873,6 +1033,10 @@ test("starts and stops Mac dictation with two deliberate taps", async ({ page })
 test("submits the current Mac composer from the compact iPad Send prompt control", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: /Skills/ }).click();
+  await page.getByRole("button", { name: /Visual review/ }).click();
+  await page.getByRole("button", { name: "Close Skills" }).click();
+  await expect(page.locator(".cp-skill-chips")).toContainText("visual-review");
   const sendPrompt = page.getByRole("button", { name: "Send prompt", exact: true });
   await expect.poll(async () => (await sendPrompt.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await sendPrompt.click();
@@ -883,12 +1047,17 @@ test("submits the current Mac composer from the compact iPad Send prompt control
     actionSlot: "ACT12",
     expectedKeycapId: "CODEX",
     expectedNativeCommandId: "composer.submit",
+    skillNames: ["visual-review"],
   });
+  await expect(page.locator(".cp-skill-chips")).toHaveCount(0);
 });
 
 test("finishes active Mac dictation before Send prompt submits the composer", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: /Skills/ }).click();
+  await page.getByRole("button", { name: /OpenAI docs/ }).click();
+  await page.getByRole("button", { name: "Close Skills" }).click();
   const commandBaseline = bridge.commands.length;
   await page.getByRole("button", { name: /^Dictation/ }).click();
   await expect.poll(() => bridge.commands.length).toBe(commandBaseline + 1);
@@ -909,8 +1078,24 @@ test("finishes active Mac dictation before Send prompt submits the composer", as
     actionSlot: "ACT12",
     expectedKeycapId: "CODEX",
     expectedNativeCommandId: "composer.submit",
+    skillNames: ["openai-docs"],
   });
   await expect(page.getByRole("button", { name: /^Dictation/ })).toBeEnabled();
+  await expect(page.locator(".cp-skill-chips")).toHaveCount(0);
+});
+
+test("keeps armed Skills when Send prompt is definitively rejected", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: /Skills/ }).click();
+  await page.getByRole("button", { name: /Visual review/ }).click();
+  await page.getByRole("button", { name: "Close Skills" }).click();
+  bridge.failNextCommand("The exact Mac composer is temporarily unavailable.");
+
+  await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+
+  await expect(page.locator(".cp-skill-chips")).toContainText("visual-review");
+  await expect(page.getByText("The exact Mac composer is temporarily unavailable.")).toBeVisible();
 });
 
 test("groups multi-skill providers while keeping singleton skills directly visible", async ({ page }) => {
@@ -1479,6 +1664,25 @@ test("keeps a Pencil drawing globally and reopens an independent working copy", 
   await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("independent local working copy");
 });
 
+test("does not open a delayed Saved Drawing in a different Mac task", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
+  await page.getByRole("button", { name: "Keep in Saved Drawings" }).click();
+  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("Kept in Saved Drawings on the Mac");
+  await page.getByRole("button", { name: "Close drawing studio" }).click();
+
+  await page.getByRole("button", { name: "Saved Drawings" }).click();
+  bridge.delayNextSavedDrawingLoad();
+  await page.getByRole("button", { name: "Use in current session" }).click();
+  bridge.selectOnMac(2);
+
+  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toHaveCount(0);
+  await expect(page.getByText(/selected Mac task changed while this drawing was opening/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
+});
+
 test("moves freehand ink directly with the board Select tool", async ({ page }) => {
   await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
@@ -1719,6 +1923,17 @@ test("shows real Settings controls and paired device management", async ({ page 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.getByRole("button", { name: /Saved Drawings/ }).click();
   await expect(page.getByRole("dialog", { name: "Saved Drawings" })).toBeVisible();
+});
+
+test("System theme follows the iPad or iPhone instead of the Mac snapshot", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await openAuthenticatedApp(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f4f6f5");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#161b1a");
 });
 
 test("shows privacy-safe live capability proof", async ({ page }) => {

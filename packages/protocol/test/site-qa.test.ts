@@ -29,6 +29,27 @@ describe("Site QA protocol", () => {
     expect(JSON.stringify(receipt)).not.toContain("secret");
   });
 
+  it("accepts honest receipt outcomes while retaining the legacy applied value", () => {
+    const base = {
+      receiptId: "77777777-7777-4777-8777-777777777777",
+      threadId: THREAD_ID,
+      tabId: TAB_ID,
+      action: { type: "tap" as const, x: 12, y: 24 },
+      target: null,
+      input: { mode: "none" as const },
+      beforeUrl: "https://example.test/",
+      afterUrl: "https://example.test/",
+      beforeScroll: { x: 0, y: 0 },
+      afterScroll: { x: 0, y: 0 },
+      confidence: "coordinate-only" as const,
+      recordedAt: 1_750_000_000_000,
+    };
+
+    for (const outcome of ["applied", "dispatched", "confirmed", "no-visible-change", "unknown"] as const) {
+      expect(SiteQaActionReceiptSchema.parse({ ...base, outcome }).outcome).toBe(outcome);
+    }
+  });
+
   it("validates a bounded manifest without microphone bytes or arbitrary browser data", () => {
     const manifest = SiteQaManifestSchema.parse({
       version: 1,
@@ -50,5 +71,33 @@ describe("Site QA protocol", () => {
     });
     expect(manifest.issues[0]?.hasLocalVoiceNote).toBe(true);
     expect(JSON.stringify(manifest)).not.toContain("voiceBytes");
+  });
+
+  it("preserves honest step outcomes and defaults legacy stored steps to applied", () => {
+    const base = {
+      version: 1 as const,
+      recordingId: "88888888-8888-4888-8888-888888888888",
+      sourceThreadId: THREAD_ID,
+      startedAt: 1_750_000_000_000,
+      durationMs: 2_000,
+      intent: "both" as const,
+      environment: { viewport: { width: 1_024, height: 768 }, deviceScaleFactor: 2, controllerOrientation: "landscape" as const },
+      issues: [],
+    };
+    const step = {
+      stepId: "99999999-9999-4999-8999-999999999999",
+      index: 0,
+      relativeAtMs: 10,
+      action: { type: "tap" as const, x: 12, y: 24 },
+      target: null,
+      input: { mode: "none" as const },
+      beforeUrl: "https://example.test/",
+      afterUrl: "https://example.test/",
+      confidence: "coordinate-only" as const,
+      evidenceFrameId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    };
+
+    expect(SiteQaManifestSchema.parse({ ...base, steps: [step] }).steps[0]?.outcome).toBe("applied");
+    expect(SiteQaManifestSchema.parse({ ...base, steps: [{ ...step, outcome: "unknown" }] }).steps[0]?.outcome).toBe("unknown");
   });
 });

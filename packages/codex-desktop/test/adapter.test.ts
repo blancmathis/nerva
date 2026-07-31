@@ -4,6 +4,8 @@ import {
   CodexDesktopAdapter,
   type DesktopProcessIdentity,
   type NativeComposerImageAttachment,
+  type NativeComposerTextAppend,
+  type NativeComposerFileBatch,
   type NativeDispatch,
   type NativeMicroRuntime,
 } from "../src/index.js";
@@ -28,6 +30,8 @@ async function fixture(): Promise<Record<string, unknown>> {
 class FakeRuntime implements NativeMicroRuntime {
   readonly dispatches: NativeDispatch[] = [];
   readonly attachments: NativeComposerImageAttachment[] = [];
+  readonly textAppends: NativeComposerTextAppend[] = [];
+  readonly fileBatches: NativeComposerFileBatch[] = [];
   readonly desktopIdentity?: DesktopProcessIdentity;
   reads = 0;
   closes = 0;
@@ -51,10 +55,53 @@ class FakeRuntime implements NativeMicroRuntime {
     this.attachments.push(attachment);
   }
 
+  async appendTextToComposer(input: NativeComposerTextAppend): Promise<void> {
+    this.textAppends.push(input);
+  }
+
+  async attachFilesToComposer(batch: NativeComposerFileBatch): Promise<void> {
+    this.fileBatches.push(batch);
+  }
+
   close(): void { this.closes += 1; }
 }
 
 describe("CodexDesktopAdapter", () => {
+  it("appends a bounded Skills suffix to the exact native composer under final authority", async () => {
+    const runtime = new FakeRuntime(await fixture());
+    const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });
+    const authority = vi.fn();
+    const input: NativeComposerTextAppend = {
+      expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      text: "\n\nUse the following skills for this task: github:github.",
+    };
+
+    await expect(adapter.appendTextToComposer(input, authority)).resolves.toMatchObject({ stale: false });
+    expect(authority).toHaveBeenCalledOnce();
+    expect(runtime.textAppends).toEqual([input]);
+    expect(runtime.dispatches).toEqual([]);
+  });
+
+  it("attaches a bounded Capture Inbox file batch without dispatching submit", async () => {
+    const runtime = new FakeRuntime(await fixture());
+    const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });
+    const authority = vi.fn();
+    const batch: NativeComposerFileBatch = {
+      expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      files: [{
+        expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+        fileName: "context.txt",
+        mimeType: "text/plain",
+        dataBase64: "aGVsbG8=",
+      }],
+    };
+
+    await expect(adapter.attachFilesToComposer(batch, authority)).resolves.toMatchObject({ stale: false });
+    expect(authority).toHaveBeenCalledOnce();
+    expect(runtime.fileBatches).toEqual([batch]);
+    expect(runtime.dispatches).toEqual([]);
+  });
+
   it("attaches one PNG to the exact native composer without invoking submit", async () => {
     const runtime = new FakeRuntime(await fixture());
     const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });

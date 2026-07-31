@@ -19,6 +19,7 @@ export interface SiteQaManifestStep {
   readonly input: SiteQaInputEvidence;
   readonly beforeUrl: string;
   readonly afterUrl: string;
+  readonly outcome: "applied" | "dispatched" | "confirmed" | "no-visible-change" | "unknown";
   readonly confidence: "high" | "medium" | "coordinate-only";
   readonly evidenceFrameId: string;
 }
@@ -35,9 +36,18 @@ export interface SiteQaOutboundFrame {
   readonly scrollY: number;
 }
 
+export interface SiteQaDeliveryIdentity {
+  readonly commandId: string;
+  readonly expectedBridgeInstanceId: string;
+  readonly snapshotSeq: number;
+  readonly instructionSuffix: string;
+  readonly skillIds: readonly string[];
+}
+
 export interface SiteQaSendPayload {
   readonly manifest: SiteQaManifest;
   readonly frames: readonly SiteQaOutboundFrame[];
+  readonly delivery: SiteQaDeliveryIdentity;
 }
 
 export interface SiteQaSendResult {

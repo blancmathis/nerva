@@ -171,6 +171,13 @@ export interface DesktopOwnershipVerifier {
   ): boolean;
 }
 
+export interface CachedDesktopSignatureVerifierOptions {
+  /** Deterministic test seam; production fingerprints the signed app and Codex binaries. */
+  readonly fingerprint?: (installation: DesktopOwnershipInstallation) => Promise<string | null>;
+  /** Deterministic test seam; production always uses the complete codesign + Gatekeeper probe. */
+  readonly verify?: typeof verifyOfficialDesktopSignature;
+}
+
 export interface DesktopProcessBoundaryIdentity {
   readonly pid: number;
   readonly startedAt: string;
@@ -239,6 +246,48 @@ export async function verifyOfficialDesktopSignature(
     && new RegExp(`certificate leaf\\[subject\\.OU\\].*\"${OPENAI_TEAM_ID}\"`).test(designated)
     && /accepted/i.test(notarization)
     && /Notarized Developer ID/i.test(notarization);
+}
+
+/**
+ * Process-local cache for the expensive, static portion of Desktop ownership.
+ *
+ * Dynamic process and socket topology is deliberately not cached here. A cache
+ * hit only avoids repeating codesign and Gatekeeper when the signed app,
+ * Desktop executable, bundled Codex binary, daemon binary, and CodeResources
+ * metadata still have the exact same private fingerprint.
+ */
+export class CachedDesktopSignatureVerifier {
+  readonly #fingerprint: (installation: DesktopOwnershipInstallation) => Promise<string | null>;
+  readonly #verify: typeof verifyOfficialDesktopSignature;
+  #verifiedFingerprint: string | null = null;
+  #pending: { readonly fingerprint: string; readonly result: Promise<boolean> } | null = null;
+
+  constructor(options: CachedDesktopSignatureVerifierOptions = {}) {
+    this.#fingerprint = options.fingerprint ?? desktopSignatureFingerprint;
+    this.#verify = options.verify ?? verifyOfficialDesktopSignature;
+  }
+
+  async verify(
+    installation: DesktopOwnershipInstallation,
+    command: OwnershipCommandRunner,
+  ): Promise<boolean> {
+    const fingerprint = await this.#fingerprint(installation).catch(() => null);
+    // If the exact signed installation cannot be fingerprinted, remain strict
+    // and perform the complete verification instead of trusting stale state.
+    if (fingerprint === null) return this.#verify(installation, command);
+    if (this.#verifiedFingerprint === fingerprint) return true;
+    if (this.#pending?.fingerprint === fingerprint) return this.#pending.result;
+
+    const result = this.#verify(installation, command).then((verified) => {
+      if (verified) this.#verifiedFingerprint = fingerprint;
+      else if (this.#verifiedFingerprint === fingerprint) this.#verifiedFingerprint = null;
+      return verified;
+    }).finally(() => {
+      if (this.#pending?.fingerprint === fingerprint) this.#pending = null;
+    });
+    this.#pending = { fingerprint, result };
+    return result;
+  }
 }
 
 export function defaultDesktopOwnershipAttestationPath(homeDirectory = homedir()): string {
@@ -557,6 +606,51 @@ async function processHasSocket(
 
 function desktopExecutablePath(appPath: string): string {
   return join(appPath, "Contents", "MacOS", basename(appPath, ".app"));
+}
+
+async function desktopSignatureFingerprint(
+  installation: DesktopOwnershipInstallation,
+): Promise<string | null> {
+  let normalized: Required<DesktopOwnershipInstallation>;
+  try {
+    normalized = normalizedInstallation(installation);
+  } catch {
+    return null;
+  }
+  const paths = [...new Set([
+    normalized.appPath,
+    desktopExecutablePath(normalized.appPath),
+    normalized.binaryPath,
+    normalized.daemonBinaryPath,
+    join(normalized.appPath, "Contents", "_CodeSignature", "CodeResources"),
+  ])];
+  const identities: string[] = [];
+  for (const path of paths) {
+    let metadata: Awaited<ReturnType<typeof lstat>>;
+    try {
+      metadata = await lstat(path, { bigint: true });
+    } catch {
+      return null;
+    }
+    if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) return null;
+    identities.push([
+      resolve(path),
+      metadata.dev.toString(),
+      metadata.ino.toString(),
+      metadata.mode.toString(),
+      metadata.size.toString(),
+      metadata.mtimeNs.toString(),
+      metadata.ctimeNs.toString(),
+    ].join("\u0000"));
+  }
+  return createHash("sha256").update(JSON.stringify({
+    bundleId: normalized.bundleId,
+    appVersion: normalized.appVersion,
+    buildVersion: normalized.buildVersion,
+    binaryVersion: normalized.binaryVersion,
+    daemonBinaryVersion: normalized.daemonBinaryVersion,
+    identities,
+  })).digest("hex");
 }
 
 function normalizedInstallation(
@@ -1105,13 +1199,17 @@ export class FileDesktopOwnershipVerifier implements DesktopOwnershipVerifier {
     readonly runCommand: OwnershipCommandRunner;
     readonly collectEvidence?: InspectDesktopOwnershipOptions["collectEvidence"];
   }) {
+    const signatureVerifier = new CachedDesktopSignatureVerifier();
     this.#options = {
       attestationPath: options.attestationPath ?? defaultDesktopOwnershipAttestationPath(),
       socketPath: options.socketPath ?? DEFAULT_SOCKET_PATH,
       codexBinaryPath: options.codexBinaryPath,
       platform: options.platform ?? process.platform,
       runCommand: options.runCommand,
-      ...(options.collectEvidence === undefined ? {} : { collectEvidence: options.collectEvidence }),
+      collectEvidence: options.collectEvidence ?? ((collectOptions) => collectDesktopOwnershipEvidence({
+        ...collectOptions,
+        verifyDesktopSignature: (installation, command) => signatureVerifier.verify(installation, command),
+      })),
     };
   }
 

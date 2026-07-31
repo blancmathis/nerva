@@ -2,7 +2,7 @@
 
 > **Current implementation:** Nerva provides a read-only `npm run setup:check` preflight and one explicit `npm run setup:mac` installer. The base installation is independent from the version-sensitive native Codex integration: it creates private Nerva state, configures only an available exact Tailscale Serve route, installs the bridge LaunchAgent, waits for `/api/health`, and only then creates the pairing invitation. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
 
-> **Current compatibility result (26 July 2026):** Desktop `0.146.0-alpha.3.1` and managed app-server `0.145.0` differ, but exact binary/schema fingerprints plus live read-only `initialize`, `thread/list` and `model/list` probes are compatible. Doctor reports **Ready with limitations** because exact-socket Desktop ownership and the native Micro adapter are not attested. Three unrelated stdio writers remain visible diagnostics; do not stop them merely to improve the report.
+> **Current compatibility result (31 July 2026):** default doctor reports **Ready with limitations**, while `setup:check` reports **Blocked** because Tailscale is stopped and therefore cannot provide the private iPad route. Desktop bundles `codex-cli 0.146.0-alpha.9.2`; the standalone package is `0.146.0`, the managed socket is unavailable, no exact current schema attestation exists, and exact-socket Desktop ownership and the native Micro adapter are not attested. Four unrelated stdio writers remain visible diagnostics; do not stop them merely to improve the report.
 
 The preflight produces three operator-facing outcomes:
 
@@ -47,7 +47,7 @@ npm run pair
 - OpenAI-managed standalone Codex CLI at `~/.codex/packages/standalone/current/codex`
 - Tailscale for production iPad access, with either the Standalone app's CLI integration enabled or the App Store app's bundled CLI used explicitly
 
-The local preflight on 26 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.721.41059` build `5848`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.3.1`, standalone Codex `0.145.0`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. This is an observation, not a hardcoded support promise. Settings → System Diagnostics, `setup:check`, and doctor must report the currently installed versions after every update.
+The local preflight on 31 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.727.40816` build `6067`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.9.2`, standalone Codex `0.146.0`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. Tailscale was stopped, so setup remained blocked before any mutation. This is an observation, not a hardcoded support promise. Settings → System Diagnostics, `setup:check`, and doctor must report the currently installed versions after every update.
 
 Verify the local tools:
 
@@ -87,7 +87,7 @@ Read the full setup/doctor result before continuing. A useful report distinguish
 
 The report should include versions and structural error categories, not titles, prompts, source code, full thread IDs, tokens, or drawings.
 
-Treat the capability report literally. Native Micro controls, full session list/read, multi-frame send, live Codex Browser frames, legacy route capture and native Dictate are independent gates. A green isolated image spike must not enable the other capabilities. Home, Capture Inbox, local Draw/Review drafts and last-good session state may remain consultable while remote operations are disabled. Capture Inbox stores neutral Photo, Scan, Sketch, File and Note records with no destination or voice recorder; it has no speech recognition, transcript routing, Mac upload or reconnect send. Native Dictation remains recorded and transcribed by Codex Desktop with the Mac-selected microphone.
+Treat the capability report literally. Native Micro controls, full session list/read, multi-frame send, live Codex Browser frames, legacy route capture and native Dictate are independent gates. A green isolated image spike must not enable the other capabilities. Home, Capture Inbox, local Draw/Review drafts and last-good session state may remain consultable while remote operations are disabled. Capture Inbox stores neutral Photo, Scan, Sketch, File and Note records with no stored destination or voice recorder; it has no speech recognition, transcript routing, automatic Mac upload or reconnect send. An explicit file-only selection can attach a bounded batch only when the exact composer capability is currently proven. Native Dictation remains recorded and transcribed by Codex Desktop with the Mac-selected microphone.
 
 ## 3. Inspect the managed app-server
 

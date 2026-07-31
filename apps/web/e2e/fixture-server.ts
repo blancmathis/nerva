@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
@@ -13,7 +13,8 @@ import {
   fixtureSnapshot,
 } from "./fixture-data";
 
-const DIST_ROOT = resolve(process.cwd(), "apps/web/dist");
+const DIST_ROOT = resolve(process.env.CODEX_PAD_FIXTURE_WEB_ROOT ?? resolve(process.cwd(), "apps/web/dist"));
+const DIST_ASSETS = snapshotDistAssets(DIST_ROOT);
 const requestedPort = Number(process.env.CODEX_PAD_FIXTURE_PORT ?? 0);
 const port = Number.isInteger(requestedPort) && requestedPort >= 0 && requestedPort <= 65_535
   ? requestedPort
@@ -90,6 +91,26 @@ const contentTypes: Readonly<Record<string, string>> = {
   ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 
+function snapshotDistAssets(root: string): ReadonlyMap<string, Buffer> {
+  const assets = new Map<string, Buffer>();
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(directory)) {
+      const path = resolve(directory, entry);
+      if (statSync(path).isDirectory()) {
+        visit(path);
+        continue;
+      }
+      assets.set(path, readFileSync(path));
+    }
+  };
+  visit(root);
+  const indexPath = resolve(root, "index.html");
+  if (!assets.has(indexPath)) {
+    throw new Error(`Fixture web build is missing ${indexPath}`);
+  }
+  return assets;
+}
+
 function state() {
   return { bridgeInstanceId, sequence, selectedIndex, approvalPending } as const;
 }
@@ -131,14 +152,20 @@ function serveAsset(pathname: string, response: ServerResponse): void {
   }
   const candidate = resolve(DIST_ROOT, `.${decoded}`);
   const insideRoot = candidate === DIST_ROOT || candidate.startsWith(`${DIST_ROOT}${sep}`);
-  const file = insideRoot && existsSync(candidate) && statSync(candidate).isFile()
+  const file = insideRoot && DIST_ASSETS.has(candidate)
     ? candidate
     : resolve(DIST_ROOT, "index.html");
+  const asset = DIST_ASSETS.get(file);
+  if (!asset) {
+    response.writeHead(500).end("Fixture asset snapshot is incomplete");
+    return;
+  }
   response.writeHead(200, {
     "content-type": contentTypes[extname(file)] ?? "application/octet-stream",
     "cache-control": extname(file) === ".html" ? "no-store" : "public, max-age=60",
+    "content-length": asset.byteLength,
   });
-  createReadStream(file).pipe(response);
+  response.end(asset);
 }
 
 const server = createServer(async (request, response) => {
@@ -462,10 +489,6 @@ webSockets.on("connection", (socket) => {
   });
   socket.on("close", () => sockets.delete(socket));
 });
-
-if (!existsSync(resolve(DIST_ROOT, "index.html"))) {
-  throw new Error("Build the web app before starting the test fixture server.");
-}
 
 server.listen(port, "127.0.0.1", () => {
   const address = server.address();

@@ -12,7 +12,12 @@ import {
   type DesktopProcessIdentity,
   type SemanticCommand,
 } from "@codex-pad/codex-desktop";
-import { createApiFailureEnvelopeSchema } from "@codex-pad/protocol";
+import {
+  API_CONTRACT_HEADER,
+  BUILD_REVISION_HEADER,
+  createApiFailureEnvelopeSchema,
+  type RuntimeIdentity,
+} from "@codex-pad/protocol";
 import { CredentialStore, WEB_SOCKET_PROTOCOL } from "../src/auth.js";
 import { PairingStore, pairingNonceFromUrl } from "../src/pairing.js";
 import { defaultDataPaths } from "../src/paths.js";
@@ -217,6 +222,7 @@ async function setup(
   maxWebSocketConnections?: number,
   webRoot?: string,
   browserTabRuntime?: BrowserTabRuntime,
+  runtimeIdentity?: RuntimeIdentity,
 ) {
   const root = await mkdtemp(join(tmpdir(), "codex-pad-server-test-"));
   temporaryRoots.push(root);
@@ -248,6 +254,7 @@ async function setup(
     ...(webRoot === undefined ? {} : { webRoot }),
     siteCaptureService,
     ...(browserTabRuntime === undefined ? {} : { browserTabRuntime }),
+    ...(runtimeIdentity === undefined ? {} : { runtimeIdentity }),
     openBrowserTabs: async (_threadId) => ({
       tabs: [],
       detail: "Open Mac tabs are unavailable in the injected bridge fixture.",
@@ -545,12 +552,13 @@ describe("bridge routes", () => {
     });
   });
 
-  it("serves content-hashed assets added after bridge startup and keeps the SPA fallback", async () => {
+  it("keeps one immutable web build while the source build directory changes", async () => {
     const webRoot = await mkdtemp(join(tmpdir(), "codex-pad-web-test-"));
     temporaryRoots.push(webRoot);
     await writeFile(join(webRoot, "index.html"), "<!doctype html><div id=\"root\"></div>", "utf8");
 
     const prepared = await setup(null, undefined, webRoot);
+    await writeFile(join(webRoot, "index.html"), "<!doctype html><div id=\"replacement\"></div>", "utf8");
     await mkdir(join(webRoot, "assets"), { recursive: true });
     await writeFile(join(webRoot, "assets", "index-newhash.js"), "globalThis.__CODEX_PAD_LOADED__ = true;", "utf8");
 
@@ -560,8 +568,9 @@ describe("bridge routes", () => {
       headers: { host: "pad.example.test" },
     });
     expect(asset.statusCode).toBe(200);
-    expect(asset.headers["content-type"]).toMatch(/javascript/u);
-    expect(asset.body).toContain("__CODEX_PAD_LOADED__");
+    expect(asset.headers["content-type"]).toMatch(/text\/html/u);
+    expect(asset.body).not.toContain("__CODEX_PAD_LOADED__");
+    expect(asset.body).toContain("id=\"root\"");
 
     const spaRoute = await prepared.handle.app.inject({
       method: "GET",
@@ -571,6 +580,26 @@ describe("bridge routes", () => {
     expect(spaRoute.statusCode).toBe(200);
     expect(spaRoute.headers["content-type"]).toMatch(/text\/html/u);
     expect(spaRoute.body).toContain("id=\"root\"");
+    expect(spaRoute.body).not.toContain("id=\"replacement\"");
+  });
+
+  it("refuses a production web build whose identity differs from the bridge", async () => {
+    const webRoot = await mkdtemp(join(tmpdir(), "codex-pad-web-identity-test-"));
+    temporaryRoots.push(webRoot);
+    await writeFile(join(webRoot, "index.html"), "<!doctype html><div id=\"root\"></div>", "utf8");
+    await writeFile(join(webRoot, "app-meta.json"), JSON.stringify({
+      product: "Nerva",
+      version: "0.1.0",
+      buildId: "fixture",
+      buildRevision: "deadbeef",
+      apiContractVersion: 1,
+    }), "utf8");
+
+    await expect(setup(null, undefined, webRoot, undefined, {
+      bridgeVersion: "0.1.0",
+      buildRevision: "0123456789abcdef0123456789abcdef01234567",
+      apiContractVersion: 1,
+    })).rejects.toThrow("web build revision does not match");
   });
 
   it("releases the data-root lease after a cleanly handled startup failure", async () => {
@@ -733,6 +762,14 @@ describe("bridge routes", () => {
       headers: { host: "pad.example.test" },
     });
     expect(healthResponse.json().data.multiImageInputVerified).toBe(true);
+    expect(healthResponse.json().data).toMatchObject({
+      version: "0.1.0",
+      bridgeVersion: "0.1.0",
+      buildRevision: "development",
+      apiContractVersion: 1,
+    });
+    expect(healthResponse.headers[API_CONTRACT_HEADER]).toBe("1");
+    expect(healthResponse.headers["x-codex-pad-build-revision"]).toBe("development");
     const snapshotResponse = await handle.app.inject({
       method: "GET",
       url: "/api/snapshot",
@@ -748,6 +785,11 @@ describe("bridge routes", () => {
     expect(snapshotResponse.headers["permissions-policy"]).toContain("microphone=(self)");
     expect(snapshotResponse.headers["permissions-policy"]).toContain("camera=(self)");
     const snapshot = snapshotResponse.json().data;
+    expect(snapshot).toMatchObject({
+      bridgeVersion: "0.1.0",
+      buildRevision: "development",
+      apiContractVersion: 1,
+    });
     expect(snapshot.codexVersion).toBe("codex-cli 0.145.0-test");
     expect(snapshot.bridgeInstanceId).toBe(handle.state.current().bridgeInstanceId);
     expect(snapshot.bridgeInstanceId).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u);
@@ -775,6 +817,8 @@ describe("bridge routes", () => {
     expect(runtimeResponse.json().data).toMatchObject({
       protocolVersion: 1,
       bridgeVersion: "0.1.0",
+      buildRevision: "development",
+      apiContractVersion: 1,
       codexVersion: "codex-cli 0.145.0-test",
       snapshotSequence: expect.any(Number),
       schemaCompatibility: { state: "unknown" },
@@ -877,6 +921,115 @@ describe("bridge routes", () => {
       headers: { host: "pad.example.test", authorization },
     });
     expect(status.json().data.status).toBe("succeeded");
+  });
+
+  it("rejects an explicitly incompatible client contract before executing a mutation", async () => {
+    const { handle, authorization, execute } = await setup();
+    const snapshot = handle.state.current();
+    const command = {
+      type: "selectAgent",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8b31",
+      expectedBridgeInstanceId: snapshot.bridgeInstanceId,
+      expectedSequence: snapshot.sequence,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+    };
+
+    const response = await handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: {
+        host: "pad.example.test",
+        origin: "https://pad.example.test",
+        authorization,
+        [API_CONTRACT_HEADER]: "2",
+        "x-codex-pad-command-id": command.commandId,
+      },
+      payload: { command },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        retryable: false,
+        details: { clientContractVersion: 2, serverContractVersion: 1 },
+      },
+    });
+    expect(execute).not.toHaveBeenCalled();
+
+    const compatible = await handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: {
+        host: "pad.example.test",
+        origin: "https://pad.example.test",
+        authorization,
+        [API_CONTRACT_HEADER]: "1",
+        "x-codex-pad-command-id": command.commandId,
+      },
+      payload: { command },
+    });
+    expect(compatible.statusCode).toBe(200);
+    expect(compatible.json().data.status).toBe("succeeded");
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the exact PWA contract and build identity for production mutations", async () => {
+    const buildRevision = "0123456789abcdef0123456789abcdef01234567";
+    const webRoot = await mkdtemp(join(tmpdir(), "codex-pad-production-web-test-"));
+    temporaryRoots.push(webRoot);
+    await writeFile(join(webRoot, "index.html"), "<!doctype html><div id=\"root\"></div>", "utf8");
+    await writeFile(join(webRoot, "app-meta.json"), JSON.stringify({
+      product: "Nerva",
+      version: "0.1.0",
+      buildId: "fixture",
+      buildRevision,
+      apiContractVersion: 1,
+    }), "utf8");
+    const { handle, authorization, execute } = await setup(null, undefined, webRoot, undefined, {
+      bridgeVersion: "0.1.0",
+      buildRevision,
+      apiContractVersion: 1,
+    });
+    const snapshot = handle.state.current();
+    const command = {
+      type: "selectAgent",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8b32",
+      expectedBridgeInstanceId: snapshot.bridgeInstanceId,
+      expectedSequence: snapshot.sequence,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+    } as const;
+    const headers = {
+      host: "pad.example.test",
+      origin: "https://pad.example.test",
+      authorization,
+      "x-codex-pad-command-id": command.commandId,
+    };
+
+    const missing = await handle.app.inject({ method: "POST", url: "/api/command", headers, payload: { command } });
+    expect(missing.statusCode).toBe(409);
+    expect(execute).not.toHaveBeenCalled();
+
+    const staleBuild = await handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: { ...headers, [API_CONTRACT_HEADER]: "1", [BUILD_REVISION_HEADER]: "deadbeef" },
+      payload: { command },
+    });
+    expect(staleBuild.statusCode).toBe(409);
+    expect(execute).not.toHaveBeenCalled();
+
+    const exact = await handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: { ...headers, [API_CONTRACT_HEADER]: "1", [BUILD_REVISION_HEADER]: buildRevision },
+      payload: { command },
+    });
+    expect(exact.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it("persists authenticated global product state with origin and revision checks", async () => {

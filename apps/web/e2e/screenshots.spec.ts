@@ -7,6 +7,10 @@ import { THREADS, fixtureSessions } from "./fixture-data";
 
 const CAPTURE_SCREENSHOTS = process.env.CODEX_PAD_CAPTURE_SCREENSHOTS === "1";
 const SCREENSHOT_NOW = Date.parse("2026-07-25T19:00:00.000Z");
+const SCREENSHOT_OUTPUT = resolve(
+  process.cwd(),
+  process.env.CODEX_PAD_SCREENSHOT_OUTPUT?.trim() || "docs/screenshots",
+);
 const SCREENSHOT_DIAGRAM = {
   version: 1,
   diagramId: "219f7ec2-68eb-4183-ab3a-0e67312a8ba1",
@@ -39,6 +43,90 @@ async function resetViewportScroll(page: Page): Promise<void> {
     document.querySelector<HTMLElement>(".cp-app-content")?.scrollTo({ left: 0, top: 0 });
     document.querySelector<HTMLElement>(".drawing-studio")?.scrollTo({ left: 0, top: 0 });
   });
+}
+
+async function captureVerifiedScreenshot(page: Page, path: string): Promise<void> {
+  const png = await page.screenshot({ path, scale: "css", animations: "disabled" });
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Screenshot verification requires a fixed viewport");
+  if (
+    png.length < 24
+    || png[0] !== 0x89
+    || png.subarray(1, 4).toString("ascii") !== "PNG"
+  ) {
+    throw new Error(`Screenshot ${path} is not a valid PNG`);
+  }
+  expect({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) }).toEqual(viewport);
+
+  const stats = await page.evaluate(async (base64) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${base64}`;
+    await image.decode();
+    const sample = document.createElement("canvas");
+    sample.width = Math.min(48, image.naturalWidth);
+    sample.height = Math.min(48, image.naturalHeight);
+    const context = sample.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Screenshot verification canvas is unavailable");
+    context.drawImage(image, 0, 0, sample.width, sample.height);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    let minimumLuminance = 255;
+    let maximumLuminance = 0;
+    let opaquePixels = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3]! === 0) continue;
+      opaquePixels += 1;
+      const luminance = pixels[index]! * 0.2126
+        + pixels[index + 1]! * 0.7152
+        + pixels[index + 2]! * 0.0722;
+      minimumLuminance = Math.min(minimumLuminance, luminance);
+      maximumLuminance = Math.max(maximumLuminance, luminance);
+    }
+    return {
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      minimumLuminance,
+      maximumLuminance,
+      opaquePixels,
+    };
+  }, png.toString("base64"));
+
+  expect({ width: stats.width, height: stats.height }).toEqual(viewport);
+  expect(stats.opaquePixels).toBeGreaterThan(0);
+  expect(stats.maximumLuminance).toBeGreaterThan(40);
+  expect(stats.maximumLuminance - stats.minimumLuminance).toBeGreaterThan(16);
+}
+
+async function hasPersistedDrawingElements(page: Page, threadId: string): Promise<boolean> {
+  return page.evaluate(async (targetThreadId) => {
+    const request = indexedDB.open("codex-pad-drawings");
+    const database = await new Promise<IDBDatabase>((resolveDatabase, reject) => {
+      request.onsuccess = () => resolveDatabase(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const activeRead = database
+        .transaction("active-boards", "readonly")
+        .objectStore("active-boards")
+        .get(targetThreadId);
+      const active = await new Promise<{ boardId?: string } | undefined>((resolveActive, reject) => {
+        activeRead.onsuccess = () => resolveActive(activeRead.result as { boardId?: string } | undefined);
+        activeRead.onerror = () => reject(activeRead.error);
+      });
+      if (typeof active?.boardId !== "string") return false;
+      const countRead = database
+        .transaction("board-elements", "readonly")
+        .objectStore("board-elements")
+        .index("boardId")
+        .count(active.boardId);
+      const count = await new Promise<number>((resolveCount, reject) => {
+        countRead.onsuccess = () => resolveCount(countRead.result);
+        countRead.onerror = () => reject(countRead.error);
+      });
+      return count > 0;
+    } finally {
+      database.close();
+    }
+  }, threadId);
 }
 
 async function markCanvas(canvas: Locator): Promise<void> {
@@ -284,7 +372,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   test.skip(suffix === null, "No screenshot naming profile for this project");
 
   await page.clock.setFixedTime(SCREENSHOT_NOW);
-  const output = resolve(process.cwd(), "docs/screenshots");
+  const output = SCREENSHOT_OUTPUT;
   await mkdir(output, { recursive: true });
   const bridge = new MockBridge({ authorized: false, fixedNow: SCREENSHOT_NOW });
   bridge.setBrowserFrameFixture(await makeScreenshotBrowserFrame(page));
@@ -294,7 +382,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.goto("/pair?nonce=fixture-pairing-code");
   await expect(page.getByRole("heading", { name: /Connect to/ })).toBeVisible();
   await page.waitForTimeout(650);
-  await page.screenshot({ path: resolve(output, `pairing${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `pairing${suffix}.png`));
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.locator(".cp-connection.phase-online")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
@@ -302,7 +390,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
 
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `dashboard${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `dashboard${suffix}.png`));
 
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
@@ -311,7 +399,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("button", { name: "Save to Inbox" }).click();
   await page.waitForTimeout(400);
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `capture-inbox${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `capture-inbox${suffix}.png`));
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
 
@@ -319,7 +407,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await expect(page.getByRole("button", { name: "Show priority sessions" })).toHaveAttribute("aria-pressed", "true");
   await page.waitForTimeout(550);
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `dashboard-priority${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `dashboard-priority${suffix}.png`));
   await page.getByRole("button", { name: "Show priority sessions" }).click();
 
   if (testInfo.project.name === "iPad landscape") {
@@ -330,22 +418,22 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
     const dismissReviewCommandStatus = page.getByRole("button", { name: "Dismiss command status" });
     if (await dismissReviewCommandStatus.isVisible()) await dismissReviewCommandStatus.click();
     await resetViewportScroll(page);
-    await page.screenshot({ path: resolve(output, "review.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "review.png"));
     await page.getByRole("button", { name: "Close review" }).click();
     await page.getByRole("button", { name: "Open Nerva Home" }).click();
     await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
     await page.getByRole("button", { name: /Working 1/ }).click();
-    await page.screenshot({ path: resolve(output, "dashboard-working.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "dashboard-working.png"));
     await page.getByRole("button", { name: /Working 1/ }).click();
     await page.getByRole("button", { name: "Open Settings" }).click();
     await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
     await page.waitForTimeout(550);
-    await page.screenshot({ path: resolve(output, "settings.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "settings.png"));
     await page.locator(".cp-settings .cp-back-button").click();
     await page.getByRole("button", { name: "Open Settings" }).click();
     await page.getByLabel("Theme").selectOption("light");
     await page.locator(".cp-settings .cp-back-button").click();
-    await page.screenshot({ path: resolve(output, "dashboard-light.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "dashboard-light.png"));
     await page.getByRole("button", { name: "Open Settings" }).click();
     await page.getByLabel("Theme").selectOption("dark");
     await page.locator(".cp-settings .cp-back-button").click();
@@ -356,13 +444,13 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   const dismissCommandStatus = page.getByRole("button", { name: "Dismiss command status" });
   if (await dismissCommandStatus.isVisible()) await dismissCommandStatus.click();
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `session${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `session${suffix}.png`));
 
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByText("Release checklist", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Select Toolbar shifts/ }).click();
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `capture-inbox-session${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `capture-inbox-session${suffix}.png`));
   await page.getByRole("button", { name: "Session", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
 
@@ -371,14 +459,14 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
     const openAiTemplates = page.locator(".cp-skill-group").filter({ hasText: "OpenAI Templates" });
     await expect(openAiTemplates).toHaveCount(1);
     await openAiTemplates.locator(".cp-skill-group__header").click();
-    await page.screenshot({ path: resolve(output, "skills.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "skills.png"));
     await page.getByRole("button", { name: "Close Skills" }).click();
   }
 
   await page.getByRole("button", { name: /Site/ }).click();
   const sitesHub = page.getByRole("main", { name: "Sites" });
   await expect(sitesHub).toBeVisible();
-  await page.screenshot({ path: resolve(output, `sites${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `sites${suffix}.png`));
   await sitesHub.getByRole("button", { name: "Open Component lab" }).click();
   const siteCanvas = page.getByLabel("Browse current Mac site");
   const siteFrame = page.locator(".cp-browser-site__frame");
@@ -408,17 +496,17 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
     return maximum - minimum;
   });
   expect(luminanceRange).toBeGreaterThan(80);
-  await page.screenshot({ path: resolve(output, `site${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `site${suffix}.png`));
 
   if (testInfo.project.name === "iPad landscape") {
     await page.getByRole("button", { name: "Record flow" }).click();
     await page.getByRole("button", { name: "Mark issue" }).click();
     await markCanvas(page.getByLabel("Annotate current site frame"));
     await page.getByPlaceholder("Explain the visible problem").fill("The result panel disappears after the action.");
-    await page.screenshot({ path: resolve(output, "site-qa-issue.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "site-qa-issue.png"));
     await page.getByRole("button", { name: "Save & review" }).click();
     await expect(page.getByRole("heading", { name: "Review recording" })).toBeVisible();
-    await page.screenshot({ path: resolve(output, "site-qa-review.png"), scale: "css", animations: "disabled" });
+    await captureVerifiedScreenshot(page, resolve(output, "site-qa-review.png"));
     await page.getByRole("button", { name: "Live page" }).click();
   }
   await page.getByRole("button", { name: "Sites", exact: true }).click();
@@ -429,20 +517,17 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("button", { name: "Pen", exact: true }).click();
   await markCanvas(page.getByRole("img", { name: /^Sketch canvas/ }));
   await page.getByRole("button", { name: "Select and move board content" }).click();
-  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).toContainText("Saved on this iPad");
+  await expect.poll(() => hasPersistedDrawingElements(page, THREADS[0].id)).toBe(true);
+  await expect(page.getByRole("dialog", { name: "Draw for Codex" })).not.toContainText("Saved on this iPad");
   await page.getByRole("button", { name: "Keep in Saved Drawings" }).click();
   await expect(page.getByText("Kept in Saved Drawings on the Mac")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Keep in Saved Drawings" })).toBeEnabled();
   await resetViewportScroll(page);
-  await page.screenshot({ path: resolve(output, `drawing${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `drawing${suffix}.png`));
   if (testInfo.project.name === "iPad landscape") {
     await page.getByRole("button", { name: "Edit selected diagram block" }).click();
     await expect(page.getByRole("textbox", { name: "Selected block" })).toBeVisible();
-    await page.screenshot({
-      path: resolve(output, "drawing-diagram-inspector.png"),
-      scale: "css",
-      animations: "disabled",
-    });
+    await captureVerifiedScreenshot(page, resolve(output, "drawing-diagram-inspector.png"));
     await page.getByRole("button", { name: "Close diagram inspector" }).click();
   }
   await page.getByRole("button", { name: "Close drawing studio" }).click();
@@ -450,7 +535,7 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("button", { name: "Saved Drawings" }).click();
   await expect(page.getByRole("dialog", { name: "Saved Drawings" })).toContainText("Untitled drawing");
   await page.waitForTimeout(550);
-  await page.screenshot({ path: resolve(output, `saved-drawings${suffix}.png`), scale: "css", animations: "disabled" });
+  await captureVerifiedScreenshot(page, resolve(output, `saved-drawings${suffix}.png`));
 });
 
 test("capture the compact 768-wide iPad Home header", async ({ page }, testInfo) => {
@@ -458,7 +543,7 @@ test("capture the compact 768-wide iPad Home header", async ({ page }, testInfo)
   test.skip(testInfo.project.name !== "iPad landscape", "One intermediate-width proof is sufficient");
   await page.clock.setFixedTime(SCREENSHOT_NOW);
   await page.setViewportSize({ width: 768, height: 1_024 });
-  const output = resolve(process.cwd(), "docs/screenshots");
+  const output = SCREENSHOT_OUTPUT;
   await mkdir(output, { recursive: true });
   const bridge = new MockBridge({ authorized: false, fixedNow: SCREENSHOT_NOW });
   await bridge.install(page);
@@ -468,9 +553,5 @@ test("capture the compact 768-wide iPad Home header", async ({ page }, testInfo)
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
   await resetViewportScroll(page);
-  await page.screenshot({
-    path: resolve(output, "dashboard-compact-ipad.png"),
-    scale: "css",
-    animations: "disabled",
-  });
+  await captureVerifiedScreenshot(page, resolve(output, "dashboard-compact-ipad.png"));
 });

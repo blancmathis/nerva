@@ -31,6 +31,9 @@ function degradedSnapshot(commands: readonly string[]): BridgeSnapshot {
   const selected = selectedSlot();
   return {
     bridgeInstanceId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba2",
+    bridgeVersion: "0.1.0",
+    buildRevision: "0000000000000000",
+    apiContractVersion: 1,
     seq: 17,
     capturedAt: new Date(1_000).toISOString(),
     theme: "dark",

@@ -501,6 +501,23 @@ export function deserializeScene(serialized: string): Scene {
   return migrateScene(JSON.parse(serialized) as unknown);
 }
 
+/**
+ * Return the canonical visual stack used by both the live editor and PNG
+ * flattening. Background images are always painted beneath every editable
+ * mark, while the relative order inside each layer remains stable.
+ */
+export function elementsInPaintOrder(
+  elements: readonly SceneElement[],
+): readonly SceneElement[] {
+  const backgrounds: SceneElement[] = [];
+  const foreground: SceneElement[] = [];
+  for (const element of elements) {
+    if (element.kind === "image" && element.isBackground) backgrounds.push(element);
+    else foreground.push(element);
+  }
+  return [...backgrounds, ...foreground];
+}
+
 export function applySceneOperation(scene: Scene, operation: SceneOperation): Scene {
   switch (operation.type) {
     case "add": {

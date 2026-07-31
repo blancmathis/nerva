@@ -81,6 +81,22 @@ describe("MicroSnapshotSchema", () => {
     expect(parsed.slots).toHaveLength(6);
   });
 
+  it("validates runtime identity while accepting one legacy snapshot without it", () => {
+    expect(MicroSnapshotSchema.safeParse(snapshot()).success).toBe(true);
+    expect(MicroSnapshotSchema.safeParse({
+      ...snapshot(),
+      bridgeVersion: "0.1.0",
+      buildRevision: "5023b3c5fa66180087d841fed55864b099867b9c",
+      apiContractVersion: 1,
+    }).success).toBe(true);
+    expect(MicroSnapshotSchema.safeParse({
+      ...snapshot(),
+      bridgeVersion: "0.1.0",
+      buildRevision: "not a safe revision",
+      apiContractVersion: 1,
+    }).success).toBe(false);
+  });
+
   it("requires a canonical bridge generation ID", () => {
     const missing = { ...snapshot(), bridgeInstanceId: undefined };
     expect(MicroSnapshotSchema.safeParse(missing).success).toBe(false);

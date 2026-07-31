@@ -29,7 +29,7 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/cli.ts start",
-    "build": "tsup src/server.ts src/auth.ts src/pairing.ts src/site-registry.ts src/diagram-store.ts src/cli.ts src/mac-setup.ts --format esm --clean --out-dir dist && tsc -p tsconfig.build.json && node --input-type=module --eval \"await import('./dist/diagram-store.js')\"",
+    "build": "tsup --config tsup.config.ts && tsc -p tsconfig.build.json && node --input-type=module --eval \"await import('./dist/diagram-store.js')\"",
     "check": "tsc --noEmit",
     "test": "vitest run --root ../.. apps/bridge"
   },
@@ -40,7 +40,7 @@
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.3.0",
     "ajv": "^8.20.0",
-    "fastify": "^5.10.0",
+    "fastify": "^5.11.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.3",
     "web-push": "^3.6.7",

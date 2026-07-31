@@ -4,6 +4,8 @@ import { CodexDesktopAdapterError } from "./errors.js";
 import {
   buildFixedComposerAttachmentExpression,
   buildFixedComposerBatchAttachmentExpression,
+  buildFixedComposerTextAppendExpression,
+  buildFixedComposerFileBatchAttachmentExpression,
   buildFixedDispatchExpression,
   FIXED_NATIVE_SNAPSHOT_EXPRESSION,
 } from "./renderer-expression.js";
@@ -12,6 +14,8 @@ import type {
   DesktopProcessIdentity,
   NativeComposerImageAttachment,
   NativeComposerImageBatch,
+  NativeComposerTextAppend,
+  NativeComposerFileBatch,
   NativeDispatch,
   NativeMicroRuntime,
 } from "./types.js";
@@ -29,7 +33,7 @@ interface CdpResponse {
 }
 
 interface PendingEvaluation {
-  readonly kind: "snapshot" | "dispatch" | "attachment";
+  readonly kind: "snapshot" | "dispatch" | "attachment" | "composer-text";
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
@@ -103,6 +107,14 @@ export class CdpNativeMicroRuntime implements NativeMicroRuntime {
     // Local event validation and expression construction happen before the CDP
     // frame is sent, so failures here are definitive and safe to retry.
     await this.evaluate(buildFixedDispatchExpression(event), "dispatch");
+  }
+
+  async appendTextToComposer(input: NativeComposerTextAppend): Promise<void> {
+    await this.evaluate(buildFixedComposerTextAppendExpression(input), "composer-text");
+  }
+
+  async attachFilesToComposer(batch: NativeComposerFileBatch): Promise<void> {
+    await this.evaluate(buildFixedComposerFileBatchAttachmentExpression(batch), "attachment");
   }
 
   async attachImageToComposer(attachment: NativeComposerImageAttachment): Promise<void> {
@@ -204,14 +216,14 @@ export class CdpNativeMicroRuntime implements NativeMicroRuntime {
       if (pending.kind === "attachment" && description.includes(BATCH_PARTIAL_MARKER)) {
         pending.reject(new CodexDesktopAdapterError(
           "delivery-unknown",
-          "Only part of the image batch is visible in the exact composer. Resolve the attachments on the Mac before retrying; Nerva will not complete the batch automatically.",
+          "Only part of the attachment batch is visible in the exact composer. Resolve it on the Mac before retrying; Nerva will not complete the batch automatically.",
         ));
         return;
       }
       if (pending.kind === "attachment" && description.includes(BATCH_NONE_MARKER)) {
         pending.reject(new CodexDesktopAdapterError(
           "delivery-unknown",
-          "No named image from the batch is visible yet. The exact retained batch can be retried manually after reconciliation confirms no attachment.",
+          "No named file from the batch is visible yet. The exact retained batch can be retried manually after reconciliation confirms no attachment.",
         ));
         return;
       }

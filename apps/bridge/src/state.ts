@@ -3,10 +3,12 @@ import {
   BridgeInstanceIdSchema,
   MicroSnapshotSchema,
   PendingApprovalSchema,
+  RuntimeIdentitySchema,
   type ActionAssignment,
   type ActionAssignments,
   type AgentSlot,
   type MicroSnapshot,
+  type RuntimeIdentity,
 } from "@codex-pad/protocol";
 import type {
   AdapterState,
@@ -16,6 +18,8 @@ import type {
   MicroSnapshot as DesktopMicroSnapshot,
   NativeAssignment,
   NativeComposerImageAttachment,
+  NativeComposerTextAppend,
+  NativeComposerFileBatch,
   NativeJoystickAssignment,
   SemanticControl,
   NativeActionSlot,
@@ -42,6 +46,7 @@ import type {
   TransportHealth,
 } from "./thread-transport.js";
 import { skillGroupId } from "./skill-groups.js";
+import { BRIDGE_RUNTIME_IDENTITY } from "./runtime-identity.js";
 
 export class SnapshotConflictError extends Error {
   readonly code: "STALE_SNAPSHOT" | "TARGET_MISMATCH" | "ADAPTER_DEGRADED";
@@ -58,12 +63,15 @@ export interface StateServiceOptions {
   transport: ThreadTransport;
   bridgeInstanceId?: string;
   codexVersion?: string | null;
+  runtimeIdentity?: RuntimeIdentity;
   now?: () => number;
   /** State-side half of the production exact-target authority domain. */
   targetAuthorityIssuer?: ExactTargetAuthorityIssuer;
   /** Test-only clock controls for the bounded deep-link postcondition poll. */
   selectionConfirmAttempts?: number;
   selectionConfirmPollMs?: number;
+  /** Bounded app-server task/Skills catalog cadence; task changes still invalidate immediately. */
+  skillsRefreshIntervalMs?: number;
 }
 
 export interface BridgeCapabilities {
@@ -103,6 +111,7 @@ type TargetSelectionTransition = {
 const REASONING_MODES = ["minimal", "low", "medium", "high", "xhigh", "ultra", "max"] as const;
 const SELECTION_CONFIRM_ATTEMPTS = 25;
 const SELECTION_CONFIRM_POLL_MS = 200;
+const DEFAULT_SKILLS_REFRESH_INTERVAL_MS = 15_000;
 
 function sameDesktopIdentity(
   left: DesktopProcessIdentity,
@@ -321,6 +330,7 @@ function configuredCommands(snapshot: DesktopMicroSnapshot | null, transport: Tr
     ) commands.add("adjustReasoning");
     if (exactSelectedSlot && snapshot.capabilities.composerAttachment) {
       commands.add("sendSketch");
+      commands.add("attachCaptureFiles");
     }
   }
   if (transport.connected && transport.initialized) {
@@ -356,9 +366,11 @@ export class BridgeStateService {
   readonly #now: () => number;
   readonly #bridgeInstanceId: string;
   readonly #codexVersion: string | null;
+  readonly #runtimeIdentity: RuntimeIdentity;
   readonly #targetAuthorityIssuer: ExactTargetAuthorityIssuer;
   readonly #selectionConfirmAttempts: number;
   readonly #selectionConfirmPollMs: number;
+  readonly #skillsRefreshIntervalMs: number;
   readonly #listeners = new Set<SnapshotListener>();
   #snapshot: MicroSnapshot | null = null;
   #lastNative: DesktopMicroSnapshot | null = null;
@@ -372,8 +384,11 @@ export class BridgeStateService {
   #targetSelectionTransition: TargetSelectionTransition | null = null;
   #skills: SkillInfo[] = [];
   #skillsLoadedAt = 0;
+  #skillsRefreshAttemptedAt: number | null = null;
+  #skillsContextKey: string | null = null;
   #models: ModelInfo[] = [];
   #modelsLoadedAt = 0;
+  #modelsRefreshAttemptedAt: number | null = null;
   #transportModel: string | null = null;
   #transportReasoningMode: (typeof REASONING_MODES)[number] | null = null;
   #transportHealth: TransportHealth = {
@@ -393,6 +408,7 @@ export class BridgeStateService {
     this.transport = options.transport;
     this.#now = options.now ?? Date.now;
     this.#bridgeInstanceId = BridgeInstanceIdSchema.parse(options.bridgeInstanceId ?? randomUUID());
+    this.#runtimeIdentity = RuntimeIdentitySchema.parse(options.runtimeIdentity ?? BRIDGE_RUNTIME_IDENTITY);
     // Standalone tests may omit the domain because no managed provider consumes
     // their tokens. Production injects a domain shared only with that provider.
     this.#targetAuthorityIssuer = options.targetAuthorityIssuer
@@ -404,6 +420,10 @@ export class BridgeStateService {
     this.#selectionConfirmPollMs = Math.max(
       0,
       Math.min(SELECTION_CONFIRM_POLL_MS, Math.trunc(options.selectionConfirmPollMs ?? SELECTION_CONFIRM_POLL_MS)),
+    );
+    this.#skillsRefreshIntervalMs = Math.max(
+      0,
+      Math.trunc(options.skillsRefreshIntervalMs ?? DEFAULT_SKILLS_REFRESH_INTERVAL_MS),
     );
     const codexVersion = options.codexVersion?.trim();
     this.#codexVersion = codexVersion !== undefined && codexVersion.length > 0 && codexVersion.length <= 100
@@ -506,7 +526,7 @@ export class BridgeStateService {
         const authorityEpoch = this.#targetAuthorityEpoch;
         const transportHealth = await this.transport.health();
         if (transportHealth.connected && transportHealth.initialized) {
-          this.#skills = await this.#loadSkillsForState(state);
+          this.#skills = await this.#loadSkillsForState(state, true);
         }
         const finalDesktopIdentity = refreshOwnershipIdentity === undefined
           ? expectedDesktopIdentity
@@ -963,6 +983,37 @@ export class BridgeStateService {
     return this.#accept(state, await this.transport.health(), this.#skills);
   }
 
+  async appendTextToComposer(
+    expectedSequence: number,
+    expectedThreadId: string,
+    expectedSlot: number,
+    text: NativeComposerTextAppend["text"],
+  ): Promise<MicroSnapshot> {
+    const slot = this.assertExactTarget(expectedSequence, expectedThreadId, true);
+    if (slot.slot !== expectedSlot) {
+      throw new SnapshotConflictError("TARGET_MISMATCH", "The selected native agent slot changed before Skills insertion");
+    }
+    if (this.#lastNative?.capabilities.composerAttachment !== true) {
+      throw new SnapshotConflictError(
+        "ADAPTER_DEGRADED",
+        "The exact native Codex composer paste handler is unavailable",
+      );
+    }
+    const input: NativeComposerTextAppend = { expectedThreadId, text };
+    const state = this.#transportHealth.desktopOwnershipVerified
+      ? await (async () => {
+          const authority = await this.#acquireNativeMutationAuthority(expectedThreadId, slot.slot, true);
+          return this.adapter.appendTextToComposer(
+            input,
+            () => this.#consumeNativeMutationAuthority(authority.authority),
+            authority.desktopIdentity,
+          );
+        })()
+      : await this.adapter.appendTextToComposer(input);
+    this.#recordTargetAuthorityObservation(state);
+    return this.#accept(state, await this.transport.health(), this.#skills);
+  }
+
   async attachImagesToComposer(
     expectedThreadId: string,
     expectedSlot: number,
@@ -982,6 +1033,34 @@ export class BridgeStateService {
           return this.adapter.attachImagesToComposer(batch, () => this.#consumeNativeMutationAuthority(authority.authority), authority.desktopIdentity);
         })()
       : await this.adapter.attachImagesToComposer(batch);
+    this.#recordTargetAuthorityObservation(state);
+    return this.#accept(state, await this.transport.health(), this.#skills);
+  }
+
+  async attachFilesToComposer(
+    expectedSequence: number,
+    expectedThreadId: string,
+    expectedSlot: number,
+    files: NativeComposerFileBatch["files"],
+  ): Promise<MicroSnapshot> {
+    const slot = this.assertExactTarget(expectedSequence, expectedThreadId, true);
+    if (slot.slot !== expectedSlot) {
+      throw new SnapshotConflictError("TARGET_MISMATCH", "The selected native agent slot changed before file attachment");
+    }
+    if (this.#lastNative?.capabilities.composerAttachment !== true) {
+      throw new SnapshotConflictError("ADAPTER_DEGRADED", "The native Codex composer file attachment handler is unavailable");
+    }
+    const batch: NativeComposerFileBatch = { expectedThreadId, files };
+    const state = this.#transportHealth.desktopOwnershipVerified
+      ? await (async () => {
+          const authority = await this.#acquireNativeMutationAuthority(expectedThreadId, slot.slot, true);
+          return this.adapter.attachFilesToComposer(
+            batch,
+            () => this.#consumeNativeMutationAuthority(authority.authority),
+            authority.desktopIdentity,
+          );
+        })()
+      : await this.adapter.attachFilesToComposer(batch);
     this.#recordTargetAuthorityObservation(state);
     return this.#accept(state, await this.transport.health(), this.#skills);
   }
@@ -1123,18 +1202,31 @@ export class BridgeStateService {
       })),
     ]);
     if (transportHealth.connected && transportHealth.initialized) {
+      const transportReconnected = !this.#transportHealth.connected || !this.#transportHealth.initialized;
       [this.#skills, this.#models] = await Promise.all([
-        this.#loadSkillsForState(state),
-        this.#loadModels(),
+        this.#loadSkillsForState(state, transportReconnected),
+        this.#loadModels(transportReconnected),
       ]);
     }
     return this.#accept(state, transportHealth, this.#skills);
   }
 
-  async #loadSkillsForState(state: AdapterState): Promise<SkillInfo[]> {
+  async #loadSkillsForState(state: AdapterState, force = false): Promise<SkillInfo[]> {
     const threadId = state.snapshot?.capabilities.activeThread === true
       ? state.snapshot.activeThreadId
       : null;
+    const contextKey = threadId === null ? "global" : `thread:${threadId}`;
+    const elapsed = this.#skillsRefreshAttemptedAt === null
+      ? Number.POSITIVE_INFINITY
+      : this.#now() - this.#skillsRefreshAttemptedAt;
+    if (
+      !force
+      && this.#skillsContextKey === contextKey
+      && elapsed >= 0
+      && elapsed < this.#skillsRefreshIntervalMs
+    ) return this.#skills;
+    this.#skillsContextKey = contextKey;
+    this.#skillsRefreshAttemptedAt = this.#now();
     if (threadId === null) {
       this.#transportModel = null;
       this.#transportReasoningMode = null;
@@ -1166,10 +1258,14 @@ export class BridgeStateService {
     }
   }
 
-  async #loadModels(): Promise<ModelInfo[]> {
-    if (this.#models.length > 0 && this.#now() - this.#modelsLoadedAt < 5 * 60_000) {
+  async #loadModels(force = false): Promise<ModelInfo[]> {
+    const elapsed = this.#modelsRefreshAttemptedAt === null
+      ? Number.POSITIVE_INFINITY
+      : this.#now() - this.#modelsRefreshAttemptedAt;
+    if (!force && elapsed >= 0 && elapsed < 5 * 60_000) {
       return this.#models;
     }
+    this.#modelsRefreshAttemptedAt = this.#now();
     try {
       const models = await this.transport.listModels();
       this.#modelsLoadedAt = this.#now();
@@ -1339,6 +1435,7 @@ export class BridgeStateService {
       bridgeInstanceId: this.#bridgeInstanceId,
       sequence: (this.#snapshot?.sequence ?? 0) + 1,
       timestamp: now,
+      ...this.#runtimeIdentity,
       codexVersion: this.#codexVersion,
       bridgeHealth: {
         state: fullyLive ? "live" : offline ? "offline" : stale ? "stale" : "degraded",
@@ -1370,6 +1467,7 @@ export class BridgeStateService {
       bridgeInstanceId: this.#bridgeInstanceId,
       sequence: 1,
       timestamp: now,
+      ...this.#runtimeIdentity,
       codexVersion: this.#codexVersion,
       bridgeHealth: {
         state: "offline",

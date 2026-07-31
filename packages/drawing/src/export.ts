@@ -6,6 +6,7 @@ import {
   type CropOptions,
   type ExportGeometry,
 } from "./geometry.js";
+import { elementsInPaintOrder } from "./scene.js";
 import { DEFAULT_DARK_BACKGROUND, type ImportedImageSource, type Scene, type SceneElement } from "./types.js";
 
 export type CanvasSurface = HTMLCanvasElement | OffscreenCanvas;
@@ -237,7 +238,7 @@ export async function renderSceneToCanvas(
     geometry.offsetY,
   );
   const resolver = options.imageResolver ?? browserImage;
-  for (const element of scene.elements) {
+  for (const element of elementsInPaintOrder(scene.elements)) {
     await drawElement(context, element, resolver);
   }
 

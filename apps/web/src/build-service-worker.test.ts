@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { renderServiceWorker, serviceWorkerBuildId, SHELL_ASSETS_TOKEN, SHELL_CACHE_TOKEN } from "./build-service-worker";
 
@@ -25,7 +25,13 @@ describe("service-worker build generation", () => {
   });
 
   it("keeps push navigation strict and exposes no Lock Screen approval action", () => {
-    const worker = readFileSync(join(process.cwd(), "apps/web/src/sw-template.js"), "utf8");
+    const workspaceTemplate = resolve(process.cwd(), "src/sw-template.js");
+    const worker = readFileSync(
+      existsSync(workspaceTemplate)
+        ? workspaceTemplate
+        : resolve(process.cwd(), "apps/web/src/sw-template.js"),
+      "utf8",
+    );
     expect(worker).toContain('type: "nerva-notification-open"');
     expect(worker).toContain('target?.view === "mission"');
     expect(worker).toContain('target?.view === "session"');

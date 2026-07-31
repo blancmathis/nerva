@@ -25,6 +25,9 @@ export interface AtomicReviewSend {
   readonly draft: ReviewDraft;
   readonly manifest: ReturnType<typeof createAtomicSendManifest>;
   readonly attachments: readonly ReviewAttachment[];
+  /** Frozen before the first attempt so retries keep byte-identical prompt text. */
+  readonly instructionSuffix: string;
+  readonly skillIds: readonly string[];
 }
 
 export interface BuildAtomicReviewSendInput {
@@ -35,6 +38,8 @@ export interface BuildAtomicReviewSendInput {
   readonly snapshotSeq: number;
   readonly draft: ReviewDraft;
   readonly loadBlob: (ref: string) => Promise<Blob | null>;
+  readonly instructionSuffix?: string;
+  readonly skillIds?: readonly string[];
 }
 
 function normalizeThreadId(value: string): string {
@@ -141,5 +146,7 @@ export async function buildAtomicReviewSend(input: BuildAtomicReviewSendInput): 
     draft,
     manifest,
     attachments,
+    instructionSuffix: input.instructionSuffix ?? "",
+    skillIds: input.skillIds ?? [],
   };
 }

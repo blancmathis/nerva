@@ -114,6 +114,7 @@ export function buildMicroActionCommand(
   commandId: string,
   gesture: "tap" | "begin" | "end" = "tap",
   gestureId: string | null = null,
+  skillNames: readonly string[] = [],
 ): RunMicroActionCommand | null {
   const selected = snapshot.slots.find((slot) => slot.selected && slot.threadId === targetThreadId);
   const assignment = snapshot.capabilities.microActions.find((candidate) => (
@@ -134,6 +135,7 @@ export function buildMicroActionCommand(
     expectedKeycapId: assignment.keycapId,
     expectedNativeCommandId: assignment.nativeCommandId,
     ...(gesture === "tap" ? {} : { gesture, gestureId }),
+    ...(skillNames.length === 0 ? {} : { skillNames: [...skillNames] }),
   };
 }
 

@@ -9,6 +9,9 @@ function snapshot(sequence: number, commandId = "mode.plan"): BridgeSnapshot {
   slots[0] = { ...slots[0]!, threadKey: THREAD, threadId: THREAD, suffix: THREAD.slice(-8), title: "Task", status: "idle", selected: true };
   return {
     bridgeInstanceId: "7d35b974-62cc-4db8-9b4e-5a8dc8a4d812",
+    bridgeVersion: "0.1.0",
+    buildRevision: "0000000000000000",
+    apiContractVersion: 1,
     seq: sequence,
     capturedAt: new Date(sequence).toISOString(),
     theme: "dark",
@@ -136,6 +139,35 @@ describe("approval HID exclusion", () => {
       expectedKeycapId: "MIC",
       expectedNativeCommandId: null,
     });
+  });
+
+  it("freezes selected Skills only into the exact native Send Prompt command", () => {
+    const current = snapshot(15, "PLAN");
+    const send = {
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        commands: ["runMicroAction"],
+        microActions: [{
+          actionSlot: "ACT12" as const,
+          keycapId: "CODEX",
+          nativeCommandId: "composer.submit",
+          label: "Send",
+          enabled: true,
+        }],
+      },
+    };
+    expect(buildMicroActionCommand(
+      send,
+      THREAD,
+      "ACT12",
+      "CODEX",
+      "composer.submit",
+      "00000000-0000-4000-8000-000000000007",
+      "tap",
+      null,
+      ["visual-review", "openai-docs"],
+    )).toMatchObject({ skillNames: ["visual-review", "openai-docs"] });
   });
 
   it("rejects a Micro action rebound behind the same keycap identity", () => {

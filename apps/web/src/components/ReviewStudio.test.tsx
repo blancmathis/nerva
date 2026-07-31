@@ -371,6 +371,8 @@ describe("ReviewStudio", () => {
         bridgeInstanceId={BRIDGE_INSTANCE_ID}
         snapshotSeq={21}
         reviewMaxImages={1}
+        instructionSuffix="\n\nUse the following skills for this task: website-qa."
+        selectedSkillIds={["website-qa"]}
         onSendReview={send}
       />,
     );
@@ -393,6 +395,70 @@ describe("ReviewStudio", () => {
       await expect(getReviewBlob("retry-ref")).resolves.not.toBeNull();
       await expect(loadPendingReviewDelivery(THREAD_ID, payload!.draft.updatedAt)).resolves.toBe(payload!.commandId);
     }
+  });
+
+  it("rebuilds a reload retry with the exact original bridge authority", async () => {
+    const imageBlob = new Blob(["reload-retry"], { type: "image/png" });
+    let seededDraft = createReviewDraft({ id: "review-reload-retry", targetThreadId: THREAD_ID, now: 2_170 });
+    seededDraft = reviewDraftReducer(seededDraft, {
+      type: "addFrame",
+      frame: makeSiteReviewFrame({
+        id: "reload-retry-frame",
+        url: "https://mac.example.ts.net:3000/reload-retry",
+        capturedImage: capturedImage("reload-retry-image", "reload-retry-ref", imageBlob.size),
+      }),
+    }, 2_171);
+    await putReviewBlob("reload-retry-ref", imageBlob);
+    await saveReviewDraft(seededDraft);
+    const send = vi.fn(async (_payload: AtomicReviewSend) => ({
+      ok: false,
+      pending: true,
+      message: "Delivery outcome unknown",
+    }));
+
+    const first = render(
+      <ReviewStudio
+        threadId={THREAD_ID}
+        threadKey={`local:${THREAD_ID}`}
+        threadTitle="Reload retry"
+        bridgeInstanceId={BRIDGE_INSTANCE_ID}
+        snapshotSeq={21}
+        reviewMaxImages={1}
+        onSendReview={send}
+      />,
+    );
+    await screen.findByRole("heading", { name: "Reload retry" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const original = send.mock.calls[0]![0];
+    first.unmount();
+
+    render(
+      <ReviewStudio
+        threadId={THREAD_ID}
+        threadKey={`local:${THREAD_ID}`}
+        threadTitle="Reload retry"
+        bridgeInstanceId="019f7ec2-68eb-7183-bb3a-0e67312a8bc9"
+        snapshotSeq={99}
+        reviewMaxImages={1}
+        instructionSuffix="\n\nUse the following skills for this task: different-skill."
+        selectedSkillIds={["different-skill"]}
+        onSendReview={send}
+      />,
+    );
+    await screen.findByRole("heading", { name: "Reload retry" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]![0]).toMatchObject({
+      commandId: original.commandId,
+      expectedBridgeInstanceId: original.expectedBridgeInstanceId,
+      snapshotSeq: original.snapshotSeq,
+      targetThreadKey: original.targetThreadKey,
+      instructionSuffix: original.instructionSuffix,
+      skillIds: original.skillIds,
+    });
   });
 
   it("preserves a newer tab's draft, media, and delivery when an old send panel receives success", async () => {

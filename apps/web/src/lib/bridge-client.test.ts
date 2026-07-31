@@ -353,6 +353,51 @@ describe("BridgeClient command reconciliation", () => {
     const headers = new Headers(init?.headers);
     expect(headers.get("Authorization")).toBe(`Bearer ${bearerToken}`);
     expect(headers.get("X-Codex-Pad-Command-Id")).toBe(commandId);
+    expect(headers.get("x-codex-pad-api-contract")).toBe("1");
+    expect(headers.get("x-codex-pad-build-revision")).toBe("0000000000000000");
+    client.stop();
+  });
+
+  it("keeps a mismatched bridge generation read-only and explains that the PWA must refresh", async () => {
+    const bearerToken = "u".repeat(43);
+    const ticket = "v".repeat(43);
+    const snapshot = {
+      ...fixtureSnapshot({
+        bridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+        sequence: 1,
+        selectedIndex: 0,
+      }),
+      buildRevision: "deadbeef",
+    };
+    await saveBridgeBearer(bearerToken);
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (input, _init) => {
+      if (String(input) === "/api/snapshot") return Response.json({ ok: true, data: snapshot });
+      if (String(input) === "/api/ws-ticket") {
+        return Response.json({
+          ok: true,
+          data: { ticket, protocol: `codex-pad.ticket.${ticket}`, expiresAt: 1 },
+        });
+      }
+      return Response.json({ ok: false }, { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", ControlledWebSocket);
+    const onConnection = vi.fn();
+    const onCompatibility = vi.fn();
+    const client = new BridgeClient({
+      onSnapshot: vi.fn(),
+      onConnection,
+      onCompatibility,
+      onUnauthorized: vi.fn(),
+    });
+
+    await expect(client.start()).resolves.toBe(true);
+    expect(onCompatibility).toHaveBeenLastCalledWith(false, expect.stringContaining("Refresh"));
+    expect(ControlledWebSocket.instances).toHaveLength(0);
+    expect(onConnection).not.toHaveBeenCalledWith(true);
+
+    await expect(client.removePushSubscription()).rejects.toMatchObject({ status: 409 });
+    expect(fetchMock.mock.calls.filter(([input]) => String(input) === "/api/push/subscription")).toHaveLength(0);
     client.stop();
   });
 
@@ -476,6 +521,76 @@ describe("BridgeClient command reconciliation", () => {
 });
 
 describe("BridgeClient bearer authentication", () => {
+  it("does not let a slow initial IndexedDB read overwrite a newer pairing credential", async () => {
+    const bearerToken = "w".repeat(43);
+    const ticket = "x".repeat(43);
+    let resolveInitialLoad: ((value: string | null) => void) | undefined;
+    const initialLoad = new Promise<string | null>((resolve) => { resolveInitialLoad = resolve; });
+    const loadBearer = vi.fn(async () => initialLoad);
+    const snapshot = fixtureSnapshot({
+      bridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+      sequence: 1,
+      selectedIndex: 0,
+    });
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (input, _init) => {
+      if (String(input) === "/api/pair") {
+        return Response.json({
+          ok: true,
+          data: {
+            paired: true,
+            device: { id: "019f7ec2-68eb-7183-bb3a-0e67312a8bc2", name: "iPad" },
+            bearerToken,
+          },
+        }, { status: 201 });
+      }
+      if (String(input) === "/api/snapshot") return Response.json({ ok: true, data: snapshot });
+      if (String(input) === "/api/ws-ticket") {
+        return Response.json({ ok: true, data: { ticket, protocol: `codex-pad.ticket.${ticket}`, expiresAt: 1 } });
+      }
+      return Response.json({ ok: false }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", ControlledWebSocket);
+    const onUnauthorized = vi.fn();
+    const client = new BridgeClient({
+      onSnapshot: vi.fn(),
+      onConnection: vi.fn(),
+      onUnauthorized,
+    }, 8_000, loadBearer);
+
+    const starting = client.start();
+    await vi.waitFor(() => expect(loadBearer).toHaveBeenCalledOnce());
+    await expect(client.pair("pairing-nonce", "Test iPad")).resolves.toMatchObject({ ok: true });
+    resolveInitialLoad?.(null);
+
+    await expect(starting).resolves.toBe(true);
+    await vi.waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1));
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(new Headers(fetchMock.mock.calls.find(([input]) => String(input) === "/api/snapshot")?.[1]?.headers).get("Authorization"))
+      .toBe(`Bearer ${bearerToken}`);
+    client.stop();
+  });
+
+  it("does not report unauthorized from a resume event while the initial credential read is pending", async () => {
+    let resolveInitialLoad: ((value: string | null) => void) | undefined;
+    const initialLoad = new Promise<string | null>((resolve) => { resolveInitialLoad = resolve; });
+    const onUnauthorized = vi.fn();
+    const client = new BridgeClient({
+      onSnapshot: vi.fn(),
+      onConnection: vi.fn(),
+      onUnauthorized,
+    }, 8_000, async () => initialLoad);
+
+    const starting = client.start();
+    client.setVisible(true);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+
+    resolveInitialLoad?.(null);
+    await expect(starting).resolves.toBe(false);
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+    client.stop();
+  });
+
   it("persists the pairing bearer and attaches it only as an Authorization header", async () => {
     const bearerToken = "c".repeat(43);
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

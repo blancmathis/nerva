@@ -245,6 +245,9 @@ function fromProtocol(snapshot: MicroSnapshot): BridgeSnapshot {
 
   return {
     bridgeInstanceId: snapshot.bridgeInstanceId,
+    bridgeVersion: snapshot.bridgeVersion ?? null,
+    buildRevision: snapshot.buildRevision ?? null,
+    apiContractVersion: snapshot.apiContractVersion ?? null,
     codexVersion: snapshot.codexVersion,
     seq: snapshot.sequence,
     capturedAt: new Date(snapshot.timestamp).toISOString(),
@@ -385,6 +388,9 @@ export function normalizeSnapshot(input: unknown): BridgeSnapshot | null {
 
   return {
     bridgeInstanceId: bridgeInstanceId.data,
+    bridgeVersion: text(root.bridgeVersion),
+    buildRevision: text(root.buildRevision),
+    apiContractVersion: finiteNumber(root.apiContractVersion),
     codexVersion: text(root.codexVersion),
     seq,
     capturedAt: text(root.capturedAt)

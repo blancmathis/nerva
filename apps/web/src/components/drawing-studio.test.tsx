@@ -2,7 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { deserializeScene } from "@codex-pad/drawing";
 import { DiagramDocumentSchema } from "@codex-pad/protocol";
-import { deleteDrawingDraft, loadDrawingDraft, loadPendingDrawingBoardExport } from "../lib/draft-store";
+import {
+  deleteDrawingDraft,
+  deletePendingDrawingBoardExport,
+  loadDrawingDraft,
+  loadPendingDrawingBoardExport,
+} from "../lib/draft-store";
 import { loadPendingDrawingDelivery } from "../lib/drawing-delivery-store";
 import { DrawingStudio, type DrawingTarget } from "./DrawingStudio";
 
@@ -43,12 +48,15 @@ beforeAll(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
+  await deletePendingDrawingBoardExport(firstTarget.threadId);
+  await deleteDrawingDraft(firstTarget.threadId);
 });
 beforeEach(async () => {
   localStorage.clear();
+  await deletePendingDrawingBoardExport(firstTarget.threadId);
   await deleteDrawingDraft(firstTarget.threadId);
 });
 

@@ -80,7 +80,10 @@ export const SiteQaActionReceiptSchema = z.object({
   afterUrl: z.string().max(2_048),
   beforeScroll: SiteQaPointSchema,
   afterScroll: SiteQaPointSchema,
-  outcome: z.enum(["applied", "no-visible-change", "unknown"]),
+  // `applied` is retained for stored v1 recordings and older bridge clients.
+  // New runtimes report whether dispatch was merely acknowledged or an
+  // observable postcondition was confirmed.
+  outcome: z.enum(["applied", "dispatched", "confirmed", "no-visible-change", "unknown"]),
   confidence: z.enum(["high", "medium", "coordinate-only"]),
   recordedAt: EpochMillisSchema,
 }).strict();
@@ -94,6 +97,8 @@ export const SiteQaManifestStepSchema = z.object({
   input: SiteQaInputEvidenceSchema,
   beforeUrl: z.string().max(2_048),
   afterUrl: z.string().max(2_048),
+  // Optional on disk/wire for v1 recordings; parsed manifests always expose it.
+  outcome: z.enum(["applied", "dispatched", "confirmed", "no-visible-change", "unknown"]).optional().default("applied"),
   confidence: z.enum(["high", "medium", "coordinate-only"]),
   evidenceFrameId: UuidSchema,
 }).strict();

@@ -12,6 +12,7 @@ Codex Desktop / bundled Codex:
 Node / Tailscale:
 iPad model / iPadOS / Safari:
 Apple Pencil model:
+iPhone model / iOS / Safari:
 Tailnet/network path:
 Tester:
 Evidence location:
@@ -20,18 +21,21 @@ Evidence location:
 ## Latest recorded automated run
 
 ```text
-Date/time: 26 July 2026, Europe/Paris
-Nerva commit: 0a95911
+Date/time: 31 July 2026, Europe/Paris
+Nerva commit: uncommitted hardening worktree based on 5023b3c
 Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
-Codex Desktop / bundled Codex: 26.721.41059 build 5848 / codex-cli 0.146.0-alpha.3.1
+Codex Desktop / bundled Codex: 26.727.40816 build 6067 / codex-cli 0.146.0-alpha.9.2
 Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
 iPad / iPadOS / Pencil: not recorded in this run
-Evidence: public baseline checkout and GitHub Actions run 30204589636
+iPhone / iOS: not recorded in this run
+Evidence: local working-tree validation plus a clean local clone of the exact non-ignored source snapshot; no hosted CI or physical-device proof for these changes
 ```
 
-Public pre-alpha baseline `0a95911`: 927 unit tests plus 11/11 probe-safety tests, build, a 387.70 kB largest JavaScript chunk, 293 E2E passes with 13 explicit profile skips, Axe coverage, screenshot generation, the 438 files release audit, Context Room doctor and dependency audits. GitHub Actions run `30204589636` passed the required Node.js 22 check. Physical iPad/Pencil checks remain deliberately unchecked.
+Current local result: 1,030 unit tests plus 19/19 probe-safety tests, build, a maximum observed 402.15 kB largest JavaScript chunk, 343 E2E passes with 17 explicit profile exclusions and no retry, six real-bridge profiles, 10 consecutive WebKit iPhone Site QA runs, 10 consecutive isolated real-bridge runs, Axe coverage, 39 regenerated current public screenshots, the 463-file working-tree release audit, documentation check, Context Room doctor and zero dependency vulnerabilities. The exact non-ignored source snapshot was reproduced from a clean local clone with a 452-file release audit and a clean final tree. Physical iPad/iPhone/Pencil checks remain deliberately unchecked. The historical public baseline and hosted CI evidence remain recorded in [`product/CURRENT_STATE.md`](product/CURRENT_STATE.md).
 
-Runtime result on 26 July 2026: default doctor and `setup:check` report **Ready with limitations** and return success. Nerva observes Desktop `0.146.0-alpha.3.1`, daemon/app-server `0.145.0`, and three unrelated stdio writers. The two exact schema sets plus live `initialize`, `thread/list` and `model/list` responses are compatible, but Desktop ownership on the private socket and the native Micro adapter remain unverified. Compatible reads and pairing remain available; every app-server mutation remains unavailable. `npm run doctor -- --strict-native` is nonzero. Multi-image input and physical behavior are not verified.
+Runtime result on 31 July 2026: default doctor and `setup:check` both report **Ready with limitations** and return success. Tailscale is running, with the Mac and previously paired iPad online. Nerva observes Desktop-bundled `0.146.0-alpha.9.2`, standalone `0.146.0`, and three unrelated stdio writers. The managed socket does not answer, no exact current schema attestation or Desktop ownership proof exists, and the native Micro adapter is degraded. With explicit user authorization, only the Nerva LaunchAgent was restarted; its PID changed while the observed Codex app-server PID set did not. Local bridge health returns HTTP 200, and the private HTTPS Serve route and same-origin WSS endpoint are reachable.
+
+The restarted bridge serves a private immutable web snapshot whose `app-meta.json` matches its compiled identity. A temporary-device protocol simulation and a fresh headless WebKit iPad PWA through the real private Tailscale origin both passed pairing, authenticated snapshot/ticket/WebSocket delivery, online rendering, revocation and post-revocation denial. The Mac-to-iPad Tailscale path remained direct across repeated samples. No Codex process was restarted, no writer was stopped, and no setup mutation was performed. `npm run doctor -- --strict-native` remains nonzero. Physical pairing gestures, Pencil, microphone, camera, push, multi-image input and native controls were not verified in this run.
 
 ## A. Mac setup and pairing
 
@@ -121,7 +125,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Skills are organized automatically by provider/scope. A provider with at least two skills is a collapsible folder; a singleton skill is directly visible without a folder. Counts and selected counts are correct, exact skill IDs remain unchanged, and no local path or plugin version reaches the browser response.
 - [ ] A text-bearing Nerva-originated send appends `Use the following skills for this task: skill-a, skill-b.` after all other instruction text.
 - [ ] A Drawing send contains only its PNG, does not append a skill suffix, and leaves selected skills armed for the next text-bearing action.
-- [ ] A direct native Mac-composer send is not claimed to consume selected iPad skills until exact interception exists.
+- [ ] `Send prompt` appends the validated Skills suffix exactly once through the exact visible composer paste handler before the separately attested native submit. A confirmed submit consumes those skills; a definitive failure or unknown result keeps them armed. Composer text never reaches the bridge/PWA.
 - [ ] Model + Reasoning shows only combinations returned by the installed live `model/list` catalog and applies the exact selected combination through `thread/settings/update` after one touch drag/release, including Safari's final-input-after-`pointerup` ordering.
 - [ ] A definitive Model + Reasoning rejection returns the slider to the last observed live combination; an unknown-delivery result remains explicit and is not silently retried.
 - [ ] If the first capability response is degraded, the foreground two-second capability poll automatically refreshes Drawing, Skills and Model + Reasoning without requiring a native snapshot change, reload or re-pairing.
@@ -139,9 +143,11 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] In `Sketch`, keep `Pencil only`, rest the palm, draw with Pencil and move/zoom with exactly two fingers. Confirm one finger/palm does not draw or cancel the Pencil stroke. Repeat once with `Finger + Pencil`.
 - [ ] From Home, tap the visible trash control on one capture. Cancel once and confirm it remains; confirm once and verify only that local original disappears. Then use `Select` on several items and confirm the explicit `Delete` button performs the same protected operation in batch. No Session picker, Assign, Route or Prepare action exists.
 - [ ] Open one exact Session, tap `Capture Inbox` in `Choose an input`, and confirm the compact context bar shows this Session. Select compatible images/notes and tap `Use in session`. The exact Session Review opens locally with every chosen item, but the Mac receives nothing until Review's separate confirmation.
+- [ ] In that same exact Session, select one to four file-only captures and tap `Attach to composer`. Confirm one native paste adds every uniquely named file to that exact Mac composer, preserves the original Inbox items, adds no text, and does not Queue, Steer, or submit. Verify the button remains unavailable when the Mac target is not exact, one file exceeds 8 MiB, or the batch exceeds 16 MiB.
+- [ ] Force a rejected, partial, and unknown file-attachment result. Confirm the selection and originals remain available, Nerva names the uncertainty, reconnect performs no retry, and no missing remainder is added automatically.
 - [ ] Close Review and confirm Nerva returns to the same Session. Open a second Session, select one of the same Inbox items, and use it again. Both Reviews keep their own copies and the Inbox original remains unchanged with no destination marker.
 - [ ] Disconnect the Mac, capture items, leave/reopen the PWA, then reconnect. Confirm nothing is sent, queued or replayed and every capture remains neutral in the Inbox.
-- [ ] Select a non-image file from a Session. Confirm `Use in session` remains unavailable with an explicit transport explanation and the original does not disappear.
+- [ ] Select a mixture of files and notes/images. Confirm neither destination is guessed, the UI asks for separate selections, and every original remains unchanged.
 - [ ] Upgrade once from a build that contains a legacy Inbox voice record. Confirm it appears as a generic audio file with preserved playback bytes, no destination, and no way to start a new Voice recording.
 - [ ] Delete selected captures and confirm the local originals disappear only after confirmation. Any image already copied into an existing Review remains in that Review.
 - [ ] Fill the Inbox toward the 32 MiB per-item, 200-item or 256 MiB aggregate limits and confirm a bounded, actionable local error appears before a partial write.
@@ -225,6 +231,8 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 
 ## H. Offline, recovery, accessibility and finish
 
+- [ ] Install and pair Nerva on a physical iPhone. In portrait and landscape, exercise Home, one Session, Capture Inbox, finger Drawing, Saved Drawings, Review, Sites, Site QA and Settings. Confirm safe areas, keyboard avoidance, native scrolling, dialogs, sheets, 44 CSS pixel targets and the absence of page-level horizontal overflow.
+- [ ] On that iPhone, background and resume each unfinished local studio once, rotate during an active draft, then repeat one offline/reconnect cycle. The same exact task and local content return, no action is duplicated, and no pending local capture is submitted automatically.
 - [ ] With the Mac unavailable, Home and cached Session state remain consultable, remote controls say `Mac unavailable`, local drafts persist and nothing auto-submits later.
 - [ ] Reconnect reconciles bridge instance/sequence and pending idempotent outcomes before enabling mutations.
 - [ ] A replaced or stale WebSocket cannot re-enable controls.
@@ -251,9 +259,10 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] `npm run build`
 - [ ] `npm run check:bundle`
 - [ ] `npx playwright install chromium webkit`
-- [ ] `npm run test:e2e -- --workers=1`
-- [ ] `npm run test:e2e` in Chromium and WebKit iPad landscape, iPad portrait and iPhone projects
+- [ ] `npm run test:e2e` in Chromium and WebKit iPad landscape, iPad portrait and iPhone projects; Chromium may run in parallel, while each complete WebKit profile runs sequentially without retry
+- [ ] `npm run test:e2e:bridge` across all six production-bridge profiles
 - [ ] `npm run screenshots`
+- [ ] `npm run screenshots:check`
 - [ ] `npm run audit:release`
 - [ ] `npm run context-room:doctor`
 - [ ] `npm audit --omit=dev --audit-level=high`
@@ -271,8 +280,11 @@ Choose one and explain the limiting evidence:
 - [ ] **Blocked** — an exact installation or security invariant failed.
 
 ```text
-Verdict notes (26 July 2026):
-Local automated only. Default doctor is Ready with limitations, while strict-native
-remains nonzero because exact-socket Desktop ownership and Micro are unverified.
-The physical Mac/iPad/Pencil matrix is incomplete. Do not create v0.1.0.
+Verdict notes (31 July 2026):
+Local automated only. Default doctor and setup are Ready with limitations rather
+than blocked by installation prerequisites, and strict-native
+remains nonzero because the managed socket, exact schema attestation, Desktop
+ownership and Micro are unavailable. The restarted bridge now serves the exact
+immutable PWA build and passed live-origin protocol and WebKit PWA simulations.
+The physical Mac/iPad/iPhone/Pencil matrix is incomplete. Do not create v0.1.0.
 ```

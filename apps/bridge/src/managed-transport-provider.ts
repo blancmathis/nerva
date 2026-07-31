@@ -54,6 +54,8 @@ export interface ReconnectingManagedTransportOptions {
   /** Backwards-compatible name for the first retry delay. */
   retryDelayMs?: number;
   retryMaxDelayMs?: number;
+  /** Full dynamic Desktop/socket ownership cadence for read-only health polling. */
+  ownershipRefreshIntervalMs?: number;
   now?: () => number;
   random?: () => number;
   multiImageInputCapability?: VerifiedMultiImageInputCapability;
@@ -69,6 +71,7 @@ export interface ReconnectingManagedTransportOptions {
 const DEFAULT_CODEX_BINARY = "/Applications/ChatGPT.app/Contents/Resources/codex";
 const DEFAULT_RETRY_DELAY_MS = 2_000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
+const DEFAULT_OWNERSHIP_REFRESH_INTERVAL_MS = 10_000;
 
 interface NativeMutationAuthorityState {
   readonly transport: ReconnectingManagedTransport;
@@ -146,6 +149,7 @@ export class ReconnectingManagedTransport implements ThreadTransport {
   readonly #socketPath: string;
   readonly #retryInitialDelayMs: number;
   readonly #retryMaxDelayMs: number;
+  readonly #ownershipRefreshIntervalMs: number;
   readonly #now: () => number;
   readonly #random: () => number;
   readonly #multiImageInputCapability: VerifiedMultiImageInputCapability | undefined;
@@ -159,12 +163,15 @@ export class ReconnectingManagedTransport implements ThreadTransport {
   #consecutiveFailures = 0;
   #nextAttemptAt = 0;
   #lastError = "Managed app-server has not connected yet";
+  #lastLoggedConnectionFailure: string | null = null;
   #lastOwnership: DesktopOwnershipInspection = {
     verified: false,
     canCreate: false,
     code: "attestation-missing",
     summary: "Shared Desktop ownership has not been attested; app-server mutations are disabled.",
   };
+  #lastOwnershipCheckedAt: number | null = null;
+  #lastOwnershipClient: AppServerClient | null = null;
   #boundSocketPeer: ManagedSocketPeerExpectation | null = null;
   #ownershipEpoch = 0;
   #closed = false;
@@ -178,6 +185,10 @@ export class ReconnectingManagedTransport implements ThreadTransport {
     this.#retryMaxDelayMs = Math.max(
       this.#retryInitialDelayMs,
       Math.floor(options.retryMaxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS),
+    );
+    this.#ownershipRefreshIntervalMs = Math.max(
+      0,
+      Math.floor(options.ownershipRefreshIntervalMs ?? DEFAULT_OWNERSHIP_REFRESH_INTERVAL_MS),
     );
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
@@ -205,7 +216,7 @@ export class ReconnectingManagedTransport implements ThreadTransport {
     if (delegate !== null) {
       const [health, ownership] = await Promise.all([
         delegate.health(),
-        this.#refreshOwnership(),
+        this.#ownershipForHealth(),
       ]);
       if (this.#delegate !== delegate) {
         return {
@@ -394,11 +405,16 @@ export class ReconnectingManagedTransport implements ThreadTransport {
       this.#consecutiveFailures = 0;
       this.#nextAttemptAt = 0;
       this.#lastError = "";
+      this.#lastLoggedConnectionFailure = null;
       return delegate;
     }).catch((error: unknown) => {
       this.#lastError = safeManagedConnectionError(error);
       const code = error instanceof AppServerClientError ? error.code : "UNKNOWN";
-      this.#logger(`${this.#lastError} (${code})`);
+      const diagnostic = `${this.#lastError} (${code})`;
+      if (diagnostic !== this.#lastLoggedConnectionFailure) {
+        this.#lastLoggedConnectionFailure = diagnostic;
+        this.#logger(diagnostic);
+      }
       if (!this.#closed && this.#nextAttemptAt <= this.#now()) this.#scheduleRetry();
       throw this.#unavailable(this.#lastError);
     }).finally(() => {
@@ -414,6 +430,8 @@ export class ReconnectingManagedTransport implements ThreadTransport {
     this.#writeAuthority = null;
     this.#delegate = null;
     this.#boundSocketPeer = null;
+    this.#lastOwnershipClient = null;
+    this.#lastOwnershipCheckedAt = null;
     this.#lastError = reason;
     this.#logger(reason);
     if (!this.#closed) this.#scheduleRetry();
@@ -435,6 +453,22 @@ export class ReconnectingManagedTransport implements ThreadTransport {
 
   async #refreshOwnership(): Promise<DesktopOwnershipInspection> {
     return (await this.#refreshOwnershipWithGeneration()).ownership;
+  }
+
+  async #ownershipForHealth(): Promise<DesktopOwnershipInspection> {
+    const client = this.#client;
+    const checkedAt = this.#lastOwnershipCheckedAt;
+    const elapsed = checkedAt === null ? Number.POSITIVE_INFINITY : this.#now() - checkedAt;
+    if (
+      client !== null
+      && !client.isClosed
+      && this.#lastOwnershipClient === client
+      && elapsed >= 0
+      && elapsed < this.#ownershipRefreshIntervalMs
+    ) {
+      return this.#lastOwnership;
+    }
+    return this.#refreshOwnership();
   }
 
   async #refreshOwnershipWithGeneration(): Promise<{
@@ -471,7 +505,7 @@ export class ReconnectingManagedTransport implements ThreadTransport {
         await client.close().catch(() => undefined);
         ownership = this.#runtimePeerUnavailable();
       }
-      if (this.#ownershipProbeIsCurrent(client, generation)) this.#lastOwnership = ownership;
+      this.#rememberOwnership(client, generation, ownership);
       return { ownership, generation, client };
     }
 
@@ -482,7 +516,7 @@ export class ReconnectingManagedTransport implements ThreadTransport {
         await client.close().catch(() => undefined);
       }
       ownership = this.#runtimePeerUnavailable();
-      if (this.#ownershipProbeIsCurrent(client, generation)) this.#lastOwnership = ownership;
+      this.#rememberOwnership(client, generation, ownership);
       return { ownership, generation, client };
     }
     const expected: ManagedSocketPeerExpectation = {
@@ -520,8 +554,19 @@ export class ReconnectingManagedTransport implements ThreadTransport {
       return { ownership, generation, client };
     }
     this.#boundSocketPeer = expected;
-    this.#lastOwnership = ownership;
+    this.#rememberOwnership(client, generation, ownership);
     return { ownership, generation, client };
+  }
+
+  #rememberOwnership(
+    client: AppServerClient | null,
+    generation: number,
+    ownership: DesktopOwnershipInspection,
+  ): void {
+    if (!this.#ownershipProbeIsCurrent(client, generation)) return;
+    this.#lastOwnership = ownership;
+    this.#lastOwnershipClient = client;
+    this.#lastOwnershipCheckedAt = this.#now();
   }
 
   #runtimePeerUnavailable(): DesktopOwnershipInspection {
