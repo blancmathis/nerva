@@ -22,7 +22,7 @@ Evidence location:
 
 ```text
 Date/time: 31 July 2026, Europe/Paris
-Nerva commit: uncommitted hardening worktree based on 5023b3c
+Nerva product commit: bb45368
 Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
 Codex Desktop / bundled Codex: 26.727.40816 build 6067 / codex-cli 0.146.0-alpha.9.2
 Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
@@ -31,7 +31,7 @@ iPhone / iOS: not recorded in this run
 Evidence: local working-tree validation plus a clean local clone of the exact non-ignored source snapshot; no hosted CI or physical-device proof for these changes
 ```
 
-Current local result: 1,030 unit tests plus 19/19 probe-safety tests, build, a maximum observed 402.15 kB largest JavaScript chunk, 343 E2E passes with 17 explicit profile exclusions and no retry, six real-bridge profiles, 10 consecutive WebKit iPhone Site QA runs, 10 consecutive isolated real-bridge runs, Axe coverage, 39 regenerated current public screenshots, the 463-file working-tree release audit, documentation check, Context Room doctor and zero dependency vulnerabilities. The exact non-ignored source snapshot was reproduced from a clean local clone with a 452-file release audit and a clean final tree. Physical iPad/iPhone/Pencil checks remain deliberately unchecked. The historical public baseline and hosted CI evidence remain recorded in [`product/CURRENT_STATE.md`](product/CURRENT_STATE.md).
+Current result: 1,030 unit tests plus 19/19 probe-safety tests, build, a maximum observed 402.15 kB largest JavaScript chunk, 343 E2E passes with 17 explicit profile exclusions and no retry, six real-bridge profiles, 10 consecutive WebKit iPhone Site QA runs, 10 consecutive isolated real-bridge runs, Axe coverage, 39 regenerated current public screenshots, the 463-file working-tree release audit, documentation check, Context Room doctor and zero dependency vulnerabilities. The exact non-ignored source snapshot was reproduced from a clean local clone with a 452-file release audit and a clean final tree. GitHub Actions run `30661070563` reproduced the full required `Node.js 22` gate and the read-only macOS setup gate on product commit `bb45368`. Physical iPad/iPhone/Pencil checks remain deliberately unchecked. Historical evidence remains recorded in [`product/CURRENT_STATE.md`](product/CURRENT_STATE.md).
 
 Runtime result on 31 July 2026: default doctor and `setup:check` both report **Ready with limitations** and return success. Tailscale is running, with the Mac and previously paired iPad online. Nerva observes Desktop-bundled `0.146.0-alpha.9.2`, standalone `0.146.0`, and three unrelated stdio writers. The managed socket does not answer, no exact current schema attestation or Desktop ownership proof exists, and the native Micro adapter is degraded. With explicit user authorization, only the Nerva LaunchAgent was restarted; its PID changed while the observed Codex app-server PID set did not. Local bridge health returns HTTP 200, and the private HTTPS Serve route and same-origin WSS endpoint are reachable.
 

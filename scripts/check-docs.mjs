@@ -108,7 +108,7 @@ for (const target of ["FEATURES_target.md", "PAIRING_target.md", "SITE_QA_RECORD
 }
 
 const currentState = contentByPath.get(join(root, "docs", "product", "CURRENT_STATE.md")) ?? "";
-for (const proof of ["2026-07-31", "1,030", "19/19", "343 E2E", "17 explicit profile exclusions", "402.15 kB", "463 files", "clean local clone", "452-file release audit", "final cleanliness check all passed", "0.146.0-alpha.9.2"]) {
+for (const proof of ["2026-07-31", "bb45368", "30661070563", "1,030", "19/19", "343 E2E", "17 explicit profile exclusions", "402.15 kB", "463 files", "clean local clone", "452-file release audit", "final cleanliness check all passed", "0.146.0-alpha.9.2"]) {
   if (!currentState.includes(proof)) failures.push(`docs/product/CURRENT_STATE.md: missing current validation proof: ${proof}`);
 }
 for (const proof of ["0a95911", "30204589636", "927", "293", "387.70 kB", "438 files"]) {

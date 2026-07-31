@@ -93,7 +93,7 @@ Generated QR codes use `/pair#pair=<nonce>`. The fragment is not sent in the HTT
 
 ## Dated automated validation — 31 July 2026
 
-The current uncommitted hardening worktree is based on `5023b3c`; `HEAD`, `main`, and `origin/main` still point to that commit. Local validation of the working tree produced:
+The complete hardening implementation was published on `main` as commit `bb45368`. GitHub Actions [run 30661070563](https://github.com/blancmathis/nerva/actions/runs/30661070563) passed both the required `Node.js 22` job and the read-only macOS setup job for that exact product commit. Local validation before publication produced:
 
 - 1,030 unit tests passed, with 2 explicit skips;
 - 19/19 probe-safety tests passed;
@@ -109,7 +109,7 @@ The current uncommitted hardening worktree is based on `5023b3c`; `HEAD`, `main`
 - production and complete dependency audits: zero vulnerabilities;
 - default doctor: `limited`, exit zero, with the live-runtime boundaries documented above.
 
-The exact current non-ignored source snapshot, including the immutable-web correction, was committed only inside a temporary local validation repository and cloned into a clean checkout. From that checkout, `npm ci`, Playwright Chromium/WebKit installation, the complete `npm run validate` gate, Context Room doctor, both dependency audits, `git diff --check`, and the final cleanliness check all passed. The clean checkout reproduced 1,030 unit passes plus 19/19 probe-safety passes, 343 E2E passes with the same 17 explicit profile exclusions, all 6 production-bridge profiles, the bundle budget, deterministic screenshot generation, a 452-file release audit with 163 production dependency records, 32 public Markdown files, and zero dependency vulnerabilities. This proves that the current source snapshot is reproducible without ignored local runtime files. It is not hosted-CI or physical-device proof.
+The exact non-ignored source snapshot, including the immutable-web correction, was committed inside a temporary local validation repository and cloned into a clean checkout before publication. From that checkout, `npm ci`, Playwright Chromium/WebKit installation, the complete `npm run validate` gate, Context Room doctor, both dependency audits, `git diff --check`, and the final cleanliness check all passed. The clean checkout reproduced 1,030 unit passes plus 19/19 probe-safety passes, 343 E2E passes with the same 17 explicit profile exclusions, all 6 production-bridge profiles, the bundle budget, deterministic screenshot generation, a 452-file release audit with 163 production dependency records, 32 public Markdown files, and zero dependency vulnerabilities. GitHub then reproduced the documentation, type, unit, build, bundle, browser, production-bridge, screenshot, release, Context Room, dependency, and read-only macOS setup gates on `bb45368`. This remains automated and hosted-runner proof, not physical-device proof.
 
 The full E2E run required two test-harness fixes without weakening product assertions: fixture builds use an isolated temporary distribution that cannot overwrite the production `apps/web/dist`, and complete WebKit profiles run sequentially to avoid the confirmed platform networking-process crash. There are no retries and no new capability simulation.
 
