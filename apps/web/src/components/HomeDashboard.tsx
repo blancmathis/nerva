@@ -10,7 +10,9 @@ import {
 } from "../lib/home-layout";
 import type { ProductSession } from "../lib/session-presentation";
 import type { CodexUsageSnapshot } from "@codex-pad/protocol";
-import { ArrowDownIcon, ArrowUpIcon, InboxIcon, MacIcon, MissionControlIcon, MoreIcon, PlusIcon, SlidersIcon } from "./Icons";
+import { activityPriorityCount } from "../lib/activity-groups";
+import { ArrowDownIcon, ArrowUpIcon, InboxIcon, MacIcon, MissionControlIcon, MoreIcon, PhoneIcon, PinIcon, PlusIcon, SlidersIcon } from "./Icons";
+import { ActivitySidebar } from "./ActivitySidebar";
 import { CodexUsageCard } from "./CodexUsageCard";
 import { DIRECT_HOME_DROP_TARGET, SessionCard } from "./SessionCard";
 import { UnpinnedSessionsDrawer } from "./UnpinnedSessionsDrawer";
@@ -21,6 +23,11 @@ interface HomeDashboardProps {
   readonly sessions: readonly ProductSession[];
   readonly compactCards: boolean;
   readonly macUnavailable: boolean;
+  readonly voiceChatStatus: "available" | "active" | "unavailable";
+  readonly voiceChatEnabled: boolean;
+  readonly voiceChatDetail: string;
+  readonly voiceChatTargetTitle: string | null;
+  readonly onStartVoiceChat: () => void;
   readonly codexUsage: CodexUsageSnapshot | null;
   readonly codexUsageLoaded: boolean;
   readonly onLayoutAction: (action: HomeLayoutAction) => void;
@@ -28,9 +35,9 @@ interface HomeDashboardProps {
   readonly onOpenCurrentMacSession: () => void;
   readonly attentionRequestKey: number;
   readonly onFocusChange: (focused: boolean) => void;
-  readonly onOpenCaptureInbox: () => void;
-  readonly captureInboxCount: number;
   readonly onOpenSettings: () => void;
+  readonly onOpenCaptureInbox: () => void;
+  readonly onRefreshSessions: () => void;
   readonly onRefreshCodexUsage: () => void;
 }
 
@@ -95,6 +102,11 @@ export function HomeDashboard({
   sessions,
   compactCards,
   macUnavailable,
+  voiceChatStatus,
+  voiceChatEnabled,
+  voiceChatDetail,
+  voiceChatTargetTitle,
+  onStartVoiceChat,
   codexUsage,
   codexUsageLoaded,
   onLayoutAction,
@@ -102,11 +114,12 @@ export function HomeDashboard({
   onOpenCurrentMacSession,
   attentionRequestKey,
   onFocusChange,
-  onOpenCaptureInbox,
-  captureInboxCount,
   onOpenSettings,
+  onOpenCaptureInbox,
+  onRefreshSessions,
   onRefreshCodexUsage,
 }: HomeDashboardProps) {
+  const [activityOpen, setActivityOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newSectionOpen, setNewSectionOpen] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
@@ -122,6 +135,17 @@ export function HomeDashboard({
     active: replacementThreadId !== null,
     initialFocus: ".cp-secondary-button",
   });
+
+  const openActivity = () => {
+    setDrawerOpen(false);
+    setActivityOpen(true);
+    onRefreshSessions();
+  };
+  const openUnpinnedSessions = () => {
+    setActivityOpen(false);
+    setDrawerOpen(true);
+    onRefreshSessions();
+  };
 
   useEffect(() => {
     if (attentionRequestKey > 0) setFocus("priority");
@@ -147,6 +171,7 @@ export function HomeDashboard({
   const attentionCount = useMemo(() => sessions.filter((session) => (
     automaticStatusForSession(session) !== "idle"
   )).length, [sessions]);
+  const activityCount = useMemo(() => activityPriorityCount(sessions), [sessions]);
   const homeCases = layout.manual.sections.flatMap((section) => section.cases.map((homeCase) => ({
     id: homeCase.id,
     name: `${section.name} / ${homeCase.name}`,
@@ -212,20 +237,27 @@ export function HomeDashboard({
       focus === "priority",
     ));
   }, [focus, pinnedThreadIds, sessions]);
-  const newSectionForm = newSectionOpen ? (
-    <section className="cp-add-section">
-      <form onSubmit={(event) => {
-        event.preventDefault();
-        onLayoutAction({ type: "create-section", section: { id: uniqueId("section"), name: newSectionName, color: colorForIndex(layout.manual.sections.length) } });
-        setNewSectionName("");
-        setNewSectionOpen(false);
-      }}>
-        <div><PlusIcon /><span><strong>New section</strong><small>Sections hold visible cases—nothing is hidden inside a folder.</small></span></div>
-        <input aria-label="New section name" value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="Section name" />
-        <button type="submit" disabled={!newSectionName.trim()}>Create section</button>
-      </form>
+  const newSectionControl = (
+    <section className={`cp-add-section${newSectionOpen ? " is-open" : ""}`} aria-label="Create a new section">
+      {newSectionOpen ? (
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          onLayoutAction({ type: "create-section", section: { id: uniqueId("section"), name: newSectionName, color: colorForIndex(layout.manual.sections.length) } });
+          setNewSectionName("");
+          setNewSectionOpen(false);
+        }}>
+          <div><PlusIcon /><span><strong>New section</strong><small>Keep related cases together.</small></span></div>
+          <input aria-label="New section name" value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="Section name" autoFocus />
+          <button type="submit" disabled={!newSectionName.trim()}>Create section</button>
+          <button type="button" onClick={() => { setNewSectionName(""); setNewSectionOpen(false); }}>Cancel</button>
+        </form>
+      ) : (
+        <button type="button" className="cp-add-section__trigger" onClick={() => setNewSectionOpen(true)}>
+          <PlusIcon /><span>Create a new section</span>
+        </button>
+      )}
     </section>
-  ) : null;
+  );
 
   return (
     <main className="cp-home">
@@ -237,48 +269,87 @@ export function HomeDashboard({
         </div>
         <div className="cp-home__actions">
           <CodexUsageCard usage={codexUsage} loaded={codexUsageLoaded} onRefresh={onRefreshCodexUsage} />
-          <button type="button" className="cp-current-mac" disabled={macUnavailable || !sessions.some((session) => session.activeOnMac)} onClick={onOpenCurrentMacSession}>
-            <MacIcon /><span><strong>Open current Mac session</strong><small>{macUnavailable ? "Mac unavailable" : "Follow the exact active task"}</small></span>
-          </button>
-          <button type="button" className="cp-icon-button cp-icon-button--large" aria-label="Open Settings" onClick={onOpenSettings}><SlidersIcon /></button>
         </div>
       </header>
 
-      <section className="cp-home__commandbar cp-enter cp-enter--2" aria-label="Home controls">
-        <div className="cp-home-focus" aria-label="Session status filters">
+      <section className="cp-home-statusbar cp-enter cp-enter--2" aria-label="Session status filters">
+        <div className="cp-home-focus">
           <button
             type="button"
             className="cp-priority-trigger"
-            aria-label="Show priority sessions"
+            aria-label={`Show priority sessions, ${attentionCount}`}
             aria-pressed={focus === "priority"}
             onClick={() => setFocus((current) => current === "priority" ? "manual" : "priority")}
           >
             <MissionControlIcon /><span>{attentionCount}</span>
           </button>
           <div className="cp-status-filters">
-            {HOME_STATUS_FILTERS.map(({ status, label }) => (
-              <button
-                type="button"
-                key={status}
-                data-status={status}
-                aria-pressed={focus === status}
-                onClick={() => setFocus((current) => current === status ? "manual" : status)}
-              >
-                <i aria-hidden="true" /><span>{label}</span><strong>{statusCounts.get(status) ?? 0}</strong>
-              </button>
-            ))}
+            {HOME_STATUS_FILTERS.map(({ status, label }) => {
+              const count = statusCounts.get(status) ?? 0;
+              return (
+                <button
+                  type="button"
+                  key={status}
+                  data-status={status}
+                  aria-label={`${label} ${count} sessions`}
+                  aria-pressed={focus === status}
+                  onClick={() => setFocus((current) => current === status ? "manual" : status)}
+                >
+                  <i aria-hidden="true" /><span>{label}</span><strong>{count}</strong>
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="cp-commandbar__right">
-          <button type="button" className="cp-new-section-trigger cp-inbox-trigger" onClick={onOpenCaptureInbox}>
-            <InboxIcon />Capture Inbox{captureInboxCount > 0 && <span>{captureInboxCount}</span>}
+      </section>
+
+      {/* Operate: extend Nerva's existing voice key; show the exact Mac task and audio destination before launch. */}
+      <button
+        type="button"
+        className="cp-voice-chat cp-home-voice"
+        aria-pressed={voiceChatStatus === "active"}
+        disabled={!voiceChatEnabled}
+        onClick={onStartVoiceChat}
+      >
+        <span className="cp-voice-chat__icon"><PhoneIcon /></span>
+        <span>
+          <strong>{voiceChatStatus === "active" ? "Voice active" : "Start voice call"}</strong>
+          {voiceChatTargetTitle && <span>{voiceChatTargetTitle}</span>}
+          <small>{voiceChatDetail}</small>
+        </span>
+      </button>
+
+      <button type="button" className="cp-home-capture" onClick={onOpenCaptureInbox}>
+        <InboxIcon /><strong>Capture Inbox</strong><span>Photo, sketch or note</span>
+      </button>
+
+      <section className="cp-home__commandbar cp-home-dock" aria-label="Home controls">
+        <div className="cp-commandbar__right" aria-label="Quick Home actions">
+          <button
+            type="button"
+            className="cp-home-dock__key"
+            aria-label={`Open Conversations${activityCount > 0 ? `, ${activityCount} priority ${activityCount === 1 ? "session" : "sessions"}` : ""}`}
+            aria-expanded={drawerOpen || activityOpen}
+            onClick={openUnpinnedSessions}
+          >
+            <PinIcon /><span className="cp-home-dock__key-label">Sessions</span>{activityCount > 0 && <strong className="cp-home-dock__badge">{activityCount > 99 ? "99+" : activityCount}</strong>}
           </button>
-          <button type="button" className="cp-new-section-trigger" aria-expanded={newSectionOpen} onClick={() => {
-            setFocus("manual");
-            setNewSectionOpen((value) => !value);
-          }}><PlusIcon />New section</button>
-          <button type="button" className="cp-unpinned-trigger" onClick={() => setDrawerOpen(true)}>
-            Unpinned Sessions <span>{sessions.filter((session) => !layout.pinnedThreadIds.includes(session.threadId)).length}</span>
+          <button
+            type="button"
+            className="cp-home-dock__key"
+            aria-label="Open current Mac session"
+            disabled={macUnavailable || !sessions.some((session) => session.activeOnMac)}
+            onClick={onOpenCurrentMacSession}
+          >
+            <MacIcon /><span className="cp-home-dock__key-label">Mac</span>
+          </button>
+          <button
+            type="button"
+            className="cp-home-dock__key"
+            aria-label="Open Settings"
+            onClick={onOpenSettings}
+          >
+            <SlidersIcon /><span className="cp-home-dock__key-label">Settings</span>
           </button>
         </div>
       </section>
@@ -292,19 +363,17 @@ export function HomeDashboard({
             ? <div className={`cp-focused-sessions__grid count-${Math.min(focusedSessions.length, 12)}`}>{focusedSessions.map((session) => card(session, true))}</div>
             : <div className="cp-focused-sessions__empty"><strong>Nothing here right now.</strong><span>Tap the active filter to return to your layout.</span></div>}
         </section>
-      ) : pinned.length === 0 ? (
-        <div className="cp-manual-layout cp-enter cp-enter--3">
-          <section className="cp-home-empty">
-            <span className="cp-home-empty__orb" aria-hidden="true"><PlusIcon /></span>
-            <p className="cp-overline">Home is ready</p>
-            <h2>Pin only what matters now.</h2>
-            <p>Sessions stay on the Mac. Home is your personal view of the ones you want within reach.</p>
-            <button type="button" onClick={() => setDrawerOpen(true)}>Choose sessions</button>
-          </section>
-          {newSectionForm}
-        </div>
       ) : (
         <div className="cp-manual-layout cp-enter cp-enter--3" data-home-drop-target={DIRECT_HOME_DROP_TARGET}>
+          {pinned.length === 0 && (
+            <section className="cp-home-empty">
+              <span className="cp-home-empty__orb" aria-hidden="true"><PlusIcon /></span>
+              <p className="cp-overline">Home is ready</p>
+              <h2>Pin only what matters now.</h2>
+              <p>Sessions stay on the Mac. Home is your personal view of the ones you want within reach.</p>
+              <button type="button" onClick={openUnpinnedSessions}>Choose sessions</button>
+            </section>
+          )}
           {loose.length > 0 && (
             <section
               className={`cp-direct-sessions count-${Math.min(loose.length, 12)}`}
@@ -388,15 +457,35 @@ export function HomeDashboard({
               </div>
             </section>
           ))}
-          {newSectionForm}
+          {newSectionControl}
         </div>
       )}
+
+      <ActivitySidebar
+        open={activityOpen}
+        sessions={sessions}
+        currentThreadId={null}
+        pinnedThreadIds={layout.pinnedThreadIds}
+        onClose={() => setActivityOpen(false)}
+        onOpenConversations={openUnpinnedSessions}
+        onOpenSession={(session) => {
+          setActivityOpen(false);
+          onOpenSession(session);
+        }}
+        onPinSession={(threadId) => {
+          if (pinned.length >= MAX_PINNED_SESSIONS) setActivityOpen(false);
+          requestPin(threadId);
+        }}
+        onUnpinSession={(threadId) => onLayoutAction({ type: "unpin", threadId })}
+      />
 
       <UnpinnedSessionsDrawer
         open={drawerOpen}
         sessions={sessions}
         pinnedThreadIds={pinned.map((session) => session.threadId)}
         onClose={() => setDrawerOpen(false)}
+        activityCount={activityCount}
+        onOpenActivity={openActivity}
         onOpenSession={(session) => { setDrawerOpen(false); onOpenSession(session); }}
         onPin={requestPin}
       />

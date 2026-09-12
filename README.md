@@ -58,7 +58,7 @@ Large boards remain understandable when they leave the iPad. Nerva exports a map
     <td width="50%">
       <img src="docs/screenshots/session.png" alt="Nerva exact-session controls on iPad">
       <br><strong>Exact-task controls</strong><br>
-      Open the same task on Mac and iPad, start native Mac dictation, submit the current composer, select skills, choose model and reasoning presets, and toggle Fast when those capabilities are verified.
+      Open the same task on Mac and iPad, start a native Codex Voice call when that exact task supports it, use Mac dictation, submit the current composer, select skills, choose model and reasoning presets, and toggle Fast when those capabilities are verified.
     </td>
   </tr>
 </table>
@@ -141,7 +141,7 @@ Nerva deliberately distinguishes three kinds of proof:
 - **Live runtime:** the exact Codex Desktop, app-server and writer topology currently installed on the Mac.
 - **Physical:** pairing, Apple Pencil, palm rejection, camera, suspension, notifications and exact Mac/iPad behavior on real hardware.
 
-The current hardening worktree's automated gates are green locally, and a clean local clone of the exact non-ignored source snapshot reproduced the complete gate. Hosted CI still applies only to the historical public baseline because these changes remain intentionally uncommitted. On the maintainer's current Mac, the managed daemon does not answer, so no current cross-version schema/live compatibility result or exact-socket Desktop ownership is claimed. Doctor reports **Ready with limitations** and keeps the affected Codex controls unavailable. Independent stdio writers remain visible diagnostics but do not establish authority over the missing private socket. Physical Apple Pencil and long-suspension evidence also remain incomplete.
+The published hardening snapshot has historical clean-clone and hosted-CI proof. The 7 September 2026 audit corrected phone touch targets, finger drawing defaults, startup recovery layout, date-dependent regression checks, and vulnerable Fastify/fast-uri versions. Current local evidence is recorded in the implementation state below. The installed Mac's private HTTPS/WSS route works, both protocol caches match `codex-cli 0.153.4`, and the restored managed control socket responds. Desktop CDP and shared ownership are still unavailable pending a coordinated Desktop relaunch. Doctor therefore reports **Ready with limitations** and native controls stay unavailable. Physical phone/tablet acceptance remains incomplete.
 
 The dated results, exact versions and remaining checklist live in [Current implementation state](docs/product/CURRENT_STATE.md). A stable `v0.1.0` must not be inferred from this pre-alpha repository.
 

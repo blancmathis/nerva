@@ -83,7 +83,7 @@ If a visible filtered card does not open, diagnose it exactly like a manual Home
 
 ## Managed app-server control socket is missing
 
-On the 31 July 2026 reference machine, the installed Desktop-bundled `0.146.0-alpha.9.2` binary receives no answer from the managed socket. The standalone package is `0.146.0`, but version strings alone do not establish compatibility. Doctor reports **Ready with limitations** and grants no app-server capability because there is no live protocol probe, exact current schema attestation, or Desktop ownership proof. Four independent stdio writers are listed for diagnosis but are not assumed to own the missing socket. Hand-written attestations and killing unknown writers are not accepted workarounds.
+On the 8 August 2026 reference machine, the installed Desktop-bundled `0.147.0-alpha.6.5` binary receives no answer from the managed socket. Its exact fingerprinted schema cache is valid, while the standalone package remains `0.146.0`; neither fact establishes live daemon compatibility. Doctor reports **Ready with limitations** and grants no app-server capability because there is no live protocol probe or Desktop ownership proof. Six independent stdio writers are listed for diagnosis but are not assumed to own the missing socket. Hand-written attestations and killing unknown writers are not accepted workarounds.
 
 Expected path:
 
@@ -99,6 +99,8 @@ ls -l "$HOME/.codex/app-server-control/app-server-control.sock"
 ```
 
 Run OpenAI's official installer for normal updates, then run `npm run setup:check`. A version mismatch is informational when the fingerprinted schema/live probe passes. `setup:mac` skips bootstrap for an already running compatible daemon and never kills a writer. A missing or incompatible socket disables only the affected app-server capabilities; Drawing/Photo and native controls retain their separate gates. The socket speaks WebSocket over Unix domain sockets: raw JSONL, a raw `app-server --listen` replacement, or treating `app-server proxy` as a JSONL endpoint will fail.
+
+If Desktop still starts a private stdio `app-server` after `CODEX_APP_SERVER_USE_LOCAL_DAEMON=1`, check `launchctl getenv CODEX_CLI_PATH`. Current Desktop builds deliberately bypass the local daemon whenever that override is non-empty. `setup:mac` clears only the exact official managed standalone path and refuses to overwrite a different custom CLI configuration.
 
 Do not use `~/.codex/ipc/ipc.sock` as an app-server control socket. It is a different Desktop IPC transport.
 
@@ -248,6 +250,12 @@ The bearer may have been revoked, private IndexedDB may be unavailable, or the W
 
 When an already paired PWA returns from the background, authenticated snapshot refresh attempts to recover the managed Mac transport before returning the latest state. A stale card may remain visible for orientation, but Send, Skills and model mutations stay unavailable until the bridge confirms the live capability again. Do not re-pair merely to repair an idle app-server connection.
 
+## Nerva stays on Connecting or opens without its workspace
+
+The initial authenticated snapshot has a bounded wait. If Nerva has no last-good workspace and the Mac does not answer, the installed PWA shows **Can't reach your Mac** instead of leaving an indefinite spinner or empty page. Check Tailscale on both the Mac and the iPad/phone, keep the Mac awake, then use **Try again**. Tailscale is a likely cause, not a fact Nerva can prove while the private route is unavailable.
+
+Do not rotate pairing merely because Tailscale was stopped. A valid device credential remains in the exact-origin IndexedDB and should reconnect when the private route returns. If the application JavaScript itself cannot start, the cached HTML shell retains a static Nerva connection hint with the same Tailscale checks rather than presenting an unlabelled black surface.
+
 ## Tailscale command is missing
 
 The owner's current Mac/iPad path has Tailscale installed and paired. If the shell still cannot resolve the CLI—or on another installation—verify the official client and authentication before configuring Serve:
@@ -352,6 +360,12 @@ Dictation is a native Codex Desktop hold control. Confirm the intended task is o
 If Codex Desktop reaches `0:00` and immediately stops after one tap, the PWA is still running the obsolete atomic press/release build. Force-close and reopen the installed app after the bridge/web update; the current UI must remain on **Stop Dictation** until the second tap. If the bridge restarts while dictation is held, stop it from the Mac. The new bridge intentionally forgets the prior gesture rather than replaying or guessing a release against a possibly changed task.
 
 When the native action is proven but Codex Desktop receives no speech, select and test the intended microphone in macOS/Codex Desktop on the Mac. Recording and transcription happen there. If tapping Session Dictation or opening Capture Inbox asks for iPad microphone permission, stores browser audio, shows voice segments/transcripts or adds dictated text to a review payload, stop using that build and report a security regression. Only an explicit Site QA checkpoint voice-note action may request browser microphone permission.
+
+## Start voice call is unavailable for a Session
+
+Codex Voice and Dictation are separate. [Official OpenAI documentation](https://learn.chatgpt.com/docs/features/voice) says a task must normally begin in Voice mode to use Voice; a text-started task offers Dictation instead, while an earlier Voice task can be resumed. Some Codex builds or rollouts may expose Voice for additional existing tasks, so Nerva does not guess from age or history. It enables **Start voice call** only when the exact active task currently exposes one enabled native **Start voice chat** control.
+
+Open the Session and leave it visible briefly while Nerva confirms the same task on the Mac. If the button remains disabled, open Codex Desktop and check whether that task itself shows **Start voice chat**. If Codex does not show it, use Dictation or create a new task in Voice mode. If Codex does show it but Nerva does not, refresh the authenticated snapshot and run `npm run doctor`; a changed renderer label/control, stale task identity, missing Desktop ownership, another active Voice chat, or unavailable account/workspace access must all fail closed. The call always uses the Mac microphone and speakers; Nerva must never request iPad microphone permission for this action.
 
 ## Capture Inbox local storage or Session use fails
 

@@ -458,6 +458,7 @@ function nativeSelection(threadId: string): AdapterState {
         };
       }) as unknown as NonNullable<AdapterState["snapshot"]>["slots"],
       activeThreadId: threadId,
+      voiceChat: { threadId, status: "unavailable" },
       agentSource: "pinned",
       actionLayout: null,
       joystickLayout: null,
@@ -906,14 +907,14 @@ describe("ManagedThreadTransport exact-thread routing", () => {
         threadId: THREAD_A,
         title: "Selected build task",
         cwd: "/private/tmp/codex-pad-test",
-        updatedAt: 1_750_000_000,
+        updatedAt: 1_750_000_000_000,
         status: "idle",
       },
     ]);
     await server.client.close();
   });
 
-  it("paginates two session pages, preserves order, and removes duplicate UUIDs", async () => {
+  it("paginates indexed interactive sessions without rollout scans, preserving order and unique UUIDs", async () => {
     const { server, transport } = await makeTransport();
     server.threadListPages = [
       {
@@ -959,13 +960,23 @@ describe("ManagedThreadTransport exact-thread routing", () => {
     const sessions = await transport.listSessions();
     expect(sessions.map((session) => session.threadId)).toEqual([THREAD_A, THREAD_B, THREAD_C]);
     expect(sessions.map((session) => session.title)).toEqual(["Newest", "Middle", "Oldest"]);
+    expect(sessions.map((session) => session.updatedAt)).toEqual([300_000, 200_000, 100_000]);
     expect(server.threadListRequests).toHaveLength(2);
-    expect(server.threadListRequests[0]).not.toHaveProperty("cursor");
-    expect(server.threadListRequests[1]).toMatchObject({
+    // Exact parameters retain the daemon's default interactive-source filter:
+    // no sourceKinds expansion may introduce internal assistant/subagent rows.
+    expect(server.threadListRequests[0]).toEqual({
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      archived: false,
+      useStateDbOnly: true,
+    });
+    expect(server.threadListRequests[1]).toEqual({
       cursor: "page-two",
       limit: 100,
       sortKey: "updated_at",
       sortDirection: "desc",
+      archived: false,
       useStateDbOnly: true,
     });
     await server.client.close();
@@ -1012,6 +1023,9 @@ describe("ManagedThreadTransport exact-thread routing", () => {
     expect(sessions[499]?.title).toBe("Task 500");
     expect(new Set(sessions.map((session) => session.threadId)).size).toBe(500);
     expect(server.threadListRequests).toHaveLength(5);
+    expect(server.threadListRequests.every((params) => (
+      params.useStateDbOnly === true && !Object.hasOwn(params, "sourceKinds")
+    ))).toBe(true);
     expect(server.threadListRequests[4]).toMatchObject({ cursor: "cursor-4", limit: 100 });
     expect(server.threadListPages).toHaveLength(1);
     await server.client.close();

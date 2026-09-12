@@ -44,8 +44,12 @@ test("rendered Nerva surfaces have no serious or critical axe violations", async
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page, "Home");
-  await page.getByRole("button", { name: /Unpinned Sessions/ }).click();
-  await expectNoSeriousAccessibilityViolations(page, "Unpinned Sessions dialog");
+  await page.getByRole("button", { name: /Open Conversations/ }).click();
+  await expect(page.getByRole("dialog", { name: "Conversations" })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page, "Conversations dialog");
+  await page.getByRole("dialog", { name: "Conversations" }).getByRole("button", { name: /^Activity/ }).click();
+  await expect(page.getByRole("dialog", { name: "Activity" })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page, "Activity dialog");
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: /Open Release checklist/ }).click();

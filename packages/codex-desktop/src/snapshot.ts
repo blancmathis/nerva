@@ -13,6 +13,7 @@ import {
   type NativeJoystickLayout,
   type NativeReasoningState,
   type NativeTheme,
+  type NativeVoiceChatState,
   type MicroSlot,
   type MicroSlotIndex,
   type MicroSlotKey,
@@ -140,6 +141,7 @@ export function parseNativeSnapshot(value: unknown, observedAt: number): ParsedN
   if (!activeThreadObserved) {
     warnings.push({ code: "active-thread-unavailable", message: "The native active-thread signal was not observable." });
   }
+  const voiceChat = parseVoiceChat(value.voiceChat, activeThreadId);
 
   const agentSource = parseAgentSource(value.agentSource);
   if (agentSource === null) {
@@ -188,6 +190,7 @@ export function parseNativeSnapshot(value: unknown, observedAt: number): ParsedN
     snapshot: {
       slots: ordered as unknown as SixMicroSlots,
       activeThreadId,
+      voiceChat,
       agentSource,
       actionLayout,
       joystickLayout,
@@ -211,6 +214,18 @@ export function parseNativeSnapshot(value: unknown, observedAt: number): ParsedN
     warnings,
     routingKeys
   };
+}
+
+function parseVoiceChat(value: unknown, activeThreadId: string | null): NativeVoiceChatState {
+  if (!isRecord(value) || activeThreadId === null) {
+    return { threadId: activeThreadId, status: "unavailable" };
+  }
+  const threadId = extractThreadId(value.threadKey ?? value.threadId ?? null);
+  if (threadId !== activeThreadId) return { threadId: activeThreadId, status: "unavailable" };
+  const status = value.status;
+  return status === "available" || status === "active" || status === "unavailable"
+    ? { threadId, status }
+    : { threadId, status: "unavailable" };
 }
 
 function parseAgentSource(value: unknown): AgentSource | null {

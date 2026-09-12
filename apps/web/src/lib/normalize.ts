@@ -10,6 +10,7 @@ import {
   type LibraryCapability,
   type SkillCapability,
   type SlotStatus,
+  type VoiceChatState,
 } from "./model";
 
 type JsonRecord = Record<string, unknown>;
@@ -173,6 +174,17 @@ function modelsFrom(value: unknown) {
   });
 }
 
+function voiceChatFrom(value: unknown, activeThreadKey: string | null): VoiceChatState {
+  const source = record(value);
+  const threadId = text(source.threadId) ?? text(source.threadKey);
+  const status: VoiceChatState["status"] = source.status === "available" || source.status === "active"
+    ? source.status
+    : "unavailable";
+  return threadId === activeThreadKey
+    ? { threadId, status }
+    : { threadId: activeThreadKey, status: "unavailable" as const };
+}
+
 function normalizeCapabilities(root: JsonRecord): BridgeCapabilities {
   const source = record(root.capabilities);
   const config = record(root.config);
@@ -260,13 +272,17 @@ function fromProtocol(snapshot: MicroSnapshot): BridgeSnapshot {
     healthDetail: snapshot.bridgeHealth.reason,
     slots,
     activeThreadKey: snapshot.activeThreadId,
+    voiceChat: snapshot.voiceChat,
     selectedSlotId: selected?.slotId ?? null,
     selectedThreadKey: snapshot.selectedThreadId,
     pendingApprovals: snapshot.pendingApprovals,
     capabilities: {
-      commands: snapshot.pendingApprovals.some((approval) => approval.actionable)
-        ? ["respondToApproval"]
-        : [],
+      commands: [
+        ...(snapshot.pendingApprovals.some((approval) => approval.actionable) ? ["respondToApproval"] : []),
+        ...(snapshot.bridgeHealth.state === "live" && snapshot.voiceChat.status === "available"
+          ? ["startVoiceChat"]
+          : []),
+      ],
       microActions,
       joystickActions,
       reasoningModes: snapshot.reasoning?.adjustable ? ["minimal", "low", "medium", "high", "xhigh", "ultra", "max"] : [],
@@ -401,6 +417,7 @@ export function normalizeSnapshot(input: unknown): BridgeSnapshot | null {
     healthDetail: text(healthObject.detail) ?? text(healthObject.reason) ?? text(root.healthDetail) ?? null,
     slots,
     activeThreadKey,
+    voiceChat: voiceChatFrom(root.voiceChat ?? native.voiceChat, activeThreadKey),
     selectedSlotId: selected?.slotId ?? text(root.selectedSlotId),
     selectedThreadKey: selected?.threadKey ?? selectedThreadKey,
     // Legacy snapshots cannot prove an app-server request tuple. Never infer

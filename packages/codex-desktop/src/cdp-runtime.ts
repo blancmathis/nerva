@@ -7,6 +7,7 @@ import {
   buildFixedComposerTextAppendExpression,
   buildFixedComposerFileBatchAttachmentExpression,
   buildFixedDispatchExpression,
+  buildFixedVoiceChatStartExpression,
   FIXED_NATIVE_SNAPSHOT_EXPRESSION,
 } from "./renderer-expression.js";
 import type {
@@ -17,6 +18,7 @@ import type {
   NativeComposerTextAppend,
   NativeComposerFileBatch,
   NativeDispatch,
+  NativeVoiceChatStart,
   NativeMicroRuntime,
 } from "./types.js";
 
@@ -107,6 +109,10 @@ export class CdpNativeMicroRuntime implements NativeMicroRuntime {
     // Local event validation and expression construction happen before the CDP
     // frame is sent, so failures here are definitive and safe to retry.
     await this.evaluate(buildFixedDispatchExpression(event), "dispatch");
+  }
+
+  async startVoiceChat(input: NativeVoiceChatStart): Promise<void> {
+    await this.evaluate(buildFixedVoiceChatStartExpression(input), "dispatch");
   }
 
   async appendTextToComposer(input: NativeComposerTextAppend): Promise<void> {

@@ -1,10 +1,19 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
+import { CommandAckApiResponseSchema } from "@codex-pad/protocol";
 
 import { CATALOG_SESSION, INITIAL_BRIDGE_INSTANCE_ID, MockBridge, THREADS } from "./mock-bridge";
-import { fixtureSessions } from "./fixture-data";
+import { fixtureActivityHistory, fixtureSessions } from "./fixture-data";
 
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+async function settleLayoutAnimations(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
 
 async function openAuthenticatedApp(page: Page): Promise<MockBridge> {
   const bridge = new MockBridge({ authorized: false });
@@ -168,6 +177,39 @@ async function showHome(page: Page): Promise<void> {
   await expect(heading).toBeVisible();
 }
 
+async function openConversations(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: /Open Conversations/ }).click();
+  const conversations = page.getByRole("dialog", { name: "Conversations" });
+  await expect(conversations).toBeVisible();
+  return conversations;
+}
+
+async function openActivity(page: Page): Promise<Locator> {
+  const conversations = await openConversations(page);
+  await conversations.getByRole("button", { name: /^Activity/ }).click();
+  const activity = page.getByRole("dialog", { name: "Activity" });
+  await expect(activity).toBeVisible();
+  return activity;
+}
+
+async function createHomeSection(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "Create a new section", exact: true }).click();
+  await page.getByPlaceholder("Section name").fill(name);
+  await page.getByRole("button", { name: "Create section" }).click();
+}
+
+test("keeps a visible recovery surface when the startup bundle cannot load", async ({ page }) => {
+  await page.route(/\/assets\/index-[^/]+\.js(?:\?.*)?$/u, (route) => route.abort());
+  await page.goto("/?simulate-boot-failure", { waitUntil: "domcontentloaded" });
+
+  const fallback = page.locator("[data-nerva-boot-fallback]");
+  await expect(fallback).toBeVisible();
+  await expect(fallback).toContainText("Connecting to your Mac…");
+  await expect(fallback.getByRole("link", { name: "Try opening Nerva again" })).toHaveAttribute("href", "/");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(fallback).not.toHaveCSS("background-color", "rgb(0, 0, 0)");
+});
+
 test("pairs with one tap and no code or device-name form", async ({ page }) => {
   const bridge = new MockBridge({ authorized: false });
   await bridge.install(page);
@@ -187,11 +229,8 @@ test("pairs with one tap and no code or device-name form", async ({ page }) => {
   const currentMacBounds = await page.getByRole("button", { name: /Open current Mac session/ }).boundingBox();
   expect(usageBounds).not.toBeNull();
   expect(currentMacBounds).not.toBeNull();
-  // Fractional viewport scaling can round sibling CSS-grid tracks to adjacent
-  // device pixels even though they share the same layout definition.
-  expect(Math.abs(usageBounds!.width - currentMacBounds!.width)).toBeLessThanOrEqual(2);
-  expect(Math.abs(usageBounds!.height - currentMacBounds!.height)).toBeLessThanOrEqual(2);
   expect(usageBounds!.height).toBeLessThanOrEqual(54);
+  await expect(page.locator(".cp-home-dock").getByRole("button", { name: /Open current Mac session/ })).toBeVisible();
   expect(bridge.pairRequests).toEqual([{ nonce: "cedar-4821", deviceName: expect.stringContaining("Nerva") }]);
 });
 
@@ -222,7 +261,7 @@ test("keeps the compact Home chrome separated at every supported viewport", asyn
   }
 });
 
-test("keeps the 768-wide iPad header legible and moves diagnostics into Settings", async ({ page }, testInfo) => {
+test("keeps the 768-wide iPad header legible with Settings in the Home dock", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "iPad landscape", "One intermediate-width geometry proof is sufficient");
   await page.setViewportSize({ width: 768, height: 1_024 });
   await openAuthenticatedApp(page);
@@ -245,8 +284,10 @@ test("keeps the 768-wide iPad header legible and moves diagnostics into Settings
   expect(settingsBounds).not.toBeNull();
   expect(usageLineBounds).not.toBeNull();
   expect(refreshBounds).not.toBeNull();
-  expect(Math.abs(usageBounds!.height - currentMacBounds!.height)).toBeLessThanOrEqual(1);
-  expect(Math.abs(usageBounds!.height - settingsBounds!.height)).toBeLessThanOrEqual(1);
+  expect(currentMacBounds!.height).toBeGreaterThanOrEqual(44);
+  expect(settingsBounds!.height).toBeGreaterThanOrEqual(44);
+  await expect(page.locator(".cp-home-dock").getByRole("button", { name: /Open current Mac session/ })).toBeVisible();
+  await expect(page.locator(".cp-home-dock").getByRole("button", { name: "Open Settings" })).toBeVisible();
   expect(usageLineBounds!.x + usageLineBounds!.width).toBeLessThanOrEqual(refreshBounds!.x);
   await settings.click();
   await expect(page.getByRole("button", { name: /Open System Diagnostics/ })).toBeVisible();
@@ -266,12 +307,15 @@ test("keeps the first Session input reachable in the initial viewport", async ({
   expect(bounds!.height).toBeGreaterThanOrEqual(44);
 });
 
-test("Capture Inbox stays neutral, persists, and is reused from the exact open Session", async ({ page }) => {
+test("Capture Inbox stays local, persists, and is reused from the exact open Session", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
-  const commandCount = bridge.commandRequests;
 
+  await expect(page.getByRole("button", { name: /Capture Inbox/ })).toBeEnabled();
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  const commandCountAfterFirstOpen = bridge.commandRequests;
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("Using Capture Inbox with Release checklist")).toBeVisible();
   await expect(page.getByText("Nothing leaves automatically.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Voice/ })).toHaveCount(0);
 
@@ -281,16 +325,19 @@ test("Capture Inbox stays neutral, persists, and is reused from the exact open S
   await expect(page.getByRole("heading", { name: "Header jump" })).toBeVisible();
   await page.getByLabel("Capture photo").setInputFiles({ name: "whiteboard.png", mimeType: "image/png", buffer: Buffer.from(PNG_1X1, "base64") });
   await expect(page.getByText("Photo saved locally.")).toBeVisible();
-  expect(bridge.commandRequests).toBe(commandCount);
+  expect(bridge.commandRequests).toBe(commandCountAfterFirstOpen);
 
   await page.reload();
   await showHome(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  const commandCountAfterReloadOpen = bridge.commandRequests;
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Header jump" })).toBeVisible();
   await expect(page.locator(".cp-capture-card")).toHaveCount(2);
-  expect(bridge.commandRequests).toBe(commandCount);
+  expect(bridge.commandRequests).toBe(commandCountAfterReloadOpen);
 
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await page.getByRole("button", { name: /Delete Photo/ }).click();
   await expect(page.getByRole("alertdialog", { name: "Delete 1 capture?" })).toBeVisible();
   await page.getByRole("button", { name: "Keep captures" }).click();
@@ -327,6 +374,21 @@ test("Capture Inbox stays neutral, persists, and is reused from the exact open S
   expect(bridge.commandRequests).toBe(commandCountBeforeSecondUse);
 });
 
+test("Home opens Capture Inbox without choosing a session or sending to the Mac", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const commandCount = bridge.commandRequests;
+  await page.getByRole("button", { name: "Capture Inbox Photo, sketch or note" }).click();
+  await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Session", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: /Note Catch a quick idea/ }).click();
+  await page.getByLabel("Quick note text").fill("Keep this idea before choosing a task");
+  await page.getByRole("button", { name: "Save to Inbox" }).click();
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  await page.getByRole("button", { name: "Capture Inbox Photo, sketch or note" }).click();
+  await expect(page.locator(".cp-capture-card.kind-note")).toContainText("Keep this idea before choosing a task");
+  expect(bridge.commandRequests).toBe(commandCount);
+});
+
 test("Capture Inbox attaches a selected file to the exact Mac composer without submitting", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
@@ -361,8 +423,9 @@ test("Capture Inbox attaches a selected file to the exact Mac composer without s
   await expect(page.getByRole("heading", { name: "architecture notes.txt" })).toBeVisible();
 });
 
-test("Capture Inbox keeps a Pencil sketch without choosing a session", async ({ page }) => {
+test("Capture Inbox keeps a Pencil sketch available across Sessions", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
   const commandCount = bridge.commandRequests;
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await page.getByRole("button", { name: /Sketch Pencil-ready canvas/ }).click();
@@ -380,6 +443,7 @@ test("Capture Inbox keeps a Pencil sketch without choosing a session", async ({ 
 test("Capture Inbox lets a phone draw with one finger immediately", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("iPhone"), "Phone-only touch input regression");
   const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
   const commandCount = bridge.commandRequests;
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await page.getByRole("button", { name: /Sketch Pencil-ready canvas/ }).click();
@@ -394,8 +458,56 @@ test("Capture Inbox lets a phone draw with one finger immediately", async ({ pag
   expect(bridge.commandRequests).toBe(commandCount);
 });
 
+test("Draw starts with device-appropriate input and preserves an explicit Pencil choice", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  bridge.setDiagrams([]);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  const canvas = page.getByRole("img", { name: /^Sketch canvas/ });
+  await expect(canvas).toHaveAttribute("aria-busy", "false");
+  const pencilOnly = page.getByRole("checkbox", { name: "Pencil only" });
+  const viewport = page.viewportSize()!;
+  const tablet = Math.min(viewport.width, viewport.height) >= 700;
+  await expect(pencilOnly).toBeChecked({ checked: tablet });
+  await page.getByRole("button", { name: "Pen", exact: true }).click();
+  if (tablet) await drawPenStroke(canvas);
+  else await drawTouchStroke(canvas);
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  await pencilOnly.setChecked(!tablet);
+  await page.getByRole("button", { name: "Close drawing studio" }).click();
+  await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
+  await expect(canvas).toHaveAttribute("aria-busy", "false");
+  await expect(pencilOnly).toBeChecked({ checked: !tablet });
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+});
+
+test("small phones and rotated phones keep Home navigation within reach", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("iPhone"), "Additional phone size and rotation matrix");
+  await openAuthenticatedApp(page);
+  for (const viewport of [{ width: 320, height: 568 }, { width: 360, height: 640 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    await settleLayoutAnimations(page);
+    const dock = page.locator(".cp-home-dock");
+    await expect(dock).toBeInViewport({ ratio: 1 });
+    for (const button of await dock.getByRole("button").all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.width).toBeGreaterThanOrEqual(44);
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("button", { name: /Open Conversations/ }).click();
+    await expect(page.getByRole("dialog", { name: "Conversations" })).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: /Capture Inbox/ }).click();
+  await page.getByRole("button", { name: /Sketch Pencil-ready canvas/ }).click();
+  await expect(page.getByRole("button", { name: "Finger + Pencil" })).toBeVisible();
+});
+
 test("Capture Inbox dialogs contain focus, close with Escape, and restore the trigger", async ({ page }) => {
   await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   const noteTrigger = page.getByRole("button", { name: /Note Catch a quick idea/ });
   await noteTrigger.click();
@@ -422,16 +534,16 @@ test("global modal surfaces contain focus, close with Escape, and restore their 
   const bridge = await openAuthenticatedApp(page);
   await showHome(page);
 
-  const unpinnedTrigger = page.getByRole("button", { name: /Unpinned Sessions/ });
-  await unpinnedTrigger.focus();
+  const conversationsTrigger = page.getByRole("button", { name: /Open Conversations/ });
+  await conversationsTrigger.focus();
   await page.keyboard.press("Enter");
-  const unpinned = page.getByRole("dialog", { name: "Unpinned Sessions" });
+  const conversations = page.getByRole("dialog", { name: "Conversations" });
   await expect(page.getByPlaceholder("Search sessions or projects")).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect.poll(() => unpinned.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  await expect.poll(() => conversations.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
   await page.keyboard.press("Escape");
-  await expect(unpinned).toBeHidden();
-  await expect(unpinnedTrigger).toBeFocused();
+  await expect(conversations).toBeHidden();
+  await expect(conversationsTrigger).toBeFocused();
 
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   const skillsTrigger = page.getByRole("button", { name: /Skills/ });
@@ -547,6 +659,289 @@ test("filters every Codex session inside Home and routes the exact session", asy
   await expect(page.getByRole("heading", { name: "Bridge hardening", level: 1 })).toBeVisible();
 });
 
+test("keeps only Conversations, Mac, and Settings in the bottom Home dock", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+
+  const dock = page.locator(".cp-home-dock");
+  const statusbar = page.locator(".cp-home-statusbar");
+  const usage = page.getByRole("complementary", { name: "Codex usage" });
+  const dockActions = dock.locator(".cp-home-dock__key");
+  await expect(dock).toBeVisible();
+  await expect(statusbar).toBeVisible();
+  await expect(usage).toBeVisible();
+  await expect(dockActions).toHaveCount(3);
+  await expect(dock.locator(".cp-status-filters, .cp-usage-card")).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: /Capture Inbox/ })).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: /New section|Create a new section/ })).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: /Activity/ })).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: /Open Conversations/ })).toBeVisible();
+  await expect(dock.getByRole("button", { name: "Open current Mac session" })).toBeVisible();
+  await expect(dock.getByRole("button", { name: "Open Settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create a new section", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Settings" })).toBeVisible();
+
+  const headerGeometry = await page.locator(".cp-home__header").evaluate((header) => {
+    const bounds = header.getBoundingClientRect();
+    const title = header.querySelector<HTMLElement>(".cp-home__title")?.getBoundingClientRect();
+    const brand = document.querySelector<HTMLElement>(".cp-brand")?.getBoundingClientRect();
+    const connection = document.querySelector<HTMLElement>(".cp-topbar__status .cp-connection")?.getBoundingClientRect();
+    const usage = header.querySelector<HTMLElement>(".cp-usage-card")?.getBoundingClientRect();
+    const statusbar = document.querySelector<HTMLElement>(".cp-home-statusbar")?.getBoundingClientRect();
+    return {
+      brand: brand ? { x: brand.x, y: brand.y, width: brand.width, height: brand.height } : null,
+      connection: connection ? { x: connection.x, y: connection.y, width: connection.width, height: connection.height } : null,
+      header: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      phone: window.innerWidth <= 720,
+      settingsInHeader: header.querySelector("[aria-label='Open Settings']") !== null,
+      statusbarY: statusbar?.y ?? -1,
+      title: title ? { width: title.width, height: title.height } : null,
+      usage: usage ? { x: usage.x, y: usage.y, width: usage.width, height: usage.height } : null,
+    };
+  });
+  expect(headerGeometry.settingsInHeader).toBe(false);
+  if (headerGeometry.phone) {
+    expect(headerGeometry.brand).not.toBeNull();
+    expect(headerGeometry.connection).not.toBeNull();
+    expect(headerGeometry.title).not.toBeNull();
+    expect(headerGeometry.usage).not.toBeNull();
+    expect(headerGeometry.header.height).toBeLessThanOrEqual(46);
+    expect(headerGeometry.title!.width).toBeLessThanOrEqual(1.1);
+    expect(headerGeometry.title!.height).toBeLessThanOrEqual(1.1);
+    expect(headerGeometry.usage!.x).toBeGreaterThanOrEqual(headerGeometry.brand!.x + headerGeometry.brand!.width);
+    expect(Math.abs(headerGeometry.usage!.y - headerGeometry.brand!.y)).toBeLessThanOrEqual(6);
+    // WebKit can expose a sub-pixel remainder for an exact 44 CSS px track.
+    expect(headerGeometry.usage!.height).toBeLessThanOrEqual(44.1);
+    expect(headerGeometry.connection!.x + headerGeometry.connection!.width).toBeLessThanOrEqual(headerGeometry.usage!.x);
+    expect(headerGeometry.statusbarY - (headerGeometry.header.y + headerGeometry.header.height)).toBeGreaterThanOrEqual(0);
+    expect(headerGeometry.statusbarY - (headerGeometry.header.y + headerGeometry.header.height)).toBeLessThanOrEqual(12);
+  }
+
+  await settleLayoutAnimations(page);
+  const geometry = await dock.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const firstKey = element.querySelector<HTMLElement>(".cp-home-dock__key");
+    const keyBounds = firstKey?.getBoundingClientRect();
+    return {
+      bottomGap: window.innerHeight - bounds.bottom,
+      dockWidth: bounds.width,
+      keyHeight: keyBounds?.height ?? 0,
+      keyFaceBackground: firstKey ? getComputedStyle(firstKey, "::before").backgroundImage : "none",
+      keyShadow: firstKey ? getComputedStyle(firstKey).boxShadow : "none",
+      phone: window.innerWidth <= 720,
+      position: getComputedStyle(element).position,
+    };
+  });
+  expect(geometry.position).toBe("fixed");
+  expect(geometry.bottomGap).toBeGreaterThanOrEqual(-2);
+  expect(geometry.bottomGap).toBeLessThanOrEqual(34);
+  if (geometry.phone) {
+    expect(geometry.dockWidth).toBeLessThanOrEqual(154);
+    expect(geometry.keyHeight).toBeGreaterThanOrEqual(44);
+    expect(geometry.keyHeight).toBeLessThanOrEqual(48);
+  } else {
+    expect(geometry.keyHeight).toBeGreaterThanOrEqual(44);
+  }
+  expect(geometry.keyFaceBackground).not.toBe("none");
+  expect(geometry.keyShadow).not.toBe("none");
+
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await expect(dock).toHaveCount(0);
+});
+
+test("places cross-project Activity inside Conversations on Home and opens an exact review target", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const conversationsTrigger = page.getByRole("button", { name: /Open Conversations/ });
+  await expect(conversationsTrigger).toBeVisible();
+  await expect(conversationsTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: /^Activity/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open Conversations/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  await expect(page.getByRole("heading", { name: "Your working set.", level: 1 })).toBeVisible();
+
+  const activity = await openActivity(page);
+  await expect(conversationsTrigger).toHaveAttribute("aria-expanded", "true");
+  await page.waitForTimeout(350);
+  const activityBounds = await activity.boundingBox();
+  const viewport = page.viewportSize();
+  expect(activityBounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(activityBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(activityBounds!.y + activityBounds!.height).toBeLessThanOrEqual(viewport!.height);
+  await expect(page.getByRole("heading", { name: "Priority" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(activity).toContainText("in progress");
+  await expect(activity).toContainText("ready for review");
+  await expect(activity).not.toContainText("Needs attention");
+  await expect(activity.locator(".cp-activity-summary > span")).toHaveCount(2);
+  const workingSignal = activity.locator(".cp-activity-row__signal.is-in-progress");
+  const reviewSignals = activity.locator(".cp-activity-row__signal.is-ready-for-review");
+  await expect(workingSignal).toHaveCount(1);
+  await expect(workingSignal).toHaveCSS("animation-name", "cp-activity-working-spin");
+  await expect(reviewSignals).toHaveCount(3);
+  await expect(activity.locator(".cp-activity-row.activity-history")).toHaveCount(3);
+  await expect(activity.locator(".cp-activity-row")).toHaveCount(7);
+  const activityRowHeights = await activity.locator(".cp-activity-row").evaluateAll((rows) => (
+    rows.map((row) => row.getBoundingClientRect().height)
+  ));
+  expect(Math.min(...activityRowHeights)).toBeGreaterThanOrEqual(44);
+  expect(Math.max(...activityRowHeights)).toBeLessThanOrEqual(50);
+  const reviewSignalColors = await reviewSignals.evaluateAll((signals) => (
+    signals.map((signal) => getComputedStyle(signal).backgroundColor)
+  ));
+  expect(new Set(reviewSignalColors)).toHaveProperty("size", 1);
+  await expect(activity).toContainText("codex-pad");
+  await expect(activity).toContainText("research");
+
+  await activity.getByRole("button", { name: "Conversations", exact: true }).click();
+  const conversations = page.getByRole("dialog", { name: "Conversations" });
+  await expect(conversations).toBeVisible();
+  await conversations.getByRole("button", { name: /^Activity/ }).click();
+  await expect(activity).toBeVisible();
+
+  await page.getByRole("button", { name: "Close Activity" }).click();
+  await expect(activity).toBeHidden();
+  await expect(conversationsTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("heading", { name: "Your working set.", level: 1 })).toBeVisible();
+
+  await openActivity(page);
+  await page.getByRole("button", { name: "Open Research queue from Activity" }).click();
+  await expect.poll(() => bridge.commands.at(-1)?.type).toBe("openSession");
+  expect(bridge.commands.at(-1)).toMatchObject({
+    expectedThreadId: THREADS[2].id,
+    targetThreadId: THREADS[2].id,
+  });
+  await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
+  await expect(activity).toBeHidden();
+});
+
+test("refreshes the complete Codex catalog when Conversations or Activity opens", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const base = fixtureSessions({ sequence: 81, selectedIndex: 0 });
+  const currentActivityAt = Date.now() + 60_000;
+  bridge.setCatalogFixture({
+    ...base,
+    data: {
+      ...base.data,
+      sessions: base.data.sessions.map((session) => session.threadId === CATALOG_SESSION.id
+        ? {
+            ...session,
+            title: "Current Nerva conversation",
+            nativeStatus: "working" as const,
+            visualStatus: "working" as const,
+            activityAt: currentActivityAt,
+          }
+        : session),
+    },
+  });
+
+  const activityRequestsBefore = bridge.sessionsRequests;
+  const activity = await openActivity(page);
+  await expect.poll(() => bridge.sessionsRequests).toBeGreaterThan(activityRequestsBefore);
+  await expect(activity.locator(".cp-activity-row").first()).toContainText("Current Nerva conversation");
+  await page.getByRole("button", { name: "Close Activity" }).click();
+
+  bridge.setCatalogFixture({
+    ...base,
+    data: {
+      ...base.data,
+      sessions: base.data.sessions.map((session) => session.threadId === CATALOG_SESSION.id
+        ? {
+            ...session,
+            title: "Newest chooser conversation",
+            nativeStatus: "idle" as const,
+            visualStatus: "idle" as const,
+            activityAt: currentActivityAt + 60_000,
+          }
+        : session),
+    },
+  });
+  const chooserRequestsBefore = bridge.sessionsRequests;
+  const chooser = await openConversations(page);
+  await expect.poll(() => bridge.sessionsRequests).toBeGreaterThan(chooserRequestsBefore);
+  await expect(chooser.locator(".cp-unpinned-row").first()).toContainText("Newest chooser conversation");
+});
+
+test("opens Activity row actions on long press and pins or unpins the exact Codex session", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  const activity = await openActivity(page);
+  const catalogRow = activity.getByRole("button", { name: "Open Catalog reference from Activity" });
+  await catalogRow.dispatchEvent("pointerdown", {
+    pointerId: 91,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: 180,
+    clientY: 420,
+  });
+  await page.waitForTimeout(520);
+  await catalogRow.dispatchEvent("pointerup", {
+    pointerId: 91,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    clientX: 180,
+    clientY: 420,
+  });
+
+  const actions = activity.getByRole("menu", { name: "Actions for Catalog reference" });
+  await expect(actions).toBeVisible();
+  await expect(activity).toBeVisible();
+  await actions.getByRole("menuitem", { name: "Pin to Home" }).click();
+  await expect.poll(() => bridge.pinnedThreadIds).toContain(CATALOG_SESSION.id);
+  await expect(activity).toBeVisible();
+
+  await catalogRow.focus();
+  await catalogRow.press("Shift+F10");
+  await expect(actions).toBeVisible();
+  await actions.getByRole("menuitem", { name: "Unpin from Home" }).click();
+  await expect.poll(() => bridge.pinnedThreadIds).not.toContain(CATALOG_SESSION.id);
+  await expect(activity).toBeVisible();
+});
+
+test("shows the complete Codex history by day and scrolls from Priority to older sessions", async ({ page }) => {
+  const now = Date.parse("2026-08-26T12:00:00.000Z");
+  await page.clock.setFixedTime(now);
+  const bridge = new MockBridge({ authorized: false, fixedNow: now });
+  bridge.setCatalogFixture(fixtureActivityHistory(now, 48));
+  await bridge.install(page);
+
+  await page.goto("/pair?nonce=fixture-long-activity-history");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.locator(".cp-connection.phase-online")).toBeVisible();
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  const activity = await openActivity(page);
+  const scrollBody = activity.locator(".cp-activity-sidebar__body");
+  await expect(activity).toBeVisible();
+  await expect(activity.getByRole("heading", { name: "Today" })).toHaveCount(1);
+  await expect(activity.getByRole("heading", { name: "Yesterday" })).toHaveCount(1);
+  await expect(activity.getByRole("heading", { name: "August 1", exact: true })).toHaveCount(1);
+  await expect(activity.locator(".cp-activity-row")).toHaveCount(55);
+
+  const initialScroll = await scrollBody.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+  expect(initialScroll.scrollHeight).toBeGreaterThan(initialScroll.clientHeight);
+  expect(initialScroll.scrollTop).toBe(0);
+  await expect(activity.getByRole("heading", { name: "Priority" })).toBeInViewport();
+
+  await scrollBody.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect(activity.getByRole("button", { name: "Open Historical Codex task 48 from Activity" })).toBeInViewport();
+  expect(await scrollBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await scrollBody.evaluate((element) => element.scrollTo({ top: 0 }));
+  await expect(activity.getByRole("heading", { name: "Priority" })).toBeInViewport();
+  expect(await scrollBody.evaluate((element) => element.scrollTop)).toBe(0);
+});
+
 test("orders pinned attention before other pins and unpinned attention", async ({ page }) => {
   const bridge = new MockBridge({ authorized: false });
   const fixture = fixtureSessions({ sequence: 88, selectedIndex: 0 });
@@ -636,7 +1031,7 @@ test("does not navigate sessions from page drags and returns Home through the pr
 
 test("one long press directly reorders a pinned card and never opens a session", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
-  await expect(page.getByRole("button", { name: "New section" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create a new section", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Arrange|Done arranging/ })).toHaveCount(0);
   const research = page.getByRole("button", { name: /Open Research queue/ });
   await research.scrollIntoViewIfNeeded();
@@ -817,9 +1212,43 @@ test("keeps following Mac after a definitive iPad navigation failure", async ({ 
   const bridge = await openAuthenticatedApp(page);
   bridge.failNextCommand("Managed app-server reconnect is backing off after a failed attempt");
 
+  const rejectedCommand = page.waitForResponse((response) => response.url().endsWith("/api/command") && response.request().method() === "POST");
   await page.getByRole("button", { name: /Open Research queue/ }).click();
+  const rejection = await rejectedCommand;
+  expect(rejection.status()).toBe(200);
+  expect(CommandAckApiResponseSchema.parse(await rejection.json())).toMatchObject({
+    ok: true,
+    data: {
+      commandId: bridge.commands.at(-1)?.commandId,
+      status: "failed",
+      targetThreadId: THREADS[2]!.id,
+      error: { code: "APP_SERVER_UNAVAILABLE", retryable: true },
+    },
+  });
   await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Command not accepted");
+  const toast = page.locator(".ack-toast[role='status']");
+  await expect(toast).toContainText("Command not accepted");
+  const dismiss = toast.getByRole("button", { name: "Dismiss command status" });
+  const bounds = await toast.evaluate((element) => {
+    const title = element.querySelector("strong")!.getBoundingClientRect();
+    const message = element.querySelector("small")!.getBoundingClientRect();
+    const button = element.querySelector("button")!.getBoundingClientRect();
+    const icon = element.querySelector("button svg")!.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { titleBottom: title.bottom, messageTop: message.top,
+      buttonWidth: button.width, buttonHeight: button.height,
+      iconWidth: icon.width, iconHeight: icon.height, left: box.left,
+      right: box.right, viewportWidth: window.innerWidth };
+  });
+  expect(bounds.messageTop).toBeGreaterThanOrEqual(bounds.titleBottom);
+  expect(bounds.buttonWidth).toBeGreaterThanOrEqual(44);
+  expect(bounds.buttonHeight).toBeGreaterThanOrEqual(44);
+  expect(bounds.iconWidth).toBeLessThanOrEqual(24);
+  expect(bounds.iconHeight).toBeLessThanOrEqual(24);
+  expect(bounds.left).toBeGreaterThanOrEqual(0);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+  await dismiss.click();
+  await expect(toast).toBeHidden();
 
   bridge.selectOnMac(1);
   await expect(page.getByRole("heading", { name: "Bridge hardening", level: 1 })).toBeVisible();
@@ -918,8 +1347,8 @@ test("persists a pin change when the installed app reloads immediately", async (
   await showHome(page);
 
   await expect(page.getByRole("button", { name: /Open Research queue/ })).toHaveCount(0);
-  await page.getByRole("button", { name: /Unpinned Sessions/ }).click();
-  await expect(page.getByRole("dialog", { name: "Unpinned Sessions" })).toContainText("Research queue");
+  const conversations = await openConversations(page);
+  await expect(conversations).toContainText("Research queue");
 });
 
 test("replays unsynchronized Model + Reasoning presets after reload instead of losing them", async ({ page }) => {
@@ -971,9 +1400,7 @@ test("merges a local layout change with newer presets saved by another client", 
   }]);
   const savesBeforeChange = bridge.productStateSaveRequests;
 
-  await page.getByRole("button", { name: "New section", exact: true }).click();
-  await page.getByPlaceholder("Section name").fill("Synced layout");
-  await page.getByRole("button", { name: "Create section" }).click();
+  await createHomeSection(page, "Synced layout");
 
   await expect.poll(() => bridge.productStateSaveRequests).toBeGreaterThanOrEqual(savesBeforeChange + 2);
   expect(bridge.modelReasoningPresets).toEqual([{
@@ -986,9 +1413,7 @@ test("merges a local layout change with newer presets saved by another client", 
 
 test("preserves manual cases while using status filters", async ({ page }) => {
   await openAuthenticatedApp(page);
-  await page.getByRole("button", { name: "New section", exact: true }).click();
-  await page.getByPlaceholder("Section name").fill("Today");
-  await page.getByRole("button", { name: "Create section" }).click();
+  await createHomeSection(page, "Today");
   await page.getByRole("button", { name: "Add case" }).click();
   await page.getByPlaceholder("Case name").fill("Interface");
   await page.getByRole("button", { name: "Add case" }).click();
@@ -1001,6 +1426,38 @@ test("preserves manual cases while using status filters", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Open Bridge hardening/ })).toBeVisible();
   await page.getByRole("button", { name: /Working 1/ }).click();
   await expect(page.locator(".cp-home-case").filter({ hasText: "Interface" })).toContainText("Release checklist");
+});
+
+test("keeps manual sections visible below the empty Home state with no pins", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await createHomeSection(page, "Planning");
+  await page.getByRole("button", { name: "Add case" }).click();
+  await page.getByPlaceholder("Case name").fill("Next up");
+  await page.getByRole("button", { name: "Add case" }).click();
+
+  const manualCards = page.locator(".cp-manual-layout .cp-session-card");
+  while (await manualCards.count()) {
+    const firstCard = manualCards.first();
+    await firstCard.getByRole("button", { name: /More actions for/ }).click();
+    await firstCard.getByRole("button", { name: /Unpin .* from Home/ }).click();
+  }
+
+  const emptyState = page.locator(".cp-home-empty");
+  const section = page.locator(".cp-home-section").filter({ hasText: "Planning" });
+  const createSection = page.getByRole("button", { name: "Create a new section", exact: true });
+  await expect(emptyState).toContainText("Pin only what matters now.");
+  await expect(section.getByRole("heading", { name: "Planning" })).toBeVisible();
+  await expect(section).toContainText("Next up");
+  await expect(section).toContainText("Move pinned sessions here.");
+
+  const verticalOrder = await Promise.all([
+    emptyState.evaluate((element) => element.getBoundingClientRect().bottom),
+    section.evaluate((element) => element.getBoundingClientRect().top),
+    section.evaluate((element) => element.getBoundingClientRect().bottom),
+    createSection.evaluate((element) => element.getBoundingClientRect().top),
+  ]);
+  expect(verticalOrder[1]).toBeGreaterThanOrEqual(verticalOrder[0]);
+  expect(verticalOrder[3]).toBeGreaterThanOrEqual(verticalOrder[2]);
 });
 
 test("starts and stops Mac dictation with two deliberate taps", async ({ page }) => {
@@ -1092,7 +1549,19 @@ test("keeps armed Skills when Send prompt is definitively rejected", async ({ pa
   await page.getByRole("button", { name: "Close Skills" }).click();
   bridge.failNextCommand("The exact Mac composer is temporarily unavailable.");
 
+  const rejectedCommand = page.waitForResponse((response) => response.url().endsWith("/api/command") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+  const rejection = await rejectedCommand;
+  expect(rejection.status()).toBe(200);
+  expect(CommandAckApiResponseSchema.parse(await rejection.json())).toMatchObject({
+    ok: true,
+    data: {
+      commandId: bridge.commands.at(-1)?.commandId,
+      status: "failed",
+      targetThreadId: THREADS[0]!.id,
+      error: { code: "APP_SERVER_UNAVAILABLE", retryable: true },
+    },
+  });
 
   await expect(page.locator(".cp-skill-chips")).toContainText("visual-review");
   await expect(page.getByText("The exact Mac composer is temporarily unavailable.")).toBeVisible();
@@ -1948,4 +2417,33 @@ test("shows privacy-safe live capability proof", async ({ page }) => {
   await expect(center.getByText("Installed schema: current")).toBeVisible();
   await expect(center).not.toContainText("bearerToken");
   await expect(center).not.toContainText(THREADS[0].id);
+});
+
+
+test("starts Voice from Home and the exact Session", async ({ page }, testInfo) => {
+  const bridge = await openAuthenticatedApp(page);
+  const homeVoice = page.getByRole("button", { name: /^Start voice call/ });
+  await expect(homeVoice).toBeEnabled();
+  await expect(homeVoice).toContainText("Release checklist");
+  await expect(homeVoice).toContainText("Uses the Mac microphone and speakers.");
+  await page.screenshot({ path: testInfo.outputPath("voice-home.png"), fullPage: true });
+  await homeVoice.click();
+  await expect.poll(() => bridge.commands.filter((command) => command.type === "startVoiceChat").length).toBe(1);
+  expect(bridge.commands.at(-1)).toMatchObject({ type: "startVoiceChat", expectedThreadId: THREADS[0]!.id, targetThreadId: THREADS[0]!.id });
+
+  bridge.selectOnMac(1);
+  await expect(page.getByRole("heading", { name: THREADS[1]!.title, level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  await expect(homeVoice).toContainText(THREADS[1]!.title);
+  await homeVoice.click();
+  await expect.poll(() => bridge.commands.filter((command) => command.type === "startVoiceChat").length).toBe(2);
+  expect(bridge.commands.at(-1)).toMatchObject({ type: "startVoiceChat", expectedThreadId: THREADS[1]!.id, targetThreadId: THREADS[1]!.id });
+
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  const sessionVoice = page.getByRole("button", { name: /^Start voice call/ });
+  await expect(sessionVoice).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath("voice-session.png"), fullPage: true });
+  await sessionVoice.click();
+  await expect.poll(() => bridge.commands.filter((command) => command.type === "startVoiceChat").length).toBe(3);
+  expect(bridge.commands.at(-1)).toMatchObject({ type: "startVoiceChat", expectedThreadId: THREADS[0]!.id, targetThreadId: THREADS[0]!.id });
 });

@@ -22,6 +22,7 @@ import {
   type NativeDispatchAuthorityGuard,
   type NativeMicroRuntime,
   type NativeRuntimeFactory,
+  type NativeVoiceChatStart,
   type SemanticCommand,
   type SemanticControl
 } from "./types.js";
@@ -311,6 +312,55 @@ export class CodexDesktopAdapter {
     return targetTransitionMode !== null
       ? this.awaitTargetTransition(targetTransitionMode)
       : this.refresh();
+  }
+
+  async startVoiceChat(
+    input: NativeVoiceChatStart,
+    assertDispatchAuthority?: NativeDispatchAuthorityGuard,
+    expectedDesktopIdentity?: DesktopProcessIdentity,
+  ): Promise<AdapterState> {
+    const live = await this.refresh(expectedDesktopIdentity);
+    const expected = extractExactCanonicalThreadId(input.expectedThreadId);
+    if (
+      expected === null
+      || live.snapshot === null
+      || live.stale
+      || !live.snapshot.capabilities.activeThread
+      || live.snapshot.activeThreadId !== expected
+      || live.snapshot.voiceChat.threadId !== expected
+      || live.snapshot.voiceChat.status !== "available"
+    ) {
+      throw new CodexDesktopAdapterError(
+        "control-not-configured",
+        "Codex Voice is not available for the exact active task.",
+      );
+    }
+
+    try {
+      const runtime = await this.ensureRuntime();
+      if (
+        expectedDesktopIdentity !== undefined
+        && !sameDesktopIdentity(runtime.desktopIdentity, expectedDesktopIdentity)
+      ) {
+        throw new CodexDesktopAdapterError(
+          "cdp-unavailable",
+          "The Voice renderer no longer matches the attested Desktop process.",
+        );
+      }
+      if (runtime.startVoiceChat === undefined) {
+        throw new CodexDesktopAdapterError(
+          "control-not-configured",
+          "The connected Codex renderer does not expose the bounded Voice start primitive.",
+        );
+      }
+      consumeDispatchAuthority(assertDispatchAuthority);
+      await runtime.startVoiceChat(input);
+      return await this.refresh(expectedDesktopIdentity);
+    } catch (error) {
+      const adapterError = asAdapterError(error);
+      this.degrade(adapterError, false);
+      throw adapterError;
+    }
   }
 
   async attachImageToComposer(

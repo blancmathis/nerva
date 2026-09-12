@@ -5,6 +5,7 @@ import {
   lstat,
   open,
   readFile,
+  realpath,
   rename,
   unlink,
 } from "node:fs/promises";
@@ -142,6 +143,8 @@ export interface CollectDesktopOwnershipOptions {
     installation: DesktopOwnershipInstallation,
     runCommand: OwnershipCommandRunner,
   ) => Promise<boolean>;
+  /** Exact in-process bridge client allowed only during runtime revalidation. */
+  readonly expectedAdditionalClientPid?: number;
 }
 
 export interface InspectDesktopOwnershipOptions {
@@ -155,6 +158,7 @@ export interface InspectDesktopOwnershipOptions {
     options: CollectDesktopOwnershipOptions,
   ) => Promise<DesktopOwnershipEvidence>;
   readonly allowSafeRenewal?: boolean;
+  readonly expectedAdditionalClientPid?: number;
   readonly now?: () => Date;
 }
 
@@ -497,6 +501,13 @@ function hasExactSocketArgument(arguments_: string, socketPath: string): boolean
   );
 }
 
+function isManagedDaemonArguments(arguments_: string): boolean {
+  if (/^app-server\s+daemon(?:\s|$)/.test(arguments_)) return true;
+  return /^app-server(?:\s|$)/.test(arguments_)
+    && /(?:^|\s)--remote-control(?:\s|$)/.test(arguments_)
+    && /(?:^|\s)--listen(?:=|\s+)unix:\/\/\S*(?:\s|$)/.test(arguments_);
+}
+
 function isDescendant(
   candidate: ProcessRow,
   ancestorPid: number,
@@ -582,7 +593,11 @@ async function processHasExactExecutable(
     ["-nP", "-a", "-p", String(pid), "-d", "txt", "-Fn"],
     3_000,
   );
-  return result.exitCode === 0 && lsofNames(result.stdout).includes(executablePath);
+  if (result.exitCode !== 0) return false;
+  const expectedPaths = new Set([executablePath]);
+  const canonicalPath = await realpath(executablePath).catch(() => undefined);
+  if (canonicalPath !== undefined) expectedPaths.add(canonicalPath);
+  return lsofNames(result.stdout).some((name) => expectedPaths.has(name));
 }
 
 async function processHasSocket(
@@ -755,7 +770,7 @@ export async function collectDesktopOwnershipEvidence(
   for (const process_ of processes) {
     const daemonArguments = executableArguments(process_.command, installation.daemonBinaryPath);
     const desktopCodexArguments = executableArguments(process_.command, installation.binaryPath);
-    if (daemonArguments !== undefined && /^app-server\s+daemon(?:\s|$)/.test(daemonArguments)) {
+    if (daemonArguments !== undefined && isManagedDaemonArguments(daemonArguments)) {
       daemonCandidates.push(process_);
     }
     if (
@@ -807,10 +822,27 @@ export async function collectDesktopOwnershipEvidence(
     );
   }
 
-  if (socketTopology.peers.length !== 1) {
+  const additionalClientPid = options.expectedAdditionalClientPid;
+  if (
+    (additionalClientPid !== undefined && !positiveInteger(additionalClientPid))
+    || (additionalClientPid === undefined && socketTopology.peers.length !== 1)
+    || (
+      additionalClientPid !== undefined
+      && (
+        additionalClientPid === desktop.pid
+        || additionalClientPid === daemon.pid
+        || socketTopology.peers.length !== 2
+        || socketTopology.peers.filter((peer) => peer.clientPid === additionalClientPid).length !== 1
+      )
+    )
+  ) {
     throw new OwnershipProbeError(
-      socketTopology.peers.length > 1 ? "topology-ambiguous" : "topology-unavailable",
-      "The managed socket must have exactly one Desktop-owned peer before the bridge connects.",
+      socketTopology.peers.length > (additionalClientPid === undefined ? 1 : 2)
+        ? "topology-ambiguous"
+        : "topology-unavailable",
+      additionalClientPid === undefined
+        ? "The managed socket must have exactly one Desktop-owned peer before the bridge connects."
+        : "The managed socket must contain only the Desktop peer and the exact current bridge client.",
     );
   }
 
@@ -1009,6 +1041,9 @@ export async function inspectDesktopOwnership(
         socketPath: options.socketPath,
         platform: options.platform ?? process.platform,
         runCommand: options.runCommand,
+        ...(options.expectedAdditionalClientPid === undefined
+          ? {}
+          : { expectedAdditionalClientPid: options.expectedAdditionalClientPid }),
       });
     } catch (error) {
       probeFailure =
@@ -1084,27 +1119,42 @@ export async function inspectDesktopOwnership(
           : currentEvidence.codex.binaryPath,
       );
     if (options.allowSafeRenewal === true && pathsAndSignerPolicyUnchanged && installation !== undefined) {
-      const revalidated = await (options.collectEvidence ?? collectDesktopOwnershipEvidence)({
-        installation,
-        socketPath: options.socketPath,
-        platform: options.platform ?? process.platform,
-        runCommand: options.runCommand,
-      });
-      if (evidenceDigest(revalidated) === evidenceDigest(currentEvidence)) {
-        const renewed: DesktopOwnershipAttestation = {
-          formatVersion: 2,
-          createdAt: (options.now ?? (() => new Date()))().toISOString(),
-          evidence: revalidated,
-          evidenceSha256: evidenceDigest(revalidated),
-        };
-        await writeAttestationAtomic(attestationPath, renewed);
+      try {
+        const revalidated = await (options.collectEvidence ?? collectDesktopOwnershipEvidence)({
+          installation,
+          socketPath: options.socketPath,
+          platform: options.platform ?? process.platform,
+          runCommand: options.runCommand,
+          ...(options.expectedAdditionalClientPid === undefined
+            ? {}
+            : { expectedAdditionalClientPid: options.expectedAdditionalClientPid }),
+        });
+        if (evidenceDigest(revalidated) === evidenceDigest(currentEvidence)) {
+          const renewed: DesktopOwnershipAttestation = {
+            formatVersion: 2,
+            createdAt: (options.now ?? (() => new Date()))().toISOString(),
+            evidence: revalidated,
+            evidenceSha256: evidenceDigest(revalidated),
+          };
+          await writeAttestationAtomic(attestationPath, renewed);
+          return {
+            verified: true,
+            canCreate: false,
+            code: "verified",
+            summary: "Shared Desktop ownership was safely renewed for the current compatible Codex update.",
+            currentEvidence: revalidated,
+            renewed: true,
+          };
+        }
+      } catch (error) {
+        // A restart or storage failure during renewal must disable authority,
+        // without preventing callers from completing their health diagnostics.
+        const code = error instanceof OwnershipProbeError ? error.code : "topology-unavailable";
         return {
-          verified: true,
+          verified: false,
           canCreate: false,
-          code: "verified",
-          summary: "Shared Desktop ownership was safely renewed for the current compatible Codex update.",
-          currentEvidence: revalidated,
-          renewed: true,
+          code,
+          summary: publicSummary(code),
         };
       }
     }
@@ -1198,6 +1248,9 @@ export class FileDesktopOwnershipVerifier implements DesktopOwnershipVerifier {
     readonly platform?: NodeJS.Platform;
     readonly runCommand: OwnershipCommandRunner;
     readonly collectEvidence?: InspectDesktopOwnershipOptions["collectEvidence"];
+    /** Renew only an existing valid record after two identical safe probes. */
+    readonly allowSafeRenewal?: boolean;
+    readonly expectedAdditionalClientPid?: number;
   }) {
     const signatureVerifier = new CachedDesktopSignatureVerifier();
     this.#options = {
@@ -1206,6 +1259,12 @@ export class FileDesktopOwnershipVerifier implements DesktopOwnershipVerifier {
       codexBinaryPath: options.codexBinaryPath,
       platform: options.platform ?? process.platform,
       runCommand: options.runCommand,
+      ...(options.allowSafeRenewal === undefined
+        ? {}
+        : { allowSafeRenewal: options.allowSafeRenewal }),
+      ...(options.expectedAdditionalClientPid === undefined
+        ? {}
+        : { expectedAdditionalClientPid: options.expectedAdditionalClientPid }),
       collectEvidence: options.collectEvidence ?? ((collectOptions) => collectDesktopOwnershipEvidence({
         ...collectOptions,
         verifyDesktopSignature: (installation, command) => signatureVerifier.verify(installation, command),

@@ -43,7 +43,7 @@ Changing the Mac Session does not close a capture started from Home. When a Sess
 | --- | --- | --- |
 | `Photo` | Camera or photo library through the system picker | Yes, after Review validates and normalizes PNG/JPEG/WebP/HEIC/HEIF |
 | `Scan` | Rear-camera document photo | Yes, as an image. Nerva does not claim iPadOS native document-scanner behavior. |
-| `Sketch` | Touch/Pencil canvas, Pencil-only by default, passive palm, two-finger navigation | Yes, as a bounded PNG |
+| `Sketch` | Touch/Pencil canvas; finger input by default when the screen's short edge is below 700 CSS pixels (also in landscape), otherwise Pencil-only; two-finger navigation | Yes, as a bounded PNG |
 | `File` | Received file, with no execution or arbitrary preview | File-only batches attach to the exact Mac composer: 1–4 files, 8 MiB each, 16 MiB total, safe unique names, and bounded MIME types. No submit. |
 | `Note` | Local text up to 20,000 characters | Yes, in Review's general instruction. A note alone still needs an image or annotation before Review can prepare a valid send. |
 

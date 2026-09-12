@@ -8,6 +8,7 @@ import {
   type NativeComposerFileBatch,
   type NativeDispatch,
   type NativeMicroRuntime,
+  type NativeVoiceChatStart,
 } from "../src/index.js";
 
 const DESKTOP_A: DesktopProcessIdentity = {
@@ -32,6 +33,7 @@ class FakeRuntime implements NativeMicroRuntime {
   readonly attachments: NativeComposerImageAttachment[] = [];
   readonly textAppends: NativeComposerTextAppend[] = [];
   readonly fileBatches: NativeComposerFileBatch[] = [];
+  readonly voiceStarts: NativeVoiceChatStart[] = [];
   readonly desktopIdentity?: DesktopProcessIdentity;
   reads = 0;
   closes = 0;
@@ -51,6 +53,10 @@ class FakeRuntime implements NativeMicroRuntime {
     this.dispatches.push(event);
   }
 
+  async startVoiceChat(input: NativeVoiceChatStart): Promise<void> {
+    this.voiceStarts.push(input);
+  }
+
   async attachImageToComposer(attachment: NativeComposerImageAttachment): Promise<void> {
     this.attachments.push(attachment);
   }
@@ -67,6 +73,22 @@ class FakeRuntime implements NativeMicroRuntime {
 }
 
 describe("CodexDesktopAdapter", () => {
+  it("starts Voice only for the exact active task that exposes the native control", async () => {
+    const raw = await fixture();
+    raw.voiceChat = {
+      threadKey: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      status: "available",
+    };
+    const runtime = new FakeRuntime(raw);
+    const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });
+    const authority = vi.fn();
+    const input = { expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1" } as const;
+
+    await expect(adapter.startVoiceChat(input, authority)).resolves.toMatchObject({ stale: false });
+    expect(authority).toHaveBeenCalledOnce();
+    expect(runtime.voiceStarts).toEqual([input]);
+  });
+
   it("appends a bounded Skills suffix to the exact native composer under final authority", async () => {
     const runtime = new FakeRuntime(await fixture());
     const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });

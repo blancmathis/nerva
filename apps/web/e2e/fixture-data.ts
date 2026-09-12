@@ -151,6 +151,7 @@ export function fixtureSnapshot(state: FixtureState) {
       },
     },
     activeThreadId,
+    voiceChat: { threadId: activeThreadId, status: "available" },
     selectedThreadId: selectedThread?.id ?? null,
     pendingApprovals: state.selectedIndex === 3 && state.approvalPending !== false ? [{
       requestId: 991,
@@ -183,6 +184,7 @@ export function fixtureCapabilities() {
         "attachCaptureFiles",
         "sendReview",
         "openSession",
+        "startVoiceChat",
       ],
       reasoningModes: ["low", "medium", "high"],
       currentReasoningMode: "high",
@@ -258,4 +260,42 @@ export function fixtureSessions(
       }],
     },
   } as const;
+}
+
+export function fixtureActivityHistory(now: number, extraSessionCount = 36) {
+  const fixture = fixtureSessions({ sequence: 73, selectedIndex: 0 });
+  const day = 24 * 60 * 60 * 1_000;
+  const minute = 60 * 1_000;
+  const historyDates = new Map<string, number>([
+    [THREADS[0].id, now - 12 * minute],
+    [THREADS[5].id, now - day - 18 * minute],
+    [CATALOG_SESSION.id, now - 4 * day - 26 * minute],
+  ]);
+  const sessions = fixture.data.sessions.map((session) => ({
+    ...session,
+    activityAt: historyDates.get(session.threadId) ?? now - 6 * minute,
+  }));
+  const historySeeds = [sessions[0]!, sessions[5]!, sessions[6]!];
+  const historicalSessions = Array.from({ length: extraSessionCount }, (_, index) => {
+    const seed = historySeeds[index % historySeeds.length]!;
+    const daysAgo = 2 + Math.floor(index / 2);
+    return {
+      ...seed,
+      threadId: `00000000-0000-7000-8000-${(index + 1).toString(16).padStart(12, "0")}`,
+      title: `Historical Codex task ${String(index + 1).padStart(2, "0")}`,
+      nativeStatus: "idle",
+      visualStatus: "idle" as const,
+      activityAt: now - daysAgo * day - ((index % 2) + 1) * minute,
+      selected: false,
+      microSlot: null,
+    };
+  });
+  return {
+    ...fixture,
+    data: {
+      ...fixture.data,
+      timestamp: now,
+      sessions: [...sessions, ...historicalSessions],
+    },
+  };
 }

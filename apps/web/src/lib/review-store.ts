@@ -404,13 +404,17 @@ export function reviewDraftBlobRefs(draft: ReviewDraft): readonly string[] {
 /**
  * Commit a draft, every newly referenced Blob, and safe reference removal in one
  * transaction. New writes must already be referenced by this exact draft.
+ * When provided, expectedDraft must still match inside that transaction; null
+ * requires that no draft exists. A conflict leaves the draft and media intact.
  */
 export async function saveReviewDraftWithBlobChanges(
   draft: ReviewDraft,
   blobWrites: readonly ReviewBlobWrite[] = [],
   deleteBlobRefs: readonly string[] = [],
+  expectedDraft?: ReviewDraft | null,
 ): Promise<void> {
   const parsed = ReviewDraftSchema.parse(draft);
+  const expected = expectedDraft == null ? expectedDraft : ReviewDraftSchema.parse(expectedDraft);
   const writes = blobWrites.map(normalizeBlobWrite);
   const nextRefs = new Set(reviewDraftBlobRefs(parsed));
   const writeIds = new Set<string>();
@@ -435,8 +439,23 @@ export async function saveReviewDraftWithBlobChanges(
   try {
     const drafts = transaction.objectStore(DRAFT_STORE);
     const blobs = transaction.objectStore(BLOB_STORE);
+    const key = reviewDraftKey(parsed.targetThreadId);
+    if (expected !== undefined) {
+      const stored = await requestResult<StoredReviewDraft | undefined>(drafts.get(key));
+      let matches = expected === null && stored === undefined;
+      if (expected !== null && stored?.key === key) {
+        try {
+          matches = exactReviewDraftMatch(migrateReviewDraft(stored.draft), expected);
+        } catch {
+          // An invalid replacement is also a conflict, never permission to overwrite.
+        }
+      }
+      if (!matches) {
+        throw new Error("The local Review changed while this update was being prepared. Open the latest Review and try again.");
+      }
+    }
     drafts.put({
-      key: reviewDraftKey(parsed.targetThreadId),
+      key,
       draft: parsed,
     } satisfies StoredReviewDraft);
     for (const write of storedWrites) {

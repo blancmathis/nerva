@@ -71,6 +71,22 @@ export const NativeReasoningStateSchema = z
   })
   .strict();
 
+export const VoiceChatStateSchema = z
+  .object({
+    threadId: ThreadIdSchema.nullable(),
+    status: z.enum(["available", "active", "unavailable"]),
+  })
+  .strict()
+  .superRefine((voiceChat, context) => {
+    if (voiceChat.status !== "unavailable" && voiceChat.threadId === null) {
+      context.addIssue({
+        code: "custom",
+        message: "An available or active Voice chat requires an exact threadId",
+        path: ["threadId"],
+      });
+    }
+  });
+
 export const AgentSlotSchema = z
   .object({
     slot: SlotIndexSchema,
@@ -223,6 +239,7 @@ export const MicroSnapshotSchema = z
      * not mutation authority, and the task may be outside the native six.
      */
     activeThreadId: ThreadIdSchema.nullable().default(null),
+    voiceChat: VoiceChatStateSchema.default({ threadId: null, status: "unavailable" }),
     selectedThreadId: ThreadIdSchema.nullable(),
     /** Exact app-server identities only; no approval is inferred from native labels. */
     pendingApprovals: z.array(PendingApprovalSchema).max(16).default([]),
@@ -254,6 +271,17 @@ export const MicroSnapshotSchema = z
         code: "custom",
         message: "selectedThreadId must match the selected slot",
         path: ["selectedThreadId"],
+      });
+    }
+
+    if (
+      snapshot.voiceChat.threadId !== null
+      && snapshot.voiceChat.threadId !== snapshot.activeThreadId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Voice chat state must belong to the exact active thread",
+        path: ["voiceChat", "threadId"],
       });
     }
 
@@ -292,6 +320,7 @@ export type ApprovalKind = z.infer<typeof ApprovalKindSchema>;
 export type ApprovalItemId = z.infer<typeof ApprovalItemIdSchema>;
 export type PendingApproval = z.infer<typeof PendingApprovalSchema>;
 export type NativeReasoningState = z.infer<typeof NativeReasoningStateSchema>;
+export type VoiceChatState = z.infer<typeof VoiceChatStateSchema>;
 export type AgentSlot = z.infer<typeof AgentSlotSchema>;
 export type MicroActionSlot = z.infer<typeof MicroActionSlotSchema>;
 export type KeycapId = z.infer<typeof KeycapIdSchema>;

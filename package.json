@@ -61,12 +61,13 @@
     "concurrently": "^9.2.1",
     "context-room": "^0.1.9",
     "fake-indexeddb": "^6.2.4",
+    "fastify": "^5.12.3",
     "jsdom": "^27.1.0",
     "tsup": "^8.5.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "esbuild": "^0.28.1"

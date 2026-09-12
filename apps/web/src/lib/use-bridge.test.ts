@@ -27,6 +27,7 @@ function snapshot(seq: number, bridgeInstanceId = "7d35b974-62cc-4db8-9b4e-5a8dc
     healthDetail: null,
     slots: Array.from({ length: 6 }, (_, index) => emptySlot(index)),
     activeThreadKey: null,
+    voiceChat: { threadId: null, status: "unavailable" },
     selectedSlotId: null,
     selectedThreadKey: null,
     pendingApprovals: [],

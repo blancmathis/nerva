@@ -18,6 +18,16 @@ export interface ProductSession {
   readonly siteAssociations: SessionSummary["siteAssociations"];
 }
 
+const UNIX_MILLISECONDS_THRESHOLD = 100_000_000_000;
+
+export function normalizeSessionActivityAt(value: number | null): number | null {
+  if (value === null) return null;
+  // Older Nerva bridges forwarded Codex's Unix-second timestamp unchanged.
+  // Normalize here as well so a newly loaded web build fixes day grouping
+  // immediately, without requiring the already-running Mac bridge to restart.
+  return Math.trunc(value < UNIX_MILLISECONDS_THRESHOLD ? value * 1_000 : value);
+}
+
 function sessionStatus(session: Pick<SessionSummary, "nativeStatus" | "visualStatus">): SlotStatus {
   return normalizeStatus(
     session.nativeStatus.toLocaleLowerCase().includes("approval")
@@ -46,7 +56,7 @@ export function buildProductSessions(
       title: summary?.title ?? slot.title ?? "Untitled task",
       status: summary ? sessionStatus(summary) : slot.status,
       nativeStatus: summary?.nativeStatus ?? slot.nativeStatus ?? slot.status,
-      activityAt: summary?.activityAt ?? slot.activityAt,
+      activityAt: normalizeSessionActivityAt(summary?.activityAt ?? slot.activityAt),
       projectId: summary?.projectId ?? null,
       project: summary?.projectLabel ?? null,
       selected: slot.selected,
@@ -66,7 +76,7 @@ export function buildProductSessions(
       title: summary.title ?? "Untitled task",
       status: sessionStatus(summary),
       nativeStatus: summary.nativeStatus,
-      activityAt: summary.activityAt,
+      activityAt: normalizeSessionActivityAt(summary.activityAt),
       projectId: summary.projectId,
       project: summary.projectLabel,
       selected: summary.selected,

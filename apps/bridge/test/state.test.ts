@@ -49,6 +49,7 @@ function nativeState(
   aliases = false,
   reasoningEffort: ReasoningEffort | null = null,
   threadId = THREAD_ID,
+  voiceStatus: "available" | "active" | "unavailable" = "unavailable",
 ): AdapterState {
   return {
     stale,
@@ -70,6 +71,7 @@ function nativeState(
         activityLabel: null,
       })) as unknown as NonNullable<AdapterState["snapshot"]>["slots"],
       activeThreadId: threadId,
+      voiceChat: { threadId, status: voiceStatus },
       agentSource: "pinned",
       actionLayout: null,
       joystickLayout: null,
@@ -117,6 +119,33 @@ function twoThreadNativeState(selectedThreadId: string): AdapterState {
 }
 
 describe("BridgeStateService stale snapshots", () => {
+  it("keeps state readable and Voice unavailable when a native observation omits Voice metadata", async () => {
+    const observed = nativeState(false);
+    if (observed.snapshot === null) throw new Error("Expected a native snapshot");
+    Reflect.deleteProperty(observed.snapshot, "voiceChat");
+    const adapter = { refresh: vi.fn(async () => observed), close: vi.fn() } as unknown as CodexDesktopAdapter;
+    const transport = {
+      health: vi.fn(async () => ({
+        mode: "injected-test-transport" as const,
+        connected: true,
+        initialized: true,
+        selectedThreadId: null,
+        localImageSteerVerified: false,
+        multiImageInputVerified: false,
+        desktopOwnershipVerified: true,
+        serverUserAgent: "test",
+        queuedSketches: 0,
+      })),
+      listSkills: vi.fn(async () => []),
+      listPendingApprovals: vi.fn(() => []),
+    } as unknown as ThreadTransport;
+    const service = new BridgeStateService({ adapter, transport });
+    const snapshot = await service.refresh();
+    expect(snapshot.activeThreadId).toBe(THREAD_ID);
+    expect(snapshot.voiceChat).toEqual({ threadId: THREAD_ID, status: "unavailable" });
+    expect(service.capabilities().commands).not.toContain("startVoiceChat");
+  });
+
   it("publishes the exact active Mac task without granting selected-task authority", async () => {
     const observed = nativeState(false);
     if (observed.snapshot === null) throw new Error("Expected a native snapshot");
@@ -712,6 +741,59 @@ describe("BridgeStateService stale snapshots", () => {
     expect(service.capabilities().commands).not.toContain("createTask");
     await service.invokeNative(snapshot.sequence, THREAD_ID, "reasoning-decrease");
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Voice only for the exact eligible active task and consumes Desktop authority", async () => {
+    const available = nativeState(false, false, null, THREAD_ID, "available");
+    const active = nativeState(false, false, null, THREAD_ID, "active");
+    let current = available;
+    const startVoiceChat = vi.fn(async (
+      _input: { expectedThreadId: string },
+      consume?: () => void,
+    ) => {
+      consume?.();
+      current = active;
+      return current;
+    });
+    const adapter = {
+      refresh: vi.fn(async () => current),
+      startVoiceChat,
+      close: vi.fn(),
+    } as unknown as CodexDesktopAdapter;
+    const authority = nativeAuthorityMethods();
+    const transport = {
+      health: vi.fn(async () => ({
+        mode: "managed-control-socket" as const,
+        connected: true,
+        initialized: true,
+        selectedThreadId: null,
+        localImageSteerVerified: false,
+        multiImageInputVerified: true,
+        desktopOwnershipVerified: true,
+        serverUserAgent: "test",
+        queuedSketches: 0,
+      })),
+      listSkills: vi.fn(async () => []),
+      listModels: vi.fn(async () => []),
+      listPendingApprovals: vi.fn(() => []),
+      clearSelectedThread: vi.fn(),
+      ...authority,
+    } as unknown as ThreadTransport;
+    const service = new BridgeStateService({ adapter, transport });
+    const snapshot = await service.refresh();
+
+    expect(snapshot.voiceChat).toEqual({ threadId: THREAD_ID, status: "available" });
+    expect(service.capabilities().commands).toContain("startVoiceChat");
+
+    const result = await service.startVoiceChat(snapshot.sequence, THREAD_ID);
+    expect(startVoiceChat).toHaveBeenCalledWith(
+      { expectedThreadId: THREAD_ID },
+      expect.any(Function),
+      DESKTOP_IDENTITY,
+    );
+    expect(authority.consumeNativeMutationAuthority).toHaveBeenCalledOnce();
+    expect(result.voiceChat).toEqual({ threadId: THREAD_ID, status: "active" });
+    expect(service.capabilities().commands).not.toContain("startVoiceChat");
   });
 
   it("keeps Drawing attachment available while the managed app-server is offline", async () => {

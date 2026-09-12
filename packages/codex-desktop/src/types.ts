@@ -31,6 +31,7 @@ export type SixMicroSlots = readonly [MicroSlot, MicroSlot, MicroSlot, MicroSlot
 export interface MicroSnapshot {
   readonly slots: SixMicroSlots;
   readonly activeThreadId: string | null;
+  readonly voiceChat: NativeVoiceChatState;
   readonly agentSource: AgentSource | null;
   readonly actionLayout: NativeActionLayout | null;
   readonly joystickLayout: NativeJoystickLayout | null;
@@ -42,6 +43,14 @@ export interface MicroSnapshot {
 
 export type AgentSource = "pinned" | "recent" | "priority" | "custom";
 export type NativeTheme = "light" | "dark";
+
+export type NativeVoiceChatStatus = "available" | "active" | "unavailable";
+
+export interface NativeVoiceChatState {
+  /** The exact active Codex task for which this state was observed. */
+  readonly threadId: string | null;
+  readonly status: NativeVoiceChatStatus;
+}
 
 export const NATIVE_ACTION_SLOTS = ["ACT06", "ACT07", "ACT08", "ACT09", "ACT10_ACT11", "ACT12"] as const;
 export type NativeActionSlot = (typeof NATIVE_ACTION_SLOTS)[number];
@@ -274,6 +283,10 @@ export interface NativeComposerTextAppend {
   readonly text: string;
 }
 
+export interface NativeVoiceChatStart {
+  readonly expectedThreadId: string;
+}
+
 export interface NativeComposerFileAttachment {
   readonly expectedThreadId: string;
   readonly fileName: string;
@@ -291,6 +304,7 @@ export interface NativeMicroRuntime {
   readonly desktopIdentity?: DesktopProcessIdentity;
   readSnapshot(): Promise<unknown>;
   dispatch(event: NativeDispatch): Promise<void>;
+  startVoiceChat?(input: NativeVoiceChatStart): Promise<void>;
   appendTextToComposer?(input: NativeComposerTextAppend): Promise<void>;
   attachFilesToComposer?(batch: NativeComposerFileBatch): Promise<void>;
   attachImageToComposer?(attachment: NativeComposerImageAttachment): Promise<void>;

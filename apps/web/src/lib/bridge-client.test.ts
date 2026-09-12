@@ -237,6 +237,229 @@ describe("BridgeClient site capture", () => {
 });
 
 describe("BridgeClient command reconciliation", () => {
+  describe("acknowledgement boundaries", () => {
+    const command = {
+      type: "selectAgent",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bb5",
+      expectedBridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+      expectedSequence: 1,
+      expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      slot: 0,
+    } as const;
+    const protocolAck = {
+      commandId: command.commandId,
+      disposition: "accepted",
+      status: "succeeded",
+      sequence: 2,
+      targetThreadId: command.expectedThreadId,
+      error: null,
+    } as const;
+    const protocolStatus = {
+      commandId: command.commandId,
+      status: "succeeded",
+      sequence: 2,
+      targetThreadId: command.expectedThreadId,
+      result: null,
+      error: null,
+      updatedAt: 1_750_000_000_000,
+    } as const;
+    let response: Response;
+    let client: BridgeClient;
+    let commandRequests: number;
+    let statusRequests: number;
+
+    beforeEach(async () => {
+      const ticket = "k".repeat(43);
+      const snapshot = fixtureSnapshot({
+        bridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
+        sequence: 1,
+        selectedIndex: 0,
+      });
+      commandRequests = 0;
+      statusRequests = 0;
+      await saveBridgeBearer("j".repeat(43));
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/snapshot") return Response.json({ ok: true, data: snapshot });
+        if (String(input) === "/api/ws-ticket") {
+          return Response.json({ ok: true, data: { ticket, protocol: `codex-pad.ticket.${ticket}`, expiresAt: 1 } });
+        }
+        if (String(input) === "/api/command") {
+          expect(init?.method).toBe("POST");
+          commandRequests += 1;
+          return response;
+        }
+        if (String(input) === `/api/commands/${command.commandId}`) {
+          statusRequests += 1;
+          return response;
+        }
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }));
+      vi.stubGlobal("WebSocket", ControlledWebSocket);
+      client = new BridgeClient({
+        onSnapshot: vi.fn(),
+        onConnection: vi.fn(),
+        onUnauthorized: vi.fn(),
+      });
+      await expect(client.start()).resolves.toBe(true);
+      await vi.waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1));
+      const socket = ControlledWebSocket.instances[0]!;
+      socket.open();
+      socket.receive({ type: "snapshot", snapshot });
+    });
+
+    afterEach(() => client.stop());
+
+    it.each([
+      ["an HTML gateway error", () => new Response("<html>Bad gateway</html>", { status: 502 })],
+      ["an empty success response", () => new Response(null, { status: 204 })],
+      ["invalid JSON", () => new Response('{"ok":true,')],
+      ["an incomplete acknowledgement", () => Response.json({ ok: true, data: { commandId: command.commandId } })],
+      ["another command's acknowledgement", () => Response.json({ ok: true, data: { ...protocolAck, commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bb6" } })],
+      ["a successful acknowledgement on an HTTP error", () => Response.json({ ok: true, data: protocolAck }, { status: 502 })],
+      ["an internal server error", () => Response.json({ ok: false, error: { code: "INTERNAL_ERROR", message: "Bridge request failed", retryable: false, details: null } }, { status: 500 })],
+      ["a rejection on HTTP success", () => Response.json({ ok: false, error: { code: "RATE_LIMITED", message: "busy", retryable: true, details: null } })],
+      ["an HTTP error with the wrong API error code", () => Response.json({ ok: false, error: { code: "INTERNAL_ERROR", message: "Bridge request failed", retryable: false, details: null } }, { status: 429 })],
+    ])("keeps the original command unresolved after %s without resending", async (_name, makeResponse) => {
+      response = makeResponse();
+
+      await expect(client.command(command)).resolves.toMatchObject({
+        commandId: command.commandId,
+        ok: false,
+        pending: true,
+      });
+      expect(commandRequests).toBe(1);
+    });
+
+    it.each([
+      [400, "INVALID_REQUEST"],
+      [401, "UNAUTHENTICATED"],
+      [403, "FORBIDDEN"],
+      [404, "NOT_FOUND"],
+      [409, "CONFLICT"],
+      [413, "PAYLOAD_TOO_LARGE"],
+      [429, "RATE_LIMITED"],
+    ])("retains the definite pre-dispatch %i %s rejection", async (status, code) => {
+      response = Response.json({
+        ok: false,
+        error: { code, message: "Command was not dispatched", retryable: true, details: null },
+      }, { status });
+
+      await expect(client.command(command)).resolves.toEqual({
+        commandId: command.commandId,
+        ok: false,
+        pending: false,
+        message: "Command was not dispatched",
+      });
+      expect(commandRequests).toBe(1);
+    });
+
+    it.each([
+      ["succeeded", true, false, null],
+      ["inFlight", true, true, null],
+      ["failed", false, false, { code: "TARGET_UNAVAILABLE", message: "Target unavailable", retryable: false }],
+    ])("retains a matching %s command acknowledgement", async (status, ok, pending, error) => {
+      response = Response.json({ ok: true, data: { ...protocolAck, status, error } });
+
+      await expect(client.command(command)).resolves.toMatchObject({ commandId: command.commandId, ok, pending });
+      expect(commandRequests).toBe(1);
+    });
+
+    it.each([
+      ["selecting a task", command],
+      ["sending a sketch", {
+        type: "sendSketch",
+        commandId: command.commandId,
+        expectedBridgeInstanceId: command.expectedBridgeInstanceId,
+        expectedSequence: command.expectedSequence,
+        expectedThreadId: command.expectedThreadId,
+        targetThreadId: command.expectedThreadId,
+        instruction: "",
+        png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XqZ8WQAAAABJRU5ErkJggg==",
+      }],
+      ["refreshing without a selected task", {
+        type: "refreshSnapshot",
+        lastKnownSequence: command.expectedSequence,
+        commandId: command.commandId,
+        expectedBridgeInstanceId: command.expectedBridgeInstanceId,
+        expectedSequence: command.expectedSequence,
+        expectedThreadId: null,
+      }],
+    ] as const)("keeps an acknowledgement for a different target unresolved when %s", async (_name, request) => {
+      response = Response.json({
+        ok: true,
+        data: { ...protocolAck, targetThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba2" },
+      });
+
+      await expect(client.command(request)).resolves.toMatchObject({
+        commandId: command.commandId,
+        ok: false,
+        pending: true,
+      });
+      expect(commandRequests).toBe(1);
+    });
+
+    it("retains a matching null target when refreshing without a selected task", async () => {
+      response = Response.json({ ok: true, data: { ...protocolAck, targetThreadId: null } });
+
+      await expect(client.command({
+        type: "refreshSnapshot",
+        lastKnownSequence: command.expectedSequence,
+        commandId: command.commandId,
+        expectedBridgeInstanceId: command.expectedBridgeInstanceId,
+        expectedSequence: command.expectedSequence,
+        expectedThreadId: null,
+      })).resolves.toMatchObject({ commandId: command.commandId, ok: true, pending: false });
+      expect(commandRequests).toBe(1);
+    });
+
+    it("accepts the newly created target when creating a task", async () => {
+      response = Response.json({
+        ok: true,
+        data: { ...protocolAck, targetThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba2" },
+      });
+
+      await expect(client.command({
+        type: "createTask",
+        commandId: command.commandId,
+        expectedBridgeInstanceId: command.expectedBridgeInstanceId,
+        expectedSequence: command.expectedSequence,
+        expectedThreadId: command.expectedThreadId,
+        instruction: null,
+      })).resolves.toMatchObject({ commandId: command.commandId, ok: true, pending: false });
+      expect(commandRequests).toBe(1);
+    });
+
+    it("ignores reconciliation for another command ID", async () => {
+      response = Response.json({
+        ok: true,
+        data: { ...protocolStatus, commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bb6" },
+      });
+
+      await expect(client.commandStatus(command.commandId)).resolves.toBeNull();
+      expect(statusRequests).toBe(1);
+      expect(commandRequests).toBe(0);
+    });
+
+    it("ignores a successful reconciliation envelope on an HTTP error", async () => {
+      response = Response.json({ ok: true, data: protocolStatus }, { status: 502 });
+
+      await expect(client.commandStatus(command.commandId)).resolves.toBeNull();
+      expect(statusRequests).toBe(1);
+      expect(commandRequests).toBe(0);
+    });
+
+    it("reconciles only the matching command without resending it", async () => {
+      response = Response.json({ ok: true, data: protocolStatus });
+
+      await expect(client.commandStatus(command.commandId)).resolves.toMatchObject({
+        state: "final",
+        ack: { commandId: command.commandId, ok: true, pending: false },
+      });
+      expect(statusRequests).toBe(1);
+      expect(commandRequests).toBe(0);
+    });
+  });
+
   it("aborts an unacknowledged command response so the UI can leave its busy state", async () => {
     const bearerToken = "t".repeat(43);
     const ticket = "u".repeat(43);
@@ -521,6 +744,29 @@ describe("BridgeClient command reconciliation", () => {
 });
 
 describe("BridgeClient bearer authentication", () => {
+  it("bounds the initial snapshot wait when the private Mac route never answers", async () => {
+    const bearerToken = "t".repeat(43);
+    let aborted = false;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", ControlledWebSocket);
+    const client = new BridgeClient({
+      onSnapshot: vi.fn(),
+      onConnection: vi.fn(),
+      onUnauthorized: vi.fn(),
+    }, 8_000, async () => bearerToken, 20);
+
+    await expect(client.start()).resolves.toBe(true);
+    expect(aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith("/api/snapshot", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    client.stop();
+  });
+
   it("does not let a slow initial IndexedDB read overwrite a newer pairing credential", async () => {
     const bearerToken = "w".repeat(43);
     const ticket = "x".repeat(43);

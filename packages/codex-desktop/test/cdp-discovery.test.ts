@@ -69,7 +69,11 @@ async function targets(): Promise<CdpTarget[]> {
 
 describe("loopback-only CDP discovery", () => {
   it("fails closed when no explicit candidate exists", async () => {
-    await expect(discoverCodexCdpTarget({ processArgs: [], inspectMacProcesses: false })).rejects.toMatchObject({ code: "cdp-unavailable" });
+    await expect(discoverCodexCdpTarget({
+      processArgs: [],
+      inspectMacProcesses: false,
+      devToolsActivePortFiles: [],
+    })).rejects.toMatchObject({ code: "cdp-unavailable" });
   });
 
   it("accepts only Codex process arguments explicitly bound to loopback", () => {

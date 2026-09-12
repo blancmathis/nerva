@@ -150,7 +150,7 @@ test("the built PWA crosses the real bridge for auth, state, WebSocket, ledger, 
     await expect(page.getByRole("heading", { name: "Real bridge integration", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Open Nerva Home" }).click();
     await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Unpinned Sessions 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Open Conversations/ })).toBeVisible();
     await page.getByRole("button", { name: "Open Settings" }).click();
     await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
     const savedState = page.waitForResponse((response) => (

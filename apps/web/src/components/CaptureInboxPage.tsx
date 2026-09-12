@@ -3,6 +3,7 @@ import { MAX_CAPTURE_COMPOSER_BATCH_BYTES, MAX_CAPTURE_COMPOSER_FILE_BYTES } fro
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { PHOTO_IMPORT_ACCEPT } from "../lib/heic-image";
+import { defaultPencilOnly } from "../lib/drawing-input";
 import {
   deleteCaptureInboxItems,
   listCaptureInboxItems,
@@ -201,17 +202,41 @@ function CaptureAction({ icon, label, detail, onClick }: {
   );
 }
 
+function useCaptureSheetSave(onSave: () => Promise<void>, onClose: () => void) {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Also guard callbacks queued before React renders the disabled controls.
+  const savingRef = useRef(false);
+  const close = () => { if (!savingRef.current) onClose(); };
+  const save = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "The capture could not be saved locally. Try again.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+  return { saving, savingRef, saveError, save, close };
+}
+
 function QuickNoteSheet({ onSave, onClose }: { readonly onSave: (text: string) => Promise<void>; readonly onClose: () => void }) {
   const [text, setText] = useState("");
-  const [saving, setSaving] = useState(false);
+  const { saving, savingRef, saveError, save, close } = useCaptureSheetSave(() => onSave(text), onClose);
   const dialogRef = useRef<HTMLElement | null>(null);
-  useModalFocus(dialogRef, onClose, { initialFocus: "textarea" });
+  useModalFocus(dialogRef, close, { initialFocus: "textarea" });
   return (
     <div className="cp-capture-modal-layer" role="presentation">
-      <section ref={dialogRef} className="cp-capture-sheet cp-quick-note" role="dialog" aria-modal="true" aria-labelledby="quick-note-title" tabIndex={-1}>
-        <header><div><p className="cp-overline">Capture locally</p><h2 id="quick-note-title">Quick note</h2><p>Keep it here, then reuse it from any Session.</p></div><button type="button" className="cp-icon-button" aria-label="Close quick note" onClick={onClose}><CloseIcon /></button></header>
-        <textarea maxLength={20_000} value={text} onChange={(event) => setText(event.target.value)} placeholder="Write the thought before it disappears…" aria-label="Quick note text" />
-        <footer><span>{text.length.toLocaleString("en")} / 20,000</span><button type="button" className="cp-secondary-button" onClick={onClose}>Cancel</button><button type="button" className="cp-capture-primary" disabled={!text.trim() || saving} onClick={() => { setSaving(true); void onSave(text).finally(() => setSaving(false)); }}>{saving ? "Saving…" : "Save to Inbox"}</button></footer>
+      <section ref={dialogRef} className="cp-capture-sheet cp-quick-note" role="dialog" aria-modal="true" aria-busy={saving} aria-labelledby="quick-note-title" tabIndex={-1}>
+        <header><div><p className="cp-overline">Capture locally</p><h2 id="quick-note-title">Quick note</h2><p>Keep it here, then reuse it from any Session.</p></div><button type="button" className="cp-icon-button" aria-label="Close quick note" disabled={saving} onClick={close}><CloseIcon /></button></header>
+        <textarea maxLength={20_000} value={text} disabled={saving} onChange={(event) => { if (!savingRef.current) setText(event.target.value); }} placeholder="Write the thought before it disappears…" aria-label="Quick note text" />
+        {saveError && <p className="cp-capture-error" role="alert">{saveError}</p>}
+        <footer><span>{text.length.toLocaleString("en")} / 20,000</span><button type="button" className="cp-secondary-button" disabled={saving} onClick={close}>Cancel</button><button type="button" className="cp-capture-primary" disabled={!text.trim() || saving} onClick={() => { if (text.trim()) void save(); }}>{saving ? "Saving…" : "Save to Inbox"}</button></footer>
       </section>
     </div>
   );
@@ -223,20 +248,32 @@ function SketchSheet({ onSave, onClose }: { readonly onSave: (scene: Scene) => P
   // Phones rarely have a paired Pencil, so a finger must work immediately.
   // iPad keeps palm-rejecting Pencil mode by default while exposing the same
   // one-tap switch on every viewport.
-  const [pencilOnly, setPencilOnly] = useState(() => window.innerWidth >= 700);
-  const [saving, setSaving] = useState(false);
+  const [pencilOnly, setPencilOnly] = useState(defaultPencilOnly);
+  const { saving, savingRef, saveError, save, close } = useCaptureSheetSave(() => onSave(scene), onClose);
   const dialogRef = useRef<HTMLElement | null>(null);
-  useModalFocus(dialogRef, onClose, { initialFocus: "[aria-label='Close sketch']" });
+  useModalFocus(dialogRef, close, { initialFocus: "[aria-label='Close sketch']" });
+  useEffect(() => { if (saving) dialogRef.current?.focus({ preventScroll: true }); }, [saving]);
   return (
     <div className="cp-capture-modal-layer cp-capture-modal-layer--full" role="presentation">
-      <section ref={dialogRef} className="cp-capture-sketch" role="dialog" aria-modal="true" aria-labelledby="capture-sketch-title" tabIndex={-1}>
+      <section ref={dialogRef} className="cp-capture-sketch" role="dialog" aria-modal="true" aria-busy={saving} aria-labelledby="capture-sketch-title" tabIndex={-1} onKeyDownCapture={(event) => {
+        if (savingRef.current && event.key === "Tab") {
+          event.preventDefault();
+          event.stopPropagation();
+          dialogRef.current?.focus({ preventScroll: true });
+        }
+      }}>
         <header>
-          <button type="button" className="cp-icon-button" aria-label="Close sketch" onClick={onClose}><CloseIcon /></button>
+          <button type="button" className="cp-icon-button" aria-label="Close sketch" disabled={saving} onClick={close}><CloseIcon /></button>
           <div><p className="cp-overline">Local sketch</p><h2 id="capture-sketch-title">Draw now. Use later.</h2></div>
-          <div><button type="button" className="cp-capture-quiet" onClick={() => setPencilOnly((value) => !value)}>{pencilOnly ? "Pencil only" : "Finger + Pencil"}</button><button type="button" className="cp-capture-quiet" disabled={scene.elements.length === 0} onClick={() => setScene(fresh())}>Clear</button><button type="button" className="cp-capture-primary" disabled={scene.elements.length === 0 || saving} onClick={() => { setSaving(true); void onSave(scene).finally(() => setSaving(false)); }}>{saving ? "Saving…" : "Keep in Inbox"}</button></div>
+          <div><button type="button" className="cp-capture-quiet" disabled={saving} onClick={() => { if (!savingRef.current) setPencilOnly((value) => !value); }}>{pencilOnly ? "Pencil only" : "Finger + Pencil"}</button><button type="button" className="cp-capture-quiet" disabled={scene.elements.length === 0 || saving} onClick={() => { if (!savingRef.current) setScene(fresh()); }}>Clear</button><button type="button" className="cp-capture-primary" disabled={scene.elements.length === 0 || saving} onClick={() => { if (scene.elements.length > 0) void save(); }}>{saving ? "Saving…" : "Keep in Inbox"}</button></div>
         </header>
-        <DrawingCanvasEditor scene={scene} onSceneChange={setScene} pencilOnly={pencilOnly} className="cp-capture-sketch__editor" />
-        <p className="cp-capture-sketch__hint">{pencilOnly ? "Apple Pencil draws · two fingers move and zoom · your palm is ignored" : "Finger or Pencil draws · choose Move to navigate"}</p>
+        <div inert={saving} style={{ minHeight: 0 }}>
+          <DrawingCanvasEditor scene={scene} onSceneChange={(next) => { if (!savingRef.current) setScene(next); }} pencilOnly={pencilOnly} readOnly={saving} className="cp-capture-sketch__editor" />
+        </div>
+        <div className="cp-capture-sketch__hint">
+          {saveError && <p className="cp-capture-error" role="alert">{saveError}</p>}
+          <span>{pencilOnly ? "Apple Pencil draws · two fingers move and zoom · your palm is ignored" : "Finger or Pencil draws · choose Move to navigate"}</span>
+        </div>
       </section>
     </div>
   );

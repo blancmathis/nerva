@@ -24,7 +24,7 @@ export function CommandStatusToast({ ack, onDismiss }: CommandStatusToastProps) 
     <div className={`ack-toast${ack.ok ? "" : " is-error"}`} role="status">
       <span className="ack-mark" aria-hidden="true" />
       <span><strong>{title}</strong><small>{ack.message}</small></span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss command status"><CloseIcon /></button>
+      <button className="cp-icon-button" type="button" onClick={onDismiss} aria-label="Dismiss command status"><CloseIcon /></button>
     </div>
   );
 }

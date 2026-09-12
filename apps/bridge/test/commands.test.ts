@@ -51,6 +51,7 @@ function fixture(overrides: {
   attachImagesToComposer?: BridgeStateService["attachImagesToComposer"];
   attachFilesToComposer?: BridgeStateService["attachFilesToComposer"];
   assertSnapshotIdentity?: BridgeStateService["assertSnapshotIdentity"];
+  startVoiceChat?: BridgeStateService["startVoiceChat"];
   current?: BridgeStateService["current"];
   normalizeSketch?: ProtocolCommandExecutorOptions["normalizeSketch"];
   normalizeReview?: ProtocolCommandExecutorOptions["normalizeReview"];
@@ -79,6 +80,7 @@ function fixture(overrides: {
     attachImageToComposer: overrides.attachImageToComposer ?? vi.fn(async () => ({ sequence: 13 })),
     attachImagesToComposer: overrides.attachImagesToComposer ?? vi.fn(async () => ({ sequence: 13 })),
     attachFilesToComposer: overrides.attachFilesToComposer ?? vi.fn(async () => ({ sequence: 13 })),
+    startVoiceChat: overrides.startVoiceChat ?? vi.fn(async () => ({ sequence: 13 })),
   } as unknown as BridgeStateService;
   const transport = {
     selectThread: overrides.selectThread ?? vi.fn(async () => undefined),
@@ -157,6 +159,26 @@ function reviewCommand(): Extract<Command, { type: "sendReview" }> {
 }
 
 describe("ProtocolCommandExecutor outcome preservation", () => {
+  it("starts Codex Voice through the exact sequence-bound task command", async () => {
+    const startVoiceChat = vi.fn(async () => ({ sequence: 13 })) as unknown as BridgeStateService["startVoiceChat"];
+    const { executor } = fixture({ startVoiceChat });
+    const command = CommandSchema.parse({
+      type: "startVoiceChat",
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8bd0",
+      expectedSequence: 12,
+      expectedBridgeInstanceId: BRIDGE_INSTANCE_ID,
+      expectedThreadId: THREAD_ID,
+      targetThreadId: THREAD_ID,
+    });
+
+    await expect(executor.execute(command)).resolves.toEqual({
+      sequence: 13,
+      targetThreadId: THREAD_ID,
+      message: "Codex Voice started on the Mac",
+    });
+    expect(startVoiceChat).toHaveBeenCalledWith(12, THREAD_ID);
+  });
+
   it("opens a Browser page only after exact-target validation", async () => {
     const openBrowserTab = vi.fn(async () => undefined);
     const assertExactTarget = vi.fn(() => ({ slot: 0 }) as never);

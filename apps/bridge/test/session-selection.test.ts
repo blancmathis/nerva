@@ -48,6 +48,7 @@ function nativeState(activeThreadId: string): AdapterState {
         activityLabel: null,
       })) as unknown as NonNullable<AdapterState["snapshot"]>["slots"],
       activeThreadId,
+      voiceChat: { threadId: activeThreadId, status: "unavailable" },
       agentSource: "pinned",
       actionLayout: [
         { slot: "ACT06", keycapId: "FAST", commandId: "mode.fast" },

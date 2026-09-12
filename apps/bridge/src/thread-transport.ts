@@ -346,6 +346,13 @@ const MAX_PENDING_APPROVALS = 64;
 const SESSION_PAGE_SIZE = 100;
 const MAX_SESSION_PAGES = 5;
 const MAX_SESSIONS = SESSION_PAGE_SIZE * MAX_SESSION_PAGES;
+const UNIX_MILLISECONDS_THRESHOLD = 100_000_000_000;
+
+function codexTimestampMillis(value: number): number {
+  // Codex app-server documents thread timestamps as Unix seconds. Keep this
+  // defensive so a future millisecond response is not multiplied twice.
+  return Math.trunc(value < UNIX_MILLISECONDS_THRESHOLD ? value * 1_000 : value);
+}
 const MAX_CURSOR_LENGTH = 4_096;
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -798,6 +805,8 @@ export class ManagedThreadTransport implements ThreadTransport {
         sortKey: "updated_at",
         sortDirection: "desc",
         archived: false,
+        // Poll indexed metadata only; the default scans and repairs rollouts,
+        // which can outlast a foreground catalog request on large histories.
         useStateDbOnly: true,
       };
       if (cursor !== undefined) params.cursor = cursor;
@@ -828,7 +837,7 @@ export class ManagedThreadTransport implements ThreadTransport {
           cwd: typeof value.cwd === "string" ? value.cwd : null,
           updatedAt:
             typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
-              ? value.updatedAt
+              ? codexTimestampMillis(value.updatedAt)
               : 0,
           status: normalizeStatus(value.status),
         });

@@ -351,6 +351,12 @@ function configuredCommands(snapshot: DesktopMicroSnapshot | null, transport: Tr
   }
   if (transport.connected && transport.initialized && transport.desktopOwnershipVerified) {
     commands.add("createTask");
+    if (
+      snapshot?.capabilities.activeThread === true
+      && snapshot.activeThreadId !== null
+      && snapshot.voiceChat?.threadId === snapshot.activeThreadId
+      && snapshot.voiceChat.status === "available"
+    ) commands.add("startVoiceChat");
   }
   return [...commands];
 }
@@ -464,6 +470,7 @@ export class BridgeStateService {
       timestamp: this.#now(),
       slots: this.#snapshot.slots.map((slot) => ({ ...slot, selected: false })),
       activeThreadId: null,
+      voiceChat: { threadId: null, status: "unavailable" },
       selectedThreadId: null,
       pendingApprovals: [],
       actionAssignments: presentAssignments(this.#lastNative, false),
@@ -652,6 +659,56 @@ export class BridgeStateService {
     return this.#assertCurrentExactTarget(snapshot, threadId, undefined, requireSelected);
   }
 
+  async revalidateActiveVoiceTarget(
+    threadId: string,
+    expectedDesktopIdentity?: DesktopProcessIdentity,
+  ): Promise<ExactTargetAuthorityToken> {
+    const transition = this.#targetSelectionTransition;
+    const state = await this.adapter.refresh(expectedDesktopIdentity);
+    const recoveredTransition = expectedDesktopIdentity === undefined
+      ? (this.#recordTargetAuthorityObservation(state), false)
+      : this.#recordIdentityBoundSelectionObservation(
+          state,
+          transition,
+          threadId,
+          expectedDesktopIdentity,
+        );
+    if (
+      transition !== null
+      && this.#targetSelectionTransition !== transition
+      && !recoveredTransition
+    ) {
+      throw new SnapshotConflictError(
+        "ADAPTER_DEGRADED",
+        "A newer native selection observation superseded this Voice revalidation",
+      );
+    }
+    if (this.#targetSelectionTransition !== null) {
+      throw new SnapshotConflictError(
+        "ADAPTER_DEGRADED",
+        "A native selection transition is still settling; Voice was not started",
+      );
+    }
+    if (
+      state.snapshot === null
+      || state.stale
+      || state.snapshot.capabilities.activeThread !== true
+      || state.snapshot.activeThreadId !== threadId
+      || state.snapshot.voiceChat?.threadId !== threadId
+      || state.snapshot.voiceChat.status !== "available"
+    ) {
+      throw new SnapshotConflictError(
+        "TARGET_MISMATCH",
+        "Codex Voice is not available for the exact active task",
+      );
+    }
+    const authorityEpoch = this.#targetAuthorityEpoch;
+    return this.#targetAuthorityIssuer.issue(() => {
+      if (this.#targetAuthorityEpoch !== authorityEpoch) throw new ExactTargetAuthorityError();
+      this.#assertObservedVoiceTarget(threadId);
+    });
+  }
+
   async revalidateExactTarget(
     threadId: string,
     expectedSlot: number,
@@ -806,6 +863,17 @@ export class BridgeStateService {
     }
   }
 
+  #assertObservedVoiceTarget(threadId: string): void {
+    const snapshot = this.#targetAuthoritySnapshot;
+    if (
+      snapshot === null
+      || snapshot.capabilities.activeThread !== true
+      || snapshot.activeThreadId !== threadId
+      || snapshot.voiceChat?.threadId !== threadId
+      || snapshot.voiceChat.status !== "available"
+    ) throw new ExactTargetAuthorityError();
+  }
+
   #assertCurrentExactTarget(
     snapshot: MicroSnapshot,
     threadId: string,
@@ -888,6 +956,32 @@ export class BridgeStateService {
     );
     if (selectedThread !== undefined) this.observeThreadSettings(selectedThread);
     return this.refresh();
+  }
+
+  async startVoiceChat(expectedSequence: number, expectedThreadId: string): Promise<MicroSnapshot> {
+    const snapshot = this.assertSequence(expectedSequence);
+    if (
+      snapshot.activeThreadId !== expectedThreadId
+      || snapshot.voiceChat?.threadId !== expectedThreadId
+      || snapshot.voiceChat.status !== "available"
+    ) {
+      throw new SnapshotConflictError(
+        "TARGET_MISMATCH",
+        "Codex Voice is not available for the exact active task",
+      );
+    }
+    const state = this.#transportHealth.desktopOwnershipVerified
+      ? await (async () => {
+          const authority = await this.#acquireNativeVoiceAuthority(expectedThreadId);
+          return this.adapter.startVoiceChat(
+            { expectedThreadId },
+            () => this.#consumeNativeMutationAuthority(authority.authority),
+            authority.desktopIdentity,
+          );
+        })()
+      : await this.adapter.startVoiceChat({ expectedThreadId });
+    this.#recordTargetAuthorityObservation(state);
+    return this.#accept(state, await this.transport.health(), this.#skills);
   }
 
   observeThreadSettings(thread: ThreadSnapshot): void {
@@ -1334,6 +1428,29 @@ export class BridgeStateService {
     }
   }
 
+  async #acquireNativeVoiceAuthority(threadId: string): Promise<NativeMutationAuthority> {
+    const acquire = this.transport.acquireNativeMutationAuthority;
+    const consume = this.transport.consumeNativeMutationAuthority;
+    if (acquire === undefined || consume === undefined) {
+      throw new SnapshotConflictError(
+        "ADAPTER_DEGRADED",
+        "The managed Desktop authority provider is unavailable; Voice was not started",
+      );
+    }
+    try {
+      return await acquire.call(
+        this.transport,
+        (desktopIdentity) => this.revalidateActiveVoiceTarget(threadId, desktopIdentity),
+      );
+    } catch (error) {
+      if (error instanceof SnapshotConflictError) throw error;
+      throw new SnapshotConflictError(
+        "ADAPTER_DEGRADED",
+        "Shared Desktop ownership could not be revalidated; Voice was not started",
+      );
+    }
+  }
+
   #consumeNativeMutationAuthority(authority: NativeMutationAuthorityToken): void {
     const consume = this.transport.consumeNativeMutationAuthority;
     if (consume === undefined) {
@@ -1394,6 +1511,7 @@ export class BridgeStateService {
       native: native === null ? null : {
         slots: native.slots,
         activeThreadId: native.activeThreadId,
+        voiceChat: native.voiceChat,
         agentSource: native.agentSource,
         actionLayout: native.actionLayout,
         joystickLayout: native.joystickLayout,
@@ -1450,6 +1568,10 @@ export class BridgeStateService {
         this.#selectedAuthoritative && !approvalBlocksHid,
       ),
       activeThreadId,
+      voiceChat: !stale
+        && native?.voiceChat?.threadId === activeThreadId
+          ? native.voiceChat
+          : { threadId: activeThreadId, status: "unavailable" },
       selectedThreadId,
       pendingApprovals,
       reasoning: effectiveReasoning,
@@ -1479,6 +1601,7 @@ export class BridgeStateService {
       slots: unavailableSlots(),
       actionAssignments: presentAssignments(null),
       activeThreadId: null,
+      voiceChat: { threadId: null, status: "unavailable" },
       selectedThreadId: null,
       pendingApprovals: [],
       reasoning: null,

@@ -1,13 +1,14 @@
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CachedDesktopSignatureVerifier,
   collectDesktopOwnershipEvidence,
   createDesktopOwnershipAttestation,
+  FileDesktopOwnershipVerifier,
   inspectDesktopOwnership,
   verifyOfficialDesktopSignature,
   verifyDesktopProcessIdentityAtWriteBoundary,
@@ -316,6 +317,133 @@ describe("Desktop ownership attestation", () => {
     expect(collectEvidence).toHaveBeenCalledTimes(2);
   });
 
+  it("allows the runtime verifier to renew a valid record for the exact bridge topology", async () => {
+    const paths = await fixture();
+    const prior = evidence(paths.socketPath);
+    await createDesktopOwnershipAttestation({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      installation,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence: async () => prior,
+    });
+    const updated: DesktopOwnershipEvidence = {
+      ...prior,
+      desktopClient: {
+        ...prior.desktopClient,
+        serverEndpointAddress: "b1",
+        serverEndpointGeneration: "22",
+        clientEndpointAddress: "b2",
+        clientEndpointGeneration: "21",
+      },
+    };
+    const collectEvidence = vi.fn(async () => updated);
+    const verifier = new FileDesktopOwnershipVerifier({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      codexBinaryPath: installation.binaryPath,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence,
+      allowSafeRenewal: true,
+      expectedAdditionalClientPid: 401,
+    });
+
+    await expect(verifier.verify()).resolves.toMatchObject({
+      verified: true,
+      renewed: true,
+      code: "verified",
+    });
+    expect(collectEvidence).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns an unavailable inspection when the second renewal probe fails without replacing the attestation", async () => {
+    const paths = await fixture();
+    const prior = evidence(paths.socketPath);
+    await createDesktopOwnershipAttestation({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      installation,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence: async () => prior,
+    });
+    const originalAttestation = await readFile(paths.attestationPath, "utf8");
+    const collectEvidence = vi.fn()
+      .mockResolvedValueOnce(evidence(paths.socketPath, 202))
+      .mockRejectedValueOnce(new Error(`Socket disappeared: ${paths.socketPath}`));
+
+    const inspection = await inspectDesktopOwnership({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      codexBinaryPath: installation.binaryPath,
+      installation,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence,
+      allowSafeRenewal: true,
+    });
+
+    expect(inspection).toMatchObject({
+      verified: false,
+      canCreate: false,
+      code: "topology-unavailable",
+    });
+    expect(inspection.currentEvidence).toBeUndefined();
+    expect(inspection.renewed).toBeUndefined();
+    expect(inspection.summary).not.toContain(paths.socketPath);
+    expect(collectEvidence).toHaveBeenCalledTimes(2);
+    expect(await readFile(paths.attestationPath, "utf8")).toBe(originalAttestation);
+  });
+
+  it("returns an unavailable inspection when the renewal write is refused without replacing the attestation", async () => {
+    const paths = await fixture();
+    const prior = evidence(paths.socketPath);
+    await createDesktopOwnershipAttestation({
+      attestationPath: paths.attestationPath,
+      socketPath: paths.socketPath,
+      installation,
+      platform: "darwin",
+      runCommand: unusedCommand,
+      collectEvidence: async () => prior,
+    });
+    const originalAttestation = await readFile(paths.attestationPath, "utf8");
+    const updated = evidence(paths.socketPath, 202);
+    const collectEvidence = vi.fn()
+      .mockResolvedValueOnce(updated)
+      .mockImplementationOnce(async () => {
+        // Storage stops being private after the initial read, before renewal writes.
+        await chmod(dirname(paths.attestationPath), 0o755);
+        return updated;
+      });
+
+    try {
+      const inspection = await inspectDesktopOwnership({
+        attestationPath: paths.attestationPath,
+        socketPath: paths.socketPath,
+        codexBinaryPath: installation.binaryPath,
+        installation,
+        platform: "darwin",
+        runCommand: unusedCommand,
+        collectEvidence,
+        allowSafeRenewal: true,
+      });
+
+      expect(inspection).toMatchObject({
+        verified: false,
+        canCreate: false,
+        code: "topology-unavailable",
+      });
+      expect(inspection.currentEvidence).toBeUndefined();
+      expect(inspection.renewed).toBeUndefined();
+      expect(collectEvidence).toHaveBeenCalledTimes(2);
+      expect(await readFile(paths.attestationPath, "utf8")).toBe(originalAttestation);
+    } finally {
+      await chmod(dirname(paths.attestationPath), 0o700);
+    }
+  });
+
   it("rejects a world-readable attestation even when its contents match", async () => {
     const paths = await fixture();
     const current = evidence(paths.socketPath);
@@ -342,7 +470,7 @@ describe("Desktop ownership attestation", () => {
     ).resolves.toMatchObject({ verified: false, code: "attestation-unsafe" });
   });
 
-  it("requires a single daemon and Desktop-owned proxy on the same socket", async () => {
+  it("allows only the exact current bridge as the second peer during runtime revalidation", async () => {
     const paths = await fixture();
     const server = createServer();
     await new Promise<void>((resolveListen, rejectListen) => {
@@ -353,7 +481,7 @@ describe("Desktop ownership attestation", () => {
     const desktopExecutable = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT";
     const processTable = [
       `101 1 Mon Jul 20 09:59:00 2026 ${desktopExecutable}`,
-      `201 1 Mon Jul 20 10:00:00 2026 ${installation.binaryPath} app-server daemon run`,
+      `201 1 Mon Jul 20 10:00:00 2026 ${installation.binaryPath} app-server --remote-control --listen unix://`,
       `301 101 Mon Jul 20 10:01:00 2026 ${installation.binaryPath} app-server proxy --sock ${paths.socketPath}`,
       "401 1 Mon Jul 20 10:02:00 2026 /opt/tools/codex app-server",
     ].join("\n");
@@ -379,6 +507,19 @@ describe("Desktop ownership attestation", () => {
         connection: "a1",
         pid: 301,
         generation: "11",
+      }),
+      netstatRow({
+        address: "b1",
+        connection: "b2",
+        pid: 201,
+        generation: "14",
+        path: paths.socketPath,
+      }),
+      netstatRow({
+        address: "b2",
+        connection: "b1",
+        pid: 401,
+        generation: "13",
       }),
     ].join("\n");
     const runCommand: OwnershipCommandRunner = async (executable, arguments_) => {
@@ -408,12 +549,20 @@ describe("Desktop ownership attestation", () => {
     };
 
     try {
+      await expect(collectDesktopOwnershipEvidence({
+        installation,
+        socketPath: paths.socketPath,
+        platform: "darwin",
+        runCommand,
+        verifyDesktopSignature: async () => true,
+      })).rejects.toMatchObject({ code: "topology-ambiguous" });
       const current = await collectDesktopOwnershipEvidence({
         installation,
         socketPath: paths.socketPath,
         platform: "darwin",
         runCommand,
         verifyDesktopSignature: async () => true,
+        expectedAdditionalClientPid: 401,
       });
       expect(current).toMatchObject({
         daemon: { pid: 201 },

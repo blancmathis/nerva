@@ -26,6 +26,7 @@ import {
   MacIcon,
   MicIcon,
   PencilIcon,
+  PhoneIcon,
   PinIcon,
   SlidersIcon,
   SparkIcon,
@@ -38,6 +39,9 @@ interface SessionWorkspaceProps {
   readonly pinned: boolean;
   readonly followMac: boolean;
   readonly targetReady: boolean;
+  readonly voiceChatStatus: "available" | "active" | "unavailable";
+  readonly voiceChatEnabled: boolean;
+  readonly voiceChatDetail: string;
   readonly drawingAvailable: boolean;
   readonly macUnavailable: boolean;
   readonly skills: readonly SkillCapability[];
@@ -62,6 +66,7 @@ interface SessionWorkspaceProps {
   readonly onRunAction: (action: string, value?: string) => void;
   readonly onSendPrompt: () => void;
   readonly onToggleDictation: () => void;
+  readonly onStartVoiceChat: () => void;
   readonly onSetModelReasoning: (preset: Pick<ModelReasoningPreset, "model" | "reasoning">) => Promise<boolean>;
   readonly onApprovalDecision: (approval: PendingApproval, decision: "accept" | "decline") => void;
   readonly onOpenDrawing: (importPhoto: boolean) => void;
@@ -83,6 +88,9 @@ export function SessionWorkspace({
   pinned,
   followMac,
   targetReady,
+  voiceChatStatus,
+  voiceChatEnabled,
+  voiceChatDetail,
   drawingAvailable,
   macUnavailable,
   skills,
@@ -107,6 +115,7 @@ export function SessionWorkspace({
   onRunAction,
   onSendPrompt,
   onToggleDictation,
+  onStartVoiceChat,
   onSetModelReasoning,
   onApprovalDecision,
   onOpenDrawing,
@@ -253,6 +262,20 @@ export function SessionWorkspace({
             : macUnavailable
               ? "Local drawing remains available. Nothing will send until the Mac reconnects."
               : "Native Mac controls are not verified for this task. Local drawing remains available."}</small>
+          <button
+            type="button"
+            className="cp-voice-chat"
+            aria-pressed={voiceChatStatus === "active"}
+            disabled={!voiceChatEnabled || busyAction !== null}
+            title={voiceChatDetail}
+            onClick={onStartVoiceChat}
+          >
+            <span className="cp-voice-chat__icon"><PhoneIcon /></span>
+            <span>
+              <strong>{voiceChatStatus === "active" ? "Voice active" : "Start voice call"}</strong>
+              <small>{voiceChatDetail}</small>
+            </span>
+          </button>
         </div>
       </section>
 

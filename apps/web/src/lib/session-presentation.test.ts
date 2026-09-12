@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@codex-pad/protocol";
 import { emptySlot } from "./model";
-import { buildProductSessions, relativeSessionActivity } from "./session-presentation";
+import {
+  buildProductSessions,
+  normalizeSessionActivityAt,
+  relativeSessionActivity,
+} from "./session-presentation";
 
 const threadId = "019f7ec2-68eb-7183-bb3a-0e67312a8ba1";
 
@@ -35,5 +39,11 @@ describe("session presentation", () => {
   it("uses reliable freshness wording instead of claiming a start time", () => {
     expect(relativeSessionActivity({ status: "working", activityAt: 1_000 }, 121_000)).toBe("Active 2 minutes ago");
     expect(relativeSessionActivity({ status: "awaiting-response", activityAt: null }, 121_000)).toBe("Waiting for your answer");
+  });
+
+  it("normalizes legacy Codex Unix-second activity timestamps without changing milliseconds", () => {
+    expect(normalizeSessionActivityAt(1_787_722_856)).toBe(1_787_722_856_000);
+    expect(normalizeSessionActivityAt(1_787_722_856_000)).toBe(1_787_722_856_000);
+    expect(normalizeSessionActivityAt(null)).toBeNull();
   });
 });

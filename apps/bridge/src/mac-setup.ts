@@ -1130,15 +1130,15 @@ async function removeLegacyAppServerLaunchAgent(input: {
   readonly homeDirectory: string;
   readonly codexBinaryPath: string;
   readonly uid: number;
+  readonly filesystemUid: number;
   readonly command: CommandRunner;
 }): Promise<boolean> {
   const path = legacyAppServerLaunchAgentPath(input.homeDirectory);
   const domain = `gui/${input.uid}`;
-  const service = `${domain}/${LEGACY_APP_SERVER_LAUNCH_AGENT_LABEL}`;
-  await input.command("/bin/launchctl", ["bootout", service], 10_000);
-  if (!(await exists(path))) return false;
-  const metadata = await lstat(path);
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+  const metadata = await lstatIfPresent(path);
+  if (metadata === undefined) return false;
+  if (!metadata.isFile() || metadata.isSymbolicLink()
+    || metadata.nlink !== 1 || metadata.uid !== input.filesystemUid) {
     throw new Error(`Refusing to remove unsafe legacy app-server LaunchAgent path: ${path}`);
   }
   const contents = await readFile(path, "utf8");
@@ -1150,6 +1150,19 @@ async function removeLegacyAppServerLaunchAgent(input: {
     || !contents.includes(`<string>unix://${xmlEscape(expectedSocket)}</string>`)
   ) {
     throw new Error(`Refusing to remove an unrecognized app-server LaunchAgent: ${path}`);
+  }
+  // A matching label alone is not ownership. Stop only after the retained
+  // plist has been recognized, then ensure it was not replaced during bootout.
+  const bootout = await input.command("/bin/launchctl", ["bootout", domain, path], 10_000);
+  if (bootout.exitCode !== 0 && !launchAgentWasNotLoaded(bootout)) {
+    throw new Error(`Could not stop the exact legacy app-server LaunchAgent: ${bootout.stderr.trim() || bootout.stdout.trim() || "command failed"}`);
+  }
+  const current = await lstatIfPresent(path);
+  if (current === undefined || !current.isFile() || current.isSymbolicLink()
+    || current.nlink !== 1 || current.uid !== input.filesystemUid
+    || current.dev !== metadata.dev || current.ino !== metadata.ino
+    || await readFile(path, "utf8") !== contents) {
+    throw new Error("The legacy app-server LaunchAgent changed during removal; the file was retained for manual inspection.");
   }
   await rm(path);
   return true;
@@ -1196,6 +1209,48 @@ async function configureManagedDaemon(input: {
   }
   if (!isRecord(parsed) || parsed.status !== "running") {
     throw new Error("Managed app-server verification did not report a running daemon.");
+  }
+}
+
+async function clearConflictingDesktopCliOverride(input: {
+  readonly homeDirectory: string;
+  readonly command: CommandRunner;
+}): Promise<void> {
+  const current = await input.command(
+    "/bin/launchctl",
+    ["getenv", "CODEX_CLI_PATH"],
+    10_000,
+  );
+  const configured = current.exitCode === 0 ? current.stdout.trim() : "";
+  if (!configured) return;
+  const managedStandalone = join(
+    input.homeDirectory,
+    ".codex",
+    "packages",
+    "standalone",
+    "current",
+    "codex",
+  );
+  if (resolve(configured) !== resolve(managedStandalone)) {
+    throw new Error(
+      "A custom CODEX_CLI_PATH overrides Codex Desktop's local-daemon transport. Unset or reconcile that custom override before enabling Nerva mutations.",
+    );
+  }
+  const unset = await input.command(
+    "/bin/launchctl",
+    ["unsetenv", "CODEX_CLI_PATH"],
+    10_000,
+  );
+  if (unset.exitCode !== 0) {
+    throw new Error(`Could not remove the conflicting managed standalone CODEX_CLI_PATH: ${unset.stderr.trim() || unset.stdout.trim() || "command failed"}`);
+  }
+  const verified = await input.command(
+    "/bin/launchctl",
+    ["getenv", "CODEX_CLI_PATH"],
+    10_000,
+  );
+  if (verified.exitCode === 0 && verified.stdout.trim()) {
+    throw new Error("CODEX_CLI_PATH is still present after the managed override was removed.");
   }
 }
 
@@ -1671,10 +1726,15 @@ export async function setupMac(dependencies: MacSetupDependencies = {}): Promise
         homeDirectory: input.homeDirectory,
         codexBinaryPath: input.codexBinaryPath,
         uid: input.uid,
+        filesystemUid: input.filesystemUid,
         command: input.command,
       });
       await configureManagedDaemon({
         codexBinaryPath: input.codexBinaryPath,
+        command: input.command,
+      });
+      await clearConflictingDesktopCliOverride({
+        homeDirectory: input.homeDirectory,
         command: input.command,
       });
       const desktopDaemonFlag = await input.command(

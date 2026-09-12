@@ -636,6 +636,87 @@ describe("DrawingStudio routing", () => {
     await waitFor(() => expect(loadPendingDrawingDelivery(reloadTarget.threadId)).toBeNull());
   }, 10_000);
 
+  it.each([
+    ["send", "unmount"],
+    ["reconciliation", "unmount"],
+    ["send", "reopen"],
+    ["reconciliation", "reopen"],
+  ] as const)(
+    "keeps the new studio ready when a previous %s completes after %s",
+    async (completionSource, lifecycle) => {
+      let completeSend!: (result: { ok: boolean }) => void;
+      const sendResult = new Promise<{ ok: boolean }>((resolve) => { completeSend = resolve; });
+      const send = vi.fn(() => completionSource === "send"
+        ? sendResult
+        : Promise.resolve({ ok: false, deliveryUnknown: true }));
+      const onClose = vi.fn();
+      const firstView = render(
+        <DrawingStudio open target={firstTarget} connected onClose={onClose} onSend={send} />,
+      );
+      await screen.findByText("Apple Pencil ready");
+      const canvas = screen.getByRole("img", { name: /Sketch canvas/ });
+      for (const type of ["pointerdown", "pointerup"]) {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          pointerId: { value: 97 }, pointerType: { value: "pen" },
+          clientX: { value: type === "pointerdown" ? 180 : 260 },
+          clientY: { value: 180 }, pressure: { value: 0.6 },
+          tiltX: { value: 0 }, tiltY: { value: 0 }, button: { value: 0 },
+          getCoalescedEvents: { value: () => [] },
+        });
+        fireEvent(canvas, event);
+      }
+      sendWholeBoard();
+      await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+      let pendingView = firstView;
+      let finish = () => completeSend({ ok: true });
+      if (completionSource === "reconciliation") {
+        firstView.unmount();
+        let completeReconciliation!: (result: { state: "final"; ok: boolean }) => void;
+        const result = new Promise<{ state: "final"; ok: boolean }>((resolve) => {
+          completeReconciliation = resolve;
+        });
+        const reconcile = vi.fn(() => result);
+        const restoredView = render(
+          <DrawingStudio
+            open target={firstTarget} connected onClose={onClose} onSend={vi.fn()}
+            onReconcileDelivery={reconcile}
+          />,
+        );
+        await waitFor(() => expect(reconcile).toHaveBeenCalledTimes(1));
+        pendingView = restoredView;
+        finish = () => completeReconciliation({ state: "final", ok: true });
+      }
+
+      const nextTarget = {
+        ...firstTarget,
+        threadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba9",
+        title: "Newly opened task",
+      };
+      const nextStudio = <DrawingStudio open target={nextTarget} connected onClose={onClose} onSend={vi.fn()} />;
+      if (lifecycle === "unmount") {
+        pendingView.unmount();
+        render(nextStudio);
+      } else {
+        pendingView.rerender(
+          <DrawingStudio open={false} target={firstTarget} connected onClose={onClose} onSend={vi.fn()} />,
+        );
+        pendingView.rerender(nextStudio);
+      }
+      await screen.findByText("Newly opened task");
+      await waitFor(() => expect(screen.getByRole("img", { name: /Sketch canvas/ }))
+        .toHaveAttribute("aria-busy", "false"));
+      finish();
+      await waitFor(() => expect(loadPendingDrawingDelivery(firstTarget.threadId)).toBeNull());
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByText("Newly opened task")).toBeVisible();
+      expect(screen.getByRole("img", { name: /Sketch canvas/ })).toHaveAttribute("aria-busy", "false");
+      expect(screen.getByRole("button", { name: "Pen" })).toBeEnabled();
+    },
+  );
+
   it("contains focus in confirmation sheets and restores the main dialog trigger", async () => {
     const onClose = vi.fn();
     const opener = document.createElement("button");

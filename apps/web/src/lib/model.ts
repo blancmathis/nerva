@@ -104,6 +104,11 @@ export interface BridgeCapabilities {
   readonly libraries: readonly LibraryCapability[];
 }
 
+export interface VoiceChatState {
+  readonly threadId: string | null;
+  readonly status: "available" | "active" | "unavailable";
+}
+
 export interface BridgeSnapshot {
   readonly bridgeInstanceId: string;
   readonly bridgeVersion: string | null;
@@ -118,6 +123,7 @@ export interface BridgeSnapshot {
   readonly slots: readonly AgentSlot[];
   /** Exact task currently observed in Codex Desktop; never grants mutation authority. */
   readonly activeThreadKey: string | null;
+  readonly voiceChat: VoiceChatState;
   readonly selectedSlotId: string | null;
   readonly selectedThreadKey: string | null;
   readonly pendingApprovals: readonly PendingApproval[];

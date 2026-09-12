@@ -462,13 +462,18 @@ export async function checkpointAndFinishDrawingBoard(
       transaction.abort();
       throw new Error("The retained drawing export belongs to a different delivery.");
     }
-    const boardId = active?.boardId ?? (commandId && pending?.commandId === commandId ? pending.boardId : undefined);
-    const current = boardId ? boards.find((board) => board.boardId === boardId && board.threadId === normalized) : undefined;
-    const alreadyCheckpointed = boards.some((board) => board.threadId === normalized
+    const checkpointedBoard = boards.find((board) => board.threadId === normalized
       && board.checkpoints.some((candidate) => candidate.checkpointId === checkpoint.checkpointId));
-    if (!current && !alreadyCheckpointed) {
+    // A late acknowledgement belongs to its retained export, even if another
+    // working copy has become active. Repeated acknowledgements keep the
+    // already checkpointed board as their authority after export cleanup.
+    const boardId = commandId
+      ? pending?.boardId ?? checkpointedBoard?.boardId
+      : active?.boardId;
+    const current = boardId ? boards.find((board) => board.boardId === boardId && board.threadId === normalized) : undefined;
+    if (!current && !checkpointedBoard) {
       transaction.abort();
-      throw new Error("The active drawing board is unavailable.");
+      throw new Error("The delivered drawing board is unavailable.");
     }
     if (current && !current.checkpoints.some((candidate) => candidate.checkpointId === checkpoint.checkpointId)) {
       boardStore.put({
@@ -478,7 +483,7 @@ export async function checkpointAndFinishDrawingBoard(
         updatedAt: checkpoint.createdAt,
       });
     }
-    activeStore.delete(normalized);
+    if (active?.boardId === boardId) activeStore.delete(normalized);
     if (commandId && (!pending || pending.commandId === commandId)) pendingStore.delete(normalized);
     await transactionDone(transaction);
   } finally {

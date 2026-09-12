@@ -110,6 +110,7 @@ function snapshot(
       },
     },
     activeThreadId: entries[0]?.threadId ?? null,
+    voiceChat: { threadId: entries[0]?.threadId ?? null, status: "unavailable" },
     selectedThreadId: entries[0]?.threadId ?? null,
     pendingApprovals: approvalThreadId ? [{
       requestId: "approval-1",

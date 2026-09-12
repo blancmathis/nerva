@@ -43,6 +43,7 @@ function deterministicAdapterState(): AdapterState {
     snapshot: {
       slots,
       activeThreadId: REAL_BRIDGE_THREAD_ID,
+      voiceChat: { threadId: REAL_BRIDGE_THREAD_ID, status: "unavailable" },
       agentSource: "pinned",
       actionLayout: [
         { slot: "ACT06", keycapId: "FAST", commandId: "mode.fast" },
@@ -62,6 +63,7 @@ function deterministicAdapterState(): AdapterState {
       theme: "dark",
       capabilities: {
         activeThread: true,
+        voiceChat: false,
         activity: true,
         agentSource: true,
         composerAttachment: true,

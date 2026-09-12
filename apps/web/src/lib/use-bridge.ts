@@ -215,6 +215,7 @@ export interface BridgeController {
   }) => Promise<readonly ManagedSite[]>;
   readonly removeManagedSite: (threadId: string, siteId: string) => Promise<void>;
   readonly refreshSessions: () => Promise<void>;
+  readonly retryConnection: () => Promise<boolean>;
   readonly refreshCodexUsage: () => Promise<void>;
   readonly refreshRuntimeDiagnostics: () => Promise<void>;
   readonly refreshContextRoomStatus: () => Promise<void>;
@@ -746,6 +747,18 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       void refreshCapabilities();
       void refreshNativeSessions();
     }, 2_000);
+    const allSessionsPoll = window.setInterval(() => {
+      if (
+        !active
+        || !allSessionsEnabledRef.current
+        || !shouldPollNativeSessions(
+          connectedRef.current,
+          document.visibilityState,
+          navigator.onLine !== false,
+        )
+      ) return;
+      void refreshAllSessions();
+    }, 10_000);
     const codexUsagePoll = window.setInterval(() => {
       if (!active || !shouldPollNativeSessions(
         connectedRef.current,
@@ -786,11 +799,12 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       window.removeEventListener("online", onResume);
       window.removeEventListener("offline", onOffline);
       window.clearInterval(nativeSessionsPoll);
+      window.clearInterval(allSessionsPoll);
       window.clearInterval(codexUsagePoll);
       window.clearInterval(runtimeDiagnosticsPoll);
       window.clearInterval(contextRoomPoll);
     };
-  }, [clearConnectionSecondaryData, finishPending, reconcilePending, refreshCapabilities, refreshCodexUsage, refreshContextRoomStatus, refreshDevices, refreshNativeSessions, refreshProductState, refreshPushStatus, refreshRuntimeDiagnostics, refreshSecondary]);
+  }, [clearConnectionSecondaryData, finishPending, reconcilePending, refreshAllSessions, refreshCapabilities, refreshCodexUsage, refreshContextRoomStatus, refreshDevices, refreshNativeSessions, refreshProductState, refreshPushStatus, refreshRuntimeDiagnostics, refreshSecondary]);
 
   const pair = useCallback(async (nonce: string, deviceName: string) => {
     const client = clientRef.current;
@@ -1029,7 +1043,8 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       await client.removeManagedSite(threadId, siteId);
       await refreshSecondary();
     }, [refreshSecondary]),
-    refreshSessions: refreshSecondary,
+    refreshSessions: refreshAllSessions,
+    retryConnection: useCallback(async () => clientRef.current?.retryConnection() ?? false, []),
     refreshCodexUsage,
     refreshRuntimeDiagnostics,
     refreshContextRoomStatus,

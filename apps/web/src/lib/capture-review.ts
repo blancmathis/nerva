@@ -84,7 +84,8 @@ export async function useCaptureInboxInReview(
 
   const notes = captures.filter(({ item }) => item.kind === "note").map(({ item }) => item);
   const imageCaptures = captures.filter(({ item }) => item.kind !== "note");
-  let draft = await loadReviewDraft(threadId) ?? createReviewDraft({
+  const expectedDraft = await loadReviewDraft(threadId);
+  let draft = expectedDraft ?? createReviewDraft({
     id: reviewId("review"),
     targetThreadId: threadId,
   });
@@ -125,7 +126,7 @@ export async function useCaptureInboxInReview(
   if (draft === originalDraft && notes.length === 0) {
     return { threadId, itemCount: uniqueIds.length, imageCount: imageCaptures.length, noteCount: notes.length };
   }
-  await saveReviewDraftWithBlobChanges(draft, blobWrites);
+  await saveReviewDraftWithBlobChanges(draft, blobWrites, [], expectedDraft);
   return {
     threadId,
     itemCount: uniqueIds.length,

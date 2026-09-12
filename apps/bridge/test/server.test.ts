@@ -2,6 +2,7 @@ import { connect as connectTcp, createServer } from "node:net";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import WebSocket from "ws";
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +20,7 @@ import {
   type RuntimeIdentity,
 } from "@codex-pad/protocol";
 import { CredentialStore, WEB_SOCKET_PROTOCOL } from "../src/auth.js";
+import { withPrivateFileLock } from "../src/atomic-file.js";
 import { PairingStore, pairingNonceFromUrl } from "../src/pairing.js";
 import { defaultDataPaths } from "../src/paths.js";
 import { startBridge, WebSocketAdmissionGate, type BridgeHandle } from "../src/server.js";
@@ -98,6 +100,7 @@ function adapterState(): AdapterState {
     snapshot: {
       slots,
       activeThreadId: THREAD_ID,
+      voiceChat: { threadId: THREAD_ID, status: "unavailable" },
       agentSource: "pinned",
       actionLayout: ["ACT06", "ACT07", "ACT08", "ACT09", "ACT10_ACT11", "ACT12"].map((slot, index) => ({
         slot,
@@ -1457,6 +1460,149 @@ describe("bridge routes", () => {
     expect(rejectedStatus.statusCode).toBe(200);
     expect(rejectedStatus.json().data.status).toBe("unknown");
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it.each(["bridge", "external"] as const)("rejects a command revoked by %s while its admitted body is still uploading", async (revocation) => {
+    const { handle, paths, authorization, deviceId, execute, transport, attachImageToComposer, logger } = await setup();
+    const credentialStore = new CredentialStore({ paths });
+    const recoveryDevice = await credentialStore.issue("Recovery test iPad");
+    const recoveryAuthorization = `Bearer ${recoveryDevice.bearerToken}`;
+    const command = {
+      type: "selectAgent" as const,
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8c11",
+      expectedBridgeInstanceId: handle.state.current().bridgeInstanceId,
+      expectedSequence: handle.state.current().sequence,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+    };
+    const body = new PassThrough();
+    const pending = handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: {
+        host: "pad.example.test",
+        origin: "https://pad.example.test",
+        authorization,
+        "content-type": "application/json",
+        "x-codex-pad-command-id": command.commandId,
+      },
+      payload: body,
+    });
+    try {
+      // The injection reader subscribes only once Fastify has completed
+      // onRequest admission and starts consuming the unfinished body.
+      await vi.waitFor(() => expect(body.listenerCount("readable")).toBeGreaterThan(0));
+      const revoke = revocation === "bridge"
+        ? handle.revokeDevice(deviceId)
+        : credentialStore.revoke(deviceId);
+      await expect(revoke).resolves.toBe(true);
+      body.end(JSON.stringify({ command }));
+      const response = await pending;
+      expect.soft(response.statusCode).toBe(401);
+      expect.soft(response.json()).toMatchObject({ ok: false, error: { code: "UNAUTHENTICATED" } });
+      expect.soft(execute).not.toHaveBeenCalled();
+      expect.soft(transport.acquireNativeMutationAuthority).not.toHaveBeenCalled();
+      expect.soft(attachImageToComposer).not.toHaveBeenCalled();
+      const status = await handle.app.inject({
+        method: "GET",
+        url: `/api/commands/${command.commandId}`,
+        headers: { host: "pad.example.test", authorization: recoveryAuthorization },
+      });
+      expect.soft(status.json().data.status).toBe("unknown");
+
+      // Rejection must release admission capacity without reserving the ID.
+      const recovered = await handle.app.inject({
+        method: "POST",
+        url: "/api/command",
+        headers: {
+          host: "pad.example.test",
+          origin: "https://pad.example.test",
+          authorization: recoveryAuthorization,
+          "x-codex-pad-command-id": command.commandId,
+        },
+        payload: { command },
+      });
+      expect(recovered.statusCode).toBe(200);
+      expect(recovered.json().data).toMatchObject({ status: "succeeded", disposition: "accepted" });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
+    } finally {
+      if (!body.writableEnded) body.end(JSON.stringify({ command }));
+      await pending;
+      body.destroy();
+    }
+  });
+
+  it("does not dispatch a command revoked while its ledger reservation waits for durability", async () => {
+    const { handle, paths, authorization, deviceId, execute, transport, attachImageToComposer, logger } = await setup();
+    const credentialStore = new CredentialStore({ paths });
+    const recoveryDevice = await credentialStore.issue("Recovery test iPad");
+    const recoveryAuthorization = `Bearer ${recoveryDevice.bearerToken}`;
+    const command = {
+      type: "selectAgent" as const,
+      commandId: "019f7ec2-68eb-7183-bb3a-0e67312a8c12",
+      expectedBridgeInstanceId: handle.state.current().bridgeInstanceId,
+      expectedSequence: handle.state.current().sequence,
+      expectedThreadId: THREAD_ID,
+      slot: 0,
+    };
+    let markPersistenceLocked!: () => void;
+    let releasePersistence!: () => void;
+    const persistenceLocked = new Promise<void>((resolve) => { markPersistenceLocked = resolve; });
+    const persistenceReleased = new Promise<void>((resolve) => { releasePersistence = resolve; });
+    const persistenceLock = withPrivateFileLock(paths.idempotency, async () => {
+      markPersistenceLocked();
+      await persistenceReleased;
+    });
+    await persistenceLocked;
+    const pending = handle.app.inject({
+      method: "POST",
+      url: "/api/command",
+      headers: {
+        host: "pad.example.test",
+        origin: "https://pad.example.test",
+        authorization,
+        "x-codex-pad-command-id": command.commandId,
+      },
+      payload: { command },
+    });
+    try {
+      await vi.waitFor(async () => {
+        const status = await handle.app.inject({
+          method: "GET",
+          url: `/api/commands/${command.commandId}`,
+          headers: { host: "pad.example.test", authorization: recoveryAuthorization },
+        });
+        expect(status.json().data.status).toBe("inFlight");
+      });
+      expect(execute).not.toHaveBeenCalled();
+      await expect(credentialStore.revoke(deviceId)).resolves.toBe(true);
+      releasePersistence();
+      await persistenceLock;
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+      expect.soft(response.json().data).toMatchObject({
+        status: "failed",
+        error: { code: "UNAUTHENTICATED", retryable: false },
+      });
+      expect.soft(execute).not.toHaveBeenCalled();
+      expect.soft(transport.acquireNativeMutationAuthority).not.toHaveBeenCalled();
+      expect.soft(attachImageToComposer).not.toHaveBeenCalled();
+      const status = await handle.app.inject({
+        method: "GET",
+        url: `/api/commands/${command.commandId}`,
+        headers: { host: "pad.example.test", authorization: recoveryAuthorization },
+      });
+      expect(status.json().data).toMatchObject({
+        status: "failed",
+        error: { code: "UNAUTHENTICATED", retryable: false },
+      });
+      expect(logger.error).not.toHaveBeenCalled();
+    } finally {
+      releasePersistence();
+      await persistenceLock;
+      await pending;
+    }
   });
 
   it("admits one command before parsing and leaves concurrent IDs safely reconcilable", async () => {

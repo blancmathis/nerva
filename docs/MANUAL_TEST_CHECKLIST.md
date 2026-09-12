@@ -18,24 +18,29 @@ Tester:
 Evidence location:
 ```
 
-## Latest recorded automated run
+## Current automated and runtime evidence
 
-```text
-Date/time: 31 July 2026, Europe/Paris
-Nerva product commit: bb45368
-Mac / macOS: Apple Silicon arm64 / macOS 26.5.1 build 25F80
-Codex Desktop / bundled Codex: 26.727.40816 build 6067 / codex-cli 0.146.0-alpha.9.2
-Node / npm / Tailscale: 22.23.0 / 10.9.8 / 1.98.9
-iPad / iPadOS / Pencil: not recorded in this run
-iPhone / iOS: not recorded in this run
-Evidence: local working-tree validation plus a clean local clone of the exact non-ignored source snapshot; no hosted CI or physical-device proof for these changes
-```
+The dated [implementation state](product/CURRENT_STATE.md#dated-validation-7-september-2026) owns the automated results. The release candidate must retain its exact source revision, complete validation log and installed bridge/web build identity. Earlier clean-clone or hosted-CI results do not validate later source edits.
 
-Current result: 1,030 unit tests plus 19/19 probe-safety tests, build, a maximum observed 402.15 kB largest JavaScript chunk, 343 E2E passes with 17 explicit profile exclusions and no retry, six real-bridge profiles, 10 consecutive WebKit iPhone Site QA runs, 10 consecutive isolated real-bridge runs, Axe coverage, 39 regenerated current public screenshots, the 463-file working-tree release audit, documentation check, Context Room doctor and zero dependency vulnerabilities. The exact non-ignored source snapshot was reproduced from a clean local clone with a 452-file release audit and a clean final tree. GitHub Actions run `30661070563` reproduced the full required `Node.js 22` gate and the read-only macOS setup gate on product commit `bb45368`. Physical iPad/iPhone/Pencil checks remain deliberately unchecked. Historical evidence remains recorded in [`product/CURRENT_STATE.md`](product/CURRENT_STATE.md).
+The 7 September production preparation restored the private managed daemon and both schema caches. The Mac HTTPS/WSS path works. Desktop CDP and shared ownership still need a coordinated relaunch and fresh verification; `doctor --strict-native` remains nonzero. No physical item below is checked by that preparation.
 
-Runtime result on 31 July 2026: default doctor and `setup:check` both report **Ready with limitations** and return success. Tailscale is running, with the Mac and previously paired iPad online. Nerva observes Desktop-bundled `0.146.0-alpha.9.2`, standalone `0.146.0`, and three unrelated stdio writers. The managed socket does not answer, no exact current schema attestation or Desktop ownership proof exists, and the native Micro adapter is degraded. With explicit user authorization, only the Nerva LaunchAgent was restarted; its PID changed while the observed Codex app-server PID set did not. Local bridge health returns HTTP 200, and the private HTTPS Serve route and same-origin WSS endpoint are reachable.
+On the later 7 September inspection, the Mac identified the paired network device as `iPad14,8` running iPadOS `26.6`, and Tailscale showed the iPad online. Safari Apps and Devices Inspection did not expose its web content. Device metadata and network presence do not check any physical acceptance item. Remote Safari inspection requires Web Inspector on the iPad and an eligible paired connection; see [Apple WebKit instructions](https://webkit.org/web-inspector/enabling-web-inspector/).
 
-The restarted bridge serves a private immutable web snapshot whose `app-meta.json` matches its compiled identity. A temporary-device protocol simulation and a fresh headless WebKit iPad PWA through the real private Tailscale origin both passed pairing, authenticated snapshot/ticket/WebSocket delivery, online rendering, revocation and post-revocation denial. The Mac-to-iPad Tailscale path remained direct across repeated samples. No Codex process was restarted, no writer was stopped, and no setup mutation was performed. `npm run doctor -- --strict-native` remains nonzero. Physical pairing gestures, Pencil, microphone, camera, push, multi-image input and native controls were not verified in this run.
+## Guided physical acceptance
+
+First complete the native reconnection procedure in [Mac setup](SETUP_MAC.md#4-launch-codex-with-loopback-cdp). Wait for active turns, retain unsent composer text, and close Desktop deliberately. After reopening, the maintainer verifies native readiness and exact ownership before any test that sends or attaches content.
+
+Record the evidence fields above, then follow this order. Use a disposable test task and harmless content for all sends. Record pass/fail and the observed result for each item. This short route exercises the principal journeys; the detailed sections below remain the full release gate.
+
+1. **Open and reconnect — A:** open the installed Nerva icon, rotate the iPad, close/reopen it and confirm the credential persists. For first installation, record the Safari/QR/Home Screen sequence and elapsed time.
+2. **Target and control — B/D:** choose two distinct test tasks, verify the Mac opens the exact chosen task, switch tasks on the Mac, and test Following Mac and Staying here. Exercise dictation, deliberate Send, model/reasoning and native Voice where available. A disabled promised capability is a failed gate, not a pass.
+3. **Pencil and drawing — E:** draw with the palm resting on the screen, pan/zoom with two fingers, move content, undo/redo, rotate, Keep and reopen. Send one harmless drawing and confirm it appears once in the exact Mac composer without submitting a message.
+4. **Local capture and recovery — A/E/F:** save a note and photo, disable Tailscale on the iPad, create another local note, background/reopen Nerva, then reconnect. Every draft must remain available and nothing may send automatically. Reuse one capture in the test task explicitly.
+5. **Live site — G:** open a harmless page from the test task, tap/scroll/type, annotate and send once. Record a short Site QA flow, review the destination and payload, and deliberately send it to the same test task.
+6. **Notifications and suspension — H:** enable notifications from the installed app, suspend it, and trigger a test-task approval, question and pinned completion. Record the notification delay, duplicate count and exact destination when tapped; also test notification opt-out.
+7. **Persistence and replacement — A/E/H:** reload an updated PWA with saved drafts, restart the Mac when convenient, and verify the private route and native controls recover. Pair a replacement device and retrieve Saved Drawings if that release promise is retained. Without the hardware or an observation, record “not tested”.
+
+A failure in targeting, retained data, duplicate delivery, authentication, or startup blocks the stable release. Other missing physical evidence must stay explicit; do not label a supervised pre-alpha pilot as a hardware-validated stable release.
 
 ## A. Mac setup and pairing
 
@@ -51,6 +56,8 @@ The restarted bridge serves a private immutable web snapshot whose `app-meta.jso
 - [ ] If iPadOS drops the invitation during installation, the internal Camera/Photo scanner accepts the same still-valid QR without typing.
 - [ ] The QR invitation is five minutes maximum, one-use, exact-origin and rejected after redemption or expiration.
 - [ ] Later Home Screen launches reuse the persistent credential and do not require a daily QR.
+- [ ] With an already paired PWA and no last-good snapshot, disable Tailscale on the Mac and reopen Nerva. The initial wait ends within ten seconds, **Can't reach your Mac** names Mac/iPad Tailscale checks, **Try again** remains reachable on phone, and restoring Tailscale returns Home without a new QR.
+- [ ] Block the generated application JavaScript while the cached HTML shell is available. Nerva retains a styled static connection hint rather than an empty or black page.
 - [ ] `npm run pair` supports an already-installed but unpaired app.
 - [ ] Revoking a device in Settings immediately closes its active connection and rejects the old bearer.
 - [ ] A second replacement iPad can pair before the first is revoked; the old device is revoked only after the replacement succeeds.
@@ -64,7 +71,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] `Unpinned Sessions` contains every and only non-pinned session, supports search and exposes recent/project organization.
 - [ ] Unpinning returns a session to the drawer without archiving, deleting, stopping or otherwise mutating it.
 - [ ] `Open current Mac session` is one tap from Home and does not pin automatically.
-- [ ] In iPad landscape the Home heading, `Codex usage`, `Open current Mac session` and Settings fit in one 52 CSS pixel band. In portrait the heading becomes a compact label and the three controls remain in the same band beside the floating brand; on phone the action band moves below the brand/title line without stacking the two action cards. Both cards keep equal height, remaining usage stays readable and Refresh retains a 44 CSS pixel target.
+- [ ] In iPad landscape, the Home heading and `Codex usage` remain clear of the floating brand. In portrait the heading stays compact and usage remains legible. On phone, brand and usage share the top band. Conversations, current Mac session and Settings remain in the bottom dock, clear of the safe area, with at least 44 CSS pixel targets; usage Refresh and status filters also retain 44 CSS pixel targets.
 - [ ] Rich cards show only reliable name, project/repo, worktree, branch, colored status, freshness/elapsed and at most two truthful activity lines; unknown information is omitted.
 - [ ] Compact density remains legible and all primary touch targets are at least 44 CSS pixels.
 - [ ] A short tap opens the exact session; there is no `Arrange` / `Done arranging` mode, and the compact `New section` action remains available in the Home control bar.
@@ -111,6 +118,8 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] After one successful `/api/sessions` response, force the managed app-server into reconnect backoff and open a non-native session from that catalog: the Mac deep link still opens without another catalog request, while an arbitrary thread UUID is rejected.
 - [ ] After a definitive iPad `openSession` rejection, change the Mac task twice, including back to the failed target: with `Following Mac` active, the iPad follows both changes and no stale iPad-origin marker suppresses the second one.
 - [ ] Native Micro actions are enabled only for an exact fresh verified native-slot binding; a pinned/catalog session outside the six never inherits them.
+- [ ] Open one Voice-compatible task and one incompatible text task. The compatible exact active task exposes `Start voice call`; the incompatible task keeps the same button disabled with a clear explanation. Neither state is inferred from task age.
+- [ ] Tap `Start voice call` once on the compatible task. Codex Desktop starts its native Voice surface on the Mac, Nerva never asks for iPad microphone permission, and a second simultaneous Voice chat is not started. Do not count the visible button or automated click-path test as physical microphone/audio proof.
 - [ ] The first `Dictation` tap sends only the native press for the exact selected task, the Mac counter advances beyond `0:00`, and the iPad control becomes `Stop Dictation`.
 - [ ] `Stop Dictation` sends only the matching native release and Codex Desktop finishes transcription through the microphone selected on the Mac.
 - [ ] `Send prompt` stays compact but at least 44 px tall, and invokes only the exact current `ACT12` / `CODEX` / `composer.submit` binding for the selected task. Codex Desktop alone chooses Queue or Steer from its Settings; the iPad shows neither invented state.
@@ -140,7 +149,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 
 - [ ] Open `Capture Inbox` from Home with the Mac online, then repeat with Tailscale/bridge unavailable. Photo, Scan, Sketch, File and Note remain available in both cases; no Voice or microphone action appears.
 - [ ] Save one non-sensitive item of each type. Reload the installed PWA and confirm all five remain on this iPad with the correct preview and `Available in every Session` state. No card shows a Session, destination or prepared marker.
-- [ ] In `Sketch`, keep `Pencil only`, rest the palm, draw with Pencil and move/zoom with exactly two fingers. Confirm one finger/palm does not draw or cancel the Pencil stroke. Repeat once with `Finger + Pencil`.
+- [ ] On a phone, open a new `Sketch` in portrait and landscape and draw immediately with one finger. On a larger tablet, keep the default `Pencil only`, rest the palm, draw with Pencil and move/zoom with exactly two fingers. Confirm one finger/palm does not draw or cancel the Pencil stroke. Repeat once with `Finger + Pencil`.
 - [ ] From Home, tap the visible trash control on one capture. Cancel once and confirm it remains; confirm once and verify only that local original disappears. Then use `Select` on several items and confirm the explicit `Delete` button performs the same protected operation in batch. No Session picker, Assign, Route or Prepare action exists.
 - [ ] Open one exact Session, tap `Capture Inbox` in `Choose an input`, and confirm the compact context bar shows this Session. Select compatible images/notes and tap `Use in session`. The exact Session Review opens locally with every chosen item, but the Mac receives nothing until Review's separate confirmation.
 - [ ] In that same exact Session, select one to four file-only captures and tap `Attach to composer`. Confirm one native paste adds every uniquely named file to that exact Mac composer, preserves the original Inbox items, adds no text, and does not Queue, Steer, or submit. Verify the button remains unavailable when the Mac target is not exact, one file exceeds 8 MiB, or the batch exceeds 16 MiB.
@@ -162,7 +171,7 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] Pan far past the old 1440 × 900 page in every direction, including negative coordinates. No page edge appears, distant elements remain recoverable with `Fit board`, and the contextual minimap recenters then disappears after inactivity.
 - [ ] Restore a marked draft, confirm `Clear`, then import a Camera/Photo Library/Files image. The imported image is the only remaining scene element and no cleared mark reappears.
 - [ ] Apple Pencil pressure and tilt are reflected when available; pressureless input falls back safely.
-- [ ] In `Pencil only`, one finger or a resting palm neither draws nor moves the canvas; two deliberate fingers pan/pinch, and lifting either finger stops navigation.
+- [ ] A new Draw canvas on a phone accepts one-finger ink in portrait and landscape. Reopening a draft preserves the explicit input choice. In `Pencil only`, one finger or a resting palm neither draws nor moves the canvas; two deliberate fingers pan/pinch, and lifting either finger stops navigation.
 - [ ] Palm contacts received during an active Pencil stroke never become a delayed gesture after the Pencil lifts.
 - [ ] Fast strokes remain continuous at the supported display cadence and pointer cancellation does not leave a stuck gesture.
 - [ ] Losing Pencil pointer capture commits the visible stroke and enables `Send`; it does not leave only an uncommitted preview.
@@ -280,11 +289,10 @@ Choose one and explain the limiting evidence:
 - [ ] **Blocked** — an exact installation or security invariant failed.
 
 ```text
-Verdict notes (31 July 2026):
-Local automated only. Default doctor and setup are Ready with limitations rather
-than blocked by installation prerequisites, and strict-native
-remains nonzero because the managed socket, exact schema attestation, Desktop
-ownership and Micro are unavailable. The restarted bridge now serves the exact
-immutable PWA build and passed live-origin protocol and WebKit PWA simulations.
-The physical Mac/iPad/iPhone/Pencil matrix is incomplete. Do not create v0.1.0.
+Verdict notes (7 September 2026 production preparation):
+Native reconnection and the physical device matrix remain open. The managed
+socket and both schema caches have been restored; Desktop CDP and shared
+ownership still require a coordinated relaunch. Use the candidate's actual
+validation results together with the dated hardware record before choosing a
+verdict. Do not infer v0.1.0 readiness from automated checks alone.
 ```

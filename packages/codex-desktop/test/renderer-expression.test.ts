@@ -5,6 +5,7 @@ import {
   buildFixedComposerTextAppendExpression,
   buildFixedComposerFileBatchAttachmentExpression,
   buildFixedDispatchExpression,
+  buildFixedVoiceChatStartExpression,
   FIXED_NATIVE_SNAPSHOT_EXPRESSION,
 } from "../src/renderer-expression.js";
 
@@ -68,6 +69,133 @@ function liveReactRoot(
 }
 
 describe("fixed renderer expressions", () => {
+  it.each(["image", "batch", "voice"] as const)(
+    "%s rejects conflicting native task signals and accepts a corroborated new task",
+    async (kind) => {
+      const originals = new Map(["document", "File", "DataTransfer", "ClipboardEvent"].map((key) => (
+        [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const
+      )));
+      const otherThreadId = "019f7ec2-68eb-7183-bb3a-0e67312a8ba2";
+      const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+      const expression = kind === "image"
+        ? buildFixedComposerAttachmentExpression({ expectedThreadId: EXPECTED_THREAD_ID, fileName: "Codex Pad Drawing.png", pngBase64 })
+        : kind === "batch"
+          ? buildFixedComposerBatchAttachmentExpression({
+              expectedThreadId: EXPECTED_THREAD_ID,
+              images: [1, 2].map((index) => ({ expectedThreadId: EXPECTED_THREAD_ID, fileName: `Nerva Board ${index}.png` as const, pngBase64 })),
+            })
+          : buildFixedVoiceChatStartExpression({ expectedThreadId: EXPECTED_THREAD_ID });
+      let sidebarThreadId = EXPECTED_THREAD_ID;
+      let composerThreadId = otherThreadId;
+      let pasteCount = 0;
+      let clickCount = 0;
+      const attached: string[] = [];
+      class TestFile {
+        constructor(_parts: unknown[], readonly name: string) {}
+      }
+      class TestDataTransfer {
+        readonly files: TestFile[] = [];
+        readonly items = { add: (file: TestFile) => { this.files.push(file); } };
+      }
+      class TestClipboardEvent {
+        defaultPrevented = false;
+        readonly clipboardData: TestDataTransfer;
+        constructor(_type: string, init: { clipboardData: TestDataTransfer }) { this.clipboardData = init.clipboardData; }
+        preventDefault() { this.defaultPrevented = true; }
+      }
+      const pasteTarget = {
+        parentElement: null,
+        "__reactProps$codexPadTest": { onPaste() {} },
+        dispatchEvent(event: TestClipboardEvent) {
+          pasteCount += 1;
+          event.preventDefault();
+          attached.push(...event.clipboardData.files.map((file) => file.name));
+        },
+      };
+      const voiceControl = {
+        isConnected: true,
+        disabled: false,
+        getAttribute: () => null,
+        click: () => { clickCount += 1; },
+      };
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: {
+          querySelector: (selector: string) => ({
+            getAttribute: () => selector.includes("sidebar-thread-id") ? sidebarThreadId : composerThreadId,
+          }),
+          querySelectorAll: (selector: string) => selector.includes("add-context")
+            ? [{ parentElement: pasteTarget }]
+            : selector.includes("Start voice chat")
+              ? [voiceControl]
+              : selector === "button"
+                ? attached.map((name) => ({ getAttribute: (key: string) => key === "aria-label" ? `Remove ${name}` : null }))
+                : [],
+        },
+      });
+      Object.defineProperty(globalThis, "File", { configurable: true, value: TestFile });
+      Object.defineProperty(globalThis, "DataTransfer", { configurable: true, value: TestDataTransfer });
+      Object.defineProperty(globalThis, "ClipboardEvent", { configurable: true, value: TestClipboardEvent });
+      const evaluate = async () => (0, eval)(expression) as unknown;
+      try {
+        // The sidebar can retain task A while task B's composer has mounted.
+        await expect(evaluate()).rejects.toThrow(/changed/u);
+        expect(pasteCount).toBe(0);
+        expect(clickCount).toBe(0);
+        sidebarThreadId = otherThreadId;
+        composerThreadId = EXPECTED_THREAD_ID;
+        await expect(evaluate()).rejects.toThrow(/changed/u);
+        expect(pasteCount).toBe(0);
+        expect(clickCount).toBe(0);
+
+        // A client-local sidebar key is safe only with the exact canonical composer.
+        sidebarThreadId = TEMP_THREAD_KEY;
+        composerThreadId = otherThreadId;
+        await expect(evaluate()).rejects.toThrow(/changed/u);
+        composerThreadId = EXPECTED_THREAD_ID;
+        await expect(evaluate()).resolves.toBe(true);
+        expect(pasteCount).toBe(kind === "voice" ? 0 : 1);
+        expect(clickCount).toBe(kind === "voice" ? 1 : 0);
+        expect(attached).toHaveLength(kind === "batch" ? 2 : kind === "image" ? 1 : 0);
+      } finally {
+        for (const [key, original] of originals) {
+          if (original) Object.defineProperty(globalThis, key, original);
+          else Reflect.deleteProperty(globalThis, key);
+        }
+      }
+    },
+  );
+
+  it("clicks one exact enabled Voice control only after rechecking the active task", () => {
+    const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    let clicks = 0;
+    const signal = { getAttribute: () => EXPECTED_THREAD_ID };
+    const button = {
+      isConnected: true,
+      disabled: false,
+      getAttribute: (name: string) => name === "aria-hidden" ? null : null,
+      click: () => { clicks += 1; },
+    };
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        querySelector: (selector: string) => selector.includes("sidebar-thread-id") ? signal : null,
+        querySelectorAll: (selector: string) => selector === 'button[aria-label="Start voice chat"]' ? [button] : [],
+      },
+    });
+
+    try {
+      expect((0, eval)(buildFixedVoiceChatStartExpression({ expectedThreadId: EXPECTED_THREAD_ID }))).toBe(true);
+      expect(clicks).toBe(1);
+      expect(() => buildFixedVoiceChatStartExpression({ expectedThreadId: "not-a-thread" })).toThrowError(
+        expect.objectContaining({ code: "invalid-thread-key" }),
+      );
+    } finally {
+      if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+      else Reflect.deleteProperty(globalThis, "document");
+    }
+  });
+
   it("appends the Skills suffix once through the exact composer paste handler without submitting", async () => {
     const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
     const originalDataTransfer = Object.getOwnPropertyDescriptor(globalThis, "DataTransfer");
@@ -398,6 +526,72 @@ describe("fixed renderer expressions", () => {
     expect(FIXED_NATIVE_SNAPSHOT_EXPRESSION).not.toContain("activityLabel");
     expect(FIXED_NATIVE_SNAPSHOT_EXPRESSION).not.toContain("currentActionLabel");
     expect(FIXED_NATIVE_SNAPSHOT_EXPRESSION).not.toContain("actionLabel");
+  });
+
+  it("activates the fixed Micro device state before reporting native handlers", async () => {
+    const fixtureGlobals = globalThis as typeof globalThis & {
+      __codexPadImportFixture?: (url: string) => Promise<unknown>;
+    };
+    const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    const originalPerformance = Object.getOwnPropertyDescriptor(globalThis, "performance");
+    const originalGetComputedStyle = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle");
+    const root = liveReactRoot();
+    const documentElement = { dataset: {}, className: "" };
+    const body = { dataset: {}, className: "" };
+    const messages: unknown[] = [];
+    let namespace: ReturnType<typeof rendererNamespace>;
+    namespace = rendererNamespace((message) => {
+      messages.push(message);
+      namespace.nativeBus.handlers.set("codex-micro-hid-event", new Set([true]));
+      namespace.nativeBus.handlers.set("codex-micro-joystick-event", new Set([true]));
+    });
+    namespace.nativeBus.handlers.clear();
+    fixtureGlobals.__codexPadImportFixture = async () => namespace;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        documentElement,
+        body,
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        getElementById: (id: string) => id === "root" ? root : null,
+      },
+    });
+    Object.defineProperty(globalThis, "performance", {
+      configurable: true,
+      value: { getEntriesByType: () => [{ name: "https://codex.invalid/assets/native.js" }] },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({ colorScheme: "dark", backgroundColor: "rgb(0, 0, 0)" }),
+    });
+
+    try {
+      const expression = FIXED_NATIVE_SNAPSHOT_EXPRESSION.replace(
+        "const namespace = await import(url);",
+        "const namespace = await globalThis.__codexPadImportFixture(url);",
+      );
+      const snapshot = await ((0, eval)(expression) as Promise<{
+        handlers: { hid: boolean; joystick: boolean; composerAttachment: boolean };
+      }>);
+      expect(messages).toEqual([{
+        type: "codex-micro-device-state-changed",
+        state: {
+          status: "connected",
+          error: null,
+          battery: { percentage: 100, isCharging: true },
+        },
+      }]);
+      expect(snapshot.handlers).toEqual({ hid: true, joystick: true, composerAttachment: false });
+    } finally {
+      if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+      else Reflect.deleteProperty(globalThis, "document");
+      if (originalPerformance) Object.defineProperty(globalThis, "performance", originalPerformance);
+      else Reflect.deleteProperty(globalThis, "performance");
+      if (originalGetComputedStyle) Object.defineProperty(globalThis, "getComputedStyle", originalGetComputedStyle);
+      else Reflect.deleteProperty(globalThis, "getComputedStyle");
+      Reflect.deleteProperty(fixtureGlobals, "__codexPadImportFixture");
+    }
   });
 
   it("does not accept module-exported slots as live snapshot routing authority", async () => {

@@ -288,6 +288,60 @@ describe("drawing draft persistence", () => {
     ]);
   });
 
+  it("checkpoints the retained export without finishing a newer active working copy", async () => {
+    const commandId = "019f7ec2-68eb-7183-bb3a-0e67312a8bb4";
+    const checkpointId = "4d35b974-62cc-4db8-9b4e-5a8dc8a4d817";
+    const sentBoardId = "3d35b974-62cc-4db8-9b4e-5a8dc8a4d818";
+    const activeBoardId = "3d35b974-62cc-4db8-9b4e-5a8dc8a4d819";
+    const draft = {
+      scene: '{"version":1,"elements":[]}',
+      instruction: "",
+      background: "white" as const,
+      pencilOnly: true,
+    };
+    await saveDrawingDraft(threadId, { ...draft, boardId: sentBoardId });
+    await savePendingDrawingBoardExport({
+      commandId,
+      threadId,
+      boardId: sentBoardId,
+      checkpointId,
+      targetSnapshotSeq: 74,
+      scope: "board",
+      images: [],
+      manifest: { version: 1, quality: "good", overlap: 0.1, tiles: [] },
+      createdAt: "2026-09-07T20:00:00.000Z",
+    });
+    await saveDrawingDraft(threadId, {
+      ...draft,
+      boardId: activeBoardId,
+      instruction: "Keep this newer working copy",
+    });
+    const checkpoint = {
+      checkpointId,
+      createdAt: "2026-09-07T20:00:01.000Z",
+      status: "sent" as const,
+      scope: "board" as const,
+      imageNames: [],
+    };
+
+    await checkpointAndFinishDrawingBoard(threadId, checkpoint, commandId);
+    await expect(loadDrawingDraft(threadId)).resolves.toMatchObject({
+      boardId: activeBoardId,
+      instruction: "Keep this newer working copy",
+    });
+    const boards = await listDrawingBoards(threadId);
+    expect(boards.find((board) => board.boardId === sentBoardId)?.checkpoints).toEqual([checkpoint]);
+    expect(boards.find((board) => board.boardId === activeBoardId)?.checkpoints).toEqual([]);
+    await expect(loadPendingDrawingBoardExport(threadId)).resolves.toBeNull();
+
+    // A repeated acknowledgement must retain the same authority even after
+    // the export has been consumed by the first reconciliation.
+    await checkpointAndFinishDrawingBoard(threadId, checkpoint, commandId);
+    await expect(loadDrawingDraft(threadId)).resolves.toMatchObject({ boardId: activeBoardId });
+    expect((await listDrawingBoards(threadId))
+      .find((board) => board.boardId === activeBoardId)?.checkpoints).toEqual([]);
+  });
+
   it("does not claim a draft was saved when IndexedDB is unavailable", async () => {
     Reflect.deleteProperty(globalThis, "indexedDB");
     await expect(

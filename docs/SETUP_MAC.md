@@ -2,7 +2,7 @@
 
 > **Current implementation:** Nerva provides a read-only `npm run setup:check` preflight and one explicit `npm run setup:mac` installer. The base installation is independent from the version-sensitive native Codex integration: it creates private Nerva state, configures only an available exact Tailscale Serve route, installs the bridge LaunchAgent, waits for `/api/health`, and only then creates the pairing invitation. It does not require a separate macOS app. Technical paths and service identifiers retain the `CodexPad` / `codex-pad` compatibility name.
 
-> **Current compatibility result (31 July 2026):** default doctor reports **Ready with limitations**, while `setup:check` reports **Blocked** because Tailscale is stopped and therefore cannot provide the private iPad route. Desktop bundles `codex-cli 0.146.0-alpha.9.2`; the standalone package is `0.146.0`, the managed socket is unavailable, no exact current schema attestation exists, and exact-socket Desktop ownership and the native Micro adapter are not attested. Four unrelated stdio writers remain visible diagnostics; do not stop them merely to improve the report.
+> **Current compatibility:** consult the dated [implementation state](product/CURRENT_STATE.md) and run doctor for this Mac. The 7 September production preparation restored the private managed socket and both exact schema caches; Desktop native controls still require a coordinated relaunch and fresh ownership verification.
 
 The preflight produces three operator-facing outcomes:
 
@@ -10,7 +10,7 @@ The preflight produces three operator-facing outcomes:
 - **Ready with limited Codex controls:** the bridge, private route and pairing can be installed, but app-server-backed controls remain unavailable. Setup does not bootstrap a daemon, stop a writer, set a Desktop environment flag, create an ownership attestation or restart Desktop.
 - **Blocked:** a base prerequisite or safety boundary prevents installation, such as unsupported macOS/Node, missing Desktop or Tailscale, active or ambiguous Funnel, a conflicting HTTPS route, an unsafe path, or a bridge that cannot become healthy.
 
-The legacy `npm run setup` command remains inspection and Nerva-owned local-state setup. When and only when `setup:check` is **Ready**, `npm run setup:mac` may configure the managed daemon and GUI opt-in; it skips bootstrap when the existing daemon is already running and compatible. It never quits or relaunches Desktop, uses Funnel, resets unrelated Serve routes or kills an unknown writer. Default doctor exits zero for Ready and Ready with limitations; `npm run doctor -- --strict-native` is the maintainer/release gate.
+The legacy `npm run setup` command remains inspection and Nerva-owned local-state setup. When and only when `setup:check` is **Ready**, `npm run setup:mac` may configure the managed daemon and GUI opt-in; it skips bootstrap when the existing daemon is already running and compatible. It never quits or relaunches Desktop, uses Funnel, resets unrelated Serve routes or kills an unknown writer. Default doctor exits zero for Ready and Ready with limitations; `npm run doctor -- --strict-native` is the maintainer/release gate. Ready requires a compatible owned daemon, fresh native controls, an installed bridge and a verified private HTTPS/WSS route. Diagnostic-only independent stdio writers can remain warnings.
 
 ## Fast path from a clone
 
@@ -47,7 +47,7 @@ npm run pair
 - OpenAI-managed standalone Codex CLI at `~/.codex/packages/standalone/current/codex`
 - Tailscale for production iPad access, with either the Standalone app's CLI integration enabled or the App Store app's bundled CLI used explicitly
 
-The local preflight on 31 July 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.727.40816` build `6067`, bundle ID `com.openai.codex`, bundled `codex-cli 0.146.0-alpha.9.2`, standalone Codex `0.146.0`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. Tailscale was stopped, so setup remained blocked before any mutation. This is an observation, not a hardcoded support promise. Settings → System Diagnostics, `setup:check`, and doctor must report the currently installed versions after every update.
+The local preflight on 8 August 2026 observed macOS `26.5.1` build `25F80`, Codex Desktop `26.803.41515` build `6321`, bundle ID `com.openai.codex`, bundled `codex-cli 0.147.0-alpha.6.5`, standalone Codex `0.146.0`, Node `22.23.0`, npm `10.9.8` and Tailscale `1.98.9`. Tailscale was stopped, so setup remained blocked before any mutation. This is an observation, not a hardcoded support promise. Settings → System Diagnostics, `setup:check`, and doctor must report the currently installed versions after every update.
 
 Verify the local tools:
 
@@ -113,6 +113,8 @@ After a Ready native setup, `setup:mac` also sets the local-daemon opt-in for la
 ```bash
 launchctl setenv CODEX_APP_SERVER_USE_LOCAL_DAEMON 1
 ```
+
+Codex Desktop ignores this opt-in whenever `CODEX_CLI_PATH` is also set. Nerva removes that override automatically only when it points to Codex's official managed standalone `~/.codex/packages/standalone/current/codex`; an unrelated custom override remains untouched and blocks mutation setup with an explicit diagnostic.
 
 This changes the environment inherited by subsequently launched GUI applications. To undo the integration deliberately:
 

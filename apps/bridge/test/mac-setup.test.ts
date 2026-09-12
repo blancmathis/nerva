@@ -266,6 +266,8 @@ describe("macOS one-command setup", () => {
   it("configures the durable managed daemon, exact private route, and bridge LaunchAgent idempotently", async () => {
     const test = await fixture();
     let serveReady = false;
+    let managedCliOverridePresent = true;
+    const managedCliOverride = join(test.home, ".codex", "packages", "standalone", "current", "codex");
     const commands: Array<{ executable: string; arguments_: readonly string[] }> = [];
     const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
       commands.push({ executable, arguments_ });
@@ -290,6 +292,13 @@ describe("macOS one-command setup", () => {
       if (executable === "/bin/launchctl" && arguments_[0] === "bootout") {
         return commandResult("", 1, "not loaded");
       }
+      if (executable === "/bin/launchctl" && arguments_[0] === "getenv" && arguments_[1] === "CODEX_CLI_PATH") {
+        return commandResult(managedCliOverridePresent ? `${managedCliOverride}\n` : "");
+      }
+      if (executable === "/bin/launchctl" && arguments_[0] === "unsetenv" && arguments_[1] === "CODEX_CLI_PATH") {
+        managedCliOverridePresent = false;
+        return commandResult();
+      }
       if (executable === "/bin/launchctl") return commandResult();
       return commandResult("", 1, "unexpected command");
     });
@@ -313,6 +322,7 @@ describe("macOS one-command setup", () => {
     expect(first.managedDaemonConfigured).toBe(true);
     expect(first.installationState).toBe("ready");
     expect(first.legacyAppServerLaunchAgentRemoved).toBe(false);
+    expect(commands.some(({ arguments_ }) => arguments_.some((argument) => argument.includes("com.codex-pad.app-server")))).toBe(false);
     expect(first.publicOrigin).toBe("https://mac.example.ts.net");
     expect(new URL(first.pairing.qrPayload).origin).toBe(first.publicOrigin);
     expect(commands).toContainEqual({
@@ -323,6 +333,10 @@ describe("macOS one-command setup", () => {
     expect(commands).toContainEqual({
       executable: "/bin/launchctl",
       arguments_: ["bootstrap", "gui/501", first.launchAgentPath],
+    });
+    expect(commands).toContainEqual({
+      executable: "/bin/launchctl",
+      arguments_: ["unsetenv", "CODEX_CLI_PATH"],
     });
     expect(commands).not.toContainEqual({
       executable: test.codex,
@@ -461,6 +475,62 @@ describe("macOS one-command setup", () => {
 
     expect(result.legacyAppServerLaunchAgentRemoved).toBe(true);
     await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not stop an unrecognized legacy app-server service", async () => {
+    const test = await fixture();
+    const harness = managedBridgeHarness(test);
+    const legacyPath = join(test.home, "Library", "LaunchAgents", "com.codex-pad.app-server.plist");
+    await mkdir(join(test.home, "Library", "LaunchAgents"), { recursive: true });
+    const contents = "<plist><dict><key>Label</key><string>com.codex-pad.app-server</string><key>Program</key><string>/unrelated/service</string></dict></plist>";
+    await writeFile(legacyPath, contents);
+
+    const result = await setupMac({ ...harness.common, inspectPreflight: inspectReadyPreflight });
+
+    expect(result.nativeIntegration.reasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ detail: expect.stringContaining("unrecognized app-server LaunchAgent") }),
+    ]));
+    expect(harness.runCommand.mock.calls.some(([, arguments_]) => (
+      arguments_[0] === "bootout" && arguments_.some((argument) => argument.includes("com.codex-pad.app-server"))
+    ))).toBe(false);
+    await expect(readFile(legacyPath, "utf8")).resolves.toBe(contents);
+  });
+
+  it.each(["stop-refused", "file-replaced"] as const)("retains the legacy plist when %s", async (failure) => {
+    const test = await fixture();
+    const harness = managedBridgeHarness(test);
+    const legacyPath = join(test.home, "Library", "LaunchAgents", "com.codex-pad.app-server.plist");
+    await mkdir(join(test.home, "Library", "LaunchAgents"), { recursive: true });
+    const contents = [
+      "<plist><dict>",
+      "<key>Label</key><string>com.codex-pad.app-server</string>",
+      `<array><string>${test.codex}</string><string>app-server</string><string>--listen</string>`,
+      `<string>unix://${join(test.home, ".codex", "app-server-control", "app-server-control.sock")}</string></array>`,
+      "</dict></plist>",
+    ].join("");
+    await writeFile(legacyPath, contents);
+    const replacement = "replacement owned by another installer\n";
+    const runCommand = vi.fn(async (executable: string, arguments_: readonly string[]) => {
+      if (executable === "/bin/launchctl" && arguments_[0] === "bootout"
+        && arguments_.some((argument) => argument.includes("com.codex-pad.app-server"))) {
+        if (failure === "stop-refused") return commandResult("", 77, "operation not permitted");
+        await rm(legacyPath);
+        await writeFile(legacyPath, replacement);
+        return commandResult();
+      }
+      return harness.runCommand(executable, arguments_);
+    });
+
+    const result = await setupMac({ ...harness.common, runCommand, inspectPreflight: inspectReadyPreflight });
+
+    expect(result.legacyAppServerLaunchAgentRemoved).toBe(false);
+    expect(result.installationState).toBe("limited");
+    expect(result.nativeIntegration.reasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ detail: expect.stringContaining(failure === "stop-refused"
+        ? "Could not stop the exact legacy app-server LaunchAgent"
+        : "legacy app-server LaunchAgent changed") }),
+    ]));
+    await expect(readFile(legacyPath, "utf8")).resolves.toBe(failure === "stop-refused" ? contents : replacement);
   });
 
   it("installs the bridge in limited mode without touching Codex when versions differ", async () => {

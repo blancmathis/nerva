@@ -58,6 +58,7 @@ import {
   type StoredDrawingBoard,
 } from "../lib/draft-store";
 import { createUuidV4 } from "../lib/uuid";
+import { defaultPencilOnly } from "../lib/drawing-input";
 import {
   bindingMatchesDrawingDraft,
   createDrawingDeliveryIdentity,
@@ -821,7 +822,7 @@ export function DrawingStudio({
   const [size, setSize] = useState<number>(SIZES[1].value);
   const [instruction, setInstruction] = useState("");
   const [textValue, setTextValue] = useState("Label");
-  const [pencilOnly, setPencilOnly] = useState(true);
+  const [pencilOnly, setPencilOnly] = useState(defaultPencilOnly);
   const [view, setView] = useState<CanvasView>(INITIAL_VIEW);
   const [drawingPreview, setDrawingPreview] = useState<DrawingPreview>(null);
   const [selection, setSelection] = useState<ReadonlySet<SelectionKey>>(() => new Set());
@@ -1039,6 +1040,9 @@ export function DrawingStudio({
   };
 
   useEffect(() => () => {
+    // App unmounts the studio on Close; invalidate outstanding callbacks as
+    // well as the open=false path so they cannot close a later studio.
+    studioGenerationRef.current += 1;
     const latest = unmountDraftRef.current;
     if (
       draftPersistenceBlockedRef.current
@@ -1120,21 +1124,25 @@ export function DrawingStudio({
     setActiveLasso(null);
   }, []);
 
-  const clearDeliveryBinding = useCallback((threadId: string) => {
-    const current = loadPendingDrawingDelivery(threadId);
-    deletePendingDrawingDelivery(threadId);
-    void deletePendingDrawingBoardExport(threadId, current?.commandId);
-    setPendingDelivery((current) => current?.threadId === threadId ? null : current);
+  const clearDeliveryBinding = useCallback((binding: PendingDrawingDeliveryBinding, generation: number) => {
+    const current = loadPendingDrawingDelivery(binding.threadId);
+    if (current?.commandId === binding.commandId) deletePendingDrawingDelivery(binding.threadId);
+    void deletePendingDrawingBoardExport(binding.threadId, binding.commandId);
+    if (generation !== studioGenerationRef.current) return;
+    setPendingDelivery((current) => current?.commandId === binding.commandId ? null : current);
     setPendingDeliveryMatchesDraft(false);
   }, []);
 
   const discardDeliveredDraft = useCallback(async (
     threadId: string,
+    generation: number,
     checkpoint?: { checkpointId: string; scope: DrawingExportScope; imageNames: readonly string[]; commandId?: string },
   ) => {
-    draftPersistenceBlockedRef.current = true;
-    setDraftReady(false);
-    resetPointerState();
+    if (generation === studioGenerationRef.current) {
+      draftPersistenceBlockedRef.current = true;
+      setDraftReady(false);
+      resetPointerState();
+    }
     await enqueueDraftMutation(async () => {
       const retained = checkpoint ? null : await loadPendingDrawingBoardExport(threadId);
       const resolvedCheckpoint = checkpoint ?? (retained ? {
@@ -1179,8 +1187,8 @@ export function DrawingStudio({
       }
 
       if (result.ok) {
-        await discardDeliveredDraft(binding.threadId);
-        clearDeliveryBinding(binding.threadId);
+        await discardDeliveredDraft(binding.threadId, generation);
+        clearDeliveryBinding(binding, generation);
         if (generation === studioGenerationRef.current) {
           setDraftMessage(result.message ?? "Previous sketch delivery completed");
           setExportPreview(null);
@@ -1190,7 +1198,7 @@ export function DrawingStudio({
         }
         return "succeeded";
       }
-      clearDeliveryBinding(binding.threadId);
+      clearDeliveryBinding(binding, generation);
       if (isCurrentGeneration) {
         setDraftMessage(result.message ?? "Previous sketch was definitively rejected; a new delivery is now allowed");
       }
@@ -1213,6 +1221,7 @@ export function DrawingStudio({
       dispatchHistory({ type: "reset", scene: freshHistory().present });
       dispatchDiagramHistory({ type: "reset", diagram: null });
       setInstruction("");
+      setLocalSending(false);
       setDraftReady(false);
       setDraftRecoveryRequired(false);
       setView(INITIAL_VIEW);
@@ -1291,7 +1300,7 @@ export function DrawingStudio({
           scene: initialSavedDrawing.sceneJson,
           instruction: initialSavedDrawing.instruction,
           background: "white" as BackgroundMode,
-          pencilOnly: true,
+          pencilOnly: defaultPencilOnly(),
           diagramJson: null,
           savedWorkingCopy: true,
         })
@@ -1339,7 +1348,7 @@ export function DrawingStudio({
           restoredInstruction = "";
           dispatchHistory({ type: "reset", scene: restoredScene });
           setInstruction(restoredInstruction);
-          setPencilOnly(true);
+          setPencilOnly(defaultPencilOnly());
           setBoardId(createUuidV4());
           setDraftMessage("New page");
         }
@@ -2491,6 +2500,8 @@ export function DrawingStudio({
 
   const sendPreview = useCallback(async () => {
     if (!exportPreview || !sendGuard.allowed || !displayedTarget) return;
+    const generation = studioGenerationRef.current;
+    const isCurrentGeneration = () => generation === studioGenerationRef.current;
     const deliveryInstruction = "";
     let mutationAttempted = false;
     setExportPreview((current) =>
@@ -2511,19 +2522,21 @@ export function DrawingStudio({
       if (binding) {
         const reconciliation = await reconcileDelivery(binding);
         if (reconciliation === "pending") {
-          setLocalError("This composer attachment is still in flight. Its image was not attached again.");
+          if (isCurrentGeneration()) setLocalError("This composer attachment is still in flight. Its image was not attached again.");
           return;
         }
         if (reconciliation === "succeeded") return;
         if (reconciliation === "failed") {
-          setExportPreview((current) => current
-            ? { ...current, commandId: commandId(), lockedInstruction: null }
-            : current);
-          setLocalError("The previous attachment failed definitively. Review once more before creating a new transfer ID.");
+          if (isCurrentGeneration()) {
+            setExportPreview((current) => current
+              ? { ...current, commandId: commandId(), lockedInstruction: null }
+              : current);
+            setLocalError("The previous attachment failed definitively. Review once more before creating a new transfer ID.");
+          }
           return;
         }
         if (!pendingDeliveryMatchesTarget) {
-          setLocalError("The pending attachment is bound to a different native slot or thread key and cannot be replayed.");
+          if (isCurrentGeneration()) setLocalError("The pending attachment is bound to a different native slot or thread key and cannot be replayed.");
           return;
         }
       }
@@ -2531,7 +2544,7 @@ export function DrawingStudio({
       const serializedScene = exportPreview.deliverySceneJson;
       const identity = await createDrawingDeliveryIdentity(serializedScene, deliveryInstruction);
       if (binding && !bindingMatchesDrawingDraft(binding, identity)) {
-        setLocalError("The exact pending draft changed. A fresh transfer ID is blocked until its outcome is known.");
+        if (isCurrentGeneration()) setLocalError("The exact pending draft changed. A fresh transfer ID is blocked until its outcome is known.");
         return;
       }
 
@@ -2549,7 +2562,7 @@ export function DrawingStudio({
           camera: exportPreview.camera,
           boardId: exportPreview.boardId,
         });
-        setInstruction(deliveryInstruction);
+        if (isCurrentGeneration()) setInstruction(deliveryInstruction);
         binding = {
           commandId: exportPreview.commandId,
           expectedBridgeInstanceId: displayedTarget.bridgeInstanceId,
@@ -2572,12 +2585,16 @@ export function DrawingStudio({
         });
         if (!savePendingDrawingDelivery(binding)) {
           await deletePendingDrawingBoardExport(binding.threadId, binding.commandId);
-          setLocalError("The attachment identity could not be saved on this iPad, so nothing was added to the composer.");
-          setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
+          if (isCurrentGeneration()) {
+            setLocalError("The attachment identity could not be saved on this iPad, so nothing was added to the composer.");
+            setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
+          }
           return;
         }
-        setPendingDelivery(binding);
-        setPendingDeliveryMatchesDraft(true);
+        if (isCurrentGeneration()) {
+          setPendingDelivery(binding);
+          setPendingDeliveryMatchesDraft(true);
+        }
       }
 
       mutationAttempted = true;
@@ -2601,47 +2618,54 @@ export function DrawingStudio({
         background: exportPreview.background,
       });
       if (result && drawingDeliveryIsUnresolved(result)) {
-        if (result.ok) {
-          setDraftMessage(result.message ?? "Sketch attachment is still in flight; its transfer ID remains locked");
-        } else {
-          setLocalError(result.message ?? "Attachment outcome is unknown. Retry keeps the same transfer ID.");
+        if (isCurrentGeneration()) {
+          if (result.ok) {
+            setDraftMessage(result.message ?? "Sketch attachment is still in flight; its transfer ID remains locked");
+          } else {
+            setLocalError(result.message ?? "Attachment outcome is unknown. Retry keeps the same transfer ID.");
+          }
         }
         return;
       }
       if (result && !result.ok) {
         await deletePendingDrawingBoardExport(binding.threadId, binding.commandId);
-        clearDeliveryBinding(binding.threadId);
-        setLocalError(result.message ?? "The bridge rejected this sketch.");
-        setExportPreview((current) => current
-          ? { ...current, commandId: commandId(), lockedInstruction: null }
-          : current);
+        clearDeliveryBinding(binding, generation);
+        if (isCurrentGeneration()) {
+          setLocalError(result.message ?? "The bridge rejected this sketch.");
+          setExportPreview((current) => current
+            ? { ...current, commandId: commandId(), lockedInstruction: null }
+            : current);
+        }
         return;
       }
-      await discardDeliveredDraft(binding.threadId, {
+      await discardDeliveredDraft(binding.threadId, generation, {
         checkpointId: exportPreview.checkpointId,
         scope: exportPreview.package.scope,
         imageNames: exportPreview.package.images.map((image) => image.fileName),
         commandId: binding.commandId,
       });
-      clearDeliveryBinding(binding.threadId);
-      setDraftMessage("Sketch attached to the Mac composer");
-      setExportPreview(null);
-      setSendAfterBuild(false);
-      const generation = studioGenerationRef.current;
-      window.setTimeout(() => {
-        if (generation === studioGenerationRef.current) onCloseRef.current();
-      }, 360);
-    } catch (error) {
-      if (!mutationAttempted && !pendingDelivery) {
-        setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
+      clearDeliveryBinding(binding, generation);
+      if (isCurrentGeneration()) {
+        setDraftMessage("Sketch attached to the Mac composer");
+        setExportPreview(null);
+        setSendAfterBuild(false);
+        window.setTimeout(() => {
+          if (isCurrentGeneration()) onCloseRef.current();
+        }, 360);
       }
-      setLocalError(
-        error instanceof Error
-          ? `${error.message} Retry keeps the same transfer ID.`
-          : `${String(error)} Retry keeps the same transfer ID.`,
-      );
+    } catch (error) {
+      if (isCurrentGeneration()) {
+        if (!mutationAttempted && !pendingDelivery) {
+          setExportPreview((current) => current ? { ...current, lockedInstruction: null } : current);
+        }
+        setLocalError(
+          error instanceof Error
+            ? `${error.message} Retry keeps the same transfer ID.`
+            : `${String(error)} Retry keeps the same transfer ID.`,
+        );
+      }
     } finally {
-      setLocalSending(false);
+      if (isCurrentGeneration()) setLocalSending(false);
     }
   }, [
     clearDeliveryBinding,

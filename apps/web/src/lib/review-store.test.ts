@@ -325,6 +325,36 @@ describe("review IndexedDB persistence", () => {
     await expect(getReviewBlob("orphan-ref")).resolves.toBeNull();
   });
 
+  it("rejects a stale media update without writing blobs or overwriting an equal-revision edit", async () => {
+    const original = createReviewDraft({ id: "review-expected-media", targetThreadId: THREAD_ID, now: 1_000 });
+    await saveReviewDraft(original);
+    const incoming = reviewDraftReducer(original, {
+      type: "addFrame",
+      frame: makePhotoReviewFrame(storedImage("incoming-image", "incoming-ref"), undefined, "incoming-frame"),
+    }, 1_001);
+    const edited = { ...original, generalInstruction: "A newer edit in another tab" };
+    await saveReviewDraft(edited);
+
+    await expect(saveReviewDraftWithBlobChanges(incoming, [{
+      id: "incoming-ref",
+      blob: new Blob(["image"], { type: "image/png" }),
+    }], [], original)).rejects.toThrow(/review changed/i);
+    await expect(loadReviewDraft(THREAD_ID)).resolves.toEqual(edited);
+    await expect(getReviewBlob("incoming-ref")).resolves.toBeNull();
+  });
+
+  it("guards both absent and deleted drafts when committing an expected update", async () => {
+    const original = createReviewDraft({ id: "review-expected-new", targetThreadId: THREAD_ID, now: 1_000 });
+    await saveReviewDraftWithBlobChanges(original, [], [], null);
+    const incoming = reviewDraftReducer(original, { type: "setGeneralInstruction", instruction: "Incoming capture" }, 1_001);
+    await expect(saveReviewDraftWithBlobChanges(incoming, [], [], null)).rejects.toThrow(/review changed/i);
+    await expect(loadReviewDraft(THREAD_ID)).resolves.toEqual(original);
+
+    await deleteReviewDraft(THREAD_ID);
+    await expect(saveReviewDraftWithBlobChanges(incoming, [], [], original)).rejects.toThrow(/review changed/i);
+    await expect(loadReviewDraft(THREAD_ID)).resolves.toBeNull();
+  });
+
   it("reclaims rendered annotations across repeated edit and preview cycles", async () => {
     const scene = createScene({ width: 100, height: 100, background: "transparent" });
     let draft = createReviewDraft({ id: "review-render-cycle", targetThreadId: THREAD_ID, now: 1_000 });

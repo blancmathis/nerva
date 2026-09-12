@@ -60,6 +60,7 @@ const commands: Command[] = [
     prompt: "Review this copy for clarity.",
   },
   { ...metadata, type: "openSession", targetThreadId: THREAD_ID },
+  { ...metadata, type: "startVoiceChat", targetThreadId: THREAD_ID },
   { ...metadata, type: "openBrowserTab", targetThreadId: THREAD_ID, url: "https://example.test/dashboard" },
   { ...metadata, type: "runSkill", targetThreadId: THREAD_ID, skillName: "browser:control-in-app-browser" },
   {
@@ -85,6 +86,11 @@ describe("CommandSchema", () => {
     expect(CommandSchema.safeParse({ ...command, targetThreadId: TURN_ID }).success).toBe(false);
     expect(CommandSchema.safeParse({ ...command, url: "https://user:secret@example.test/" }).success).toBe(false);
     expect(CommandSchema.safeParse({ ...command, url: "file:///private/tmp/page.html" }).success).toBe(false);
+  });
+
+  it("keeps Voice start bound to the exact expected task", () => {
+    const command = commands.find((candidate) => candidate.type === "startVoiceChat")!;
+    expect(CommandSchema.safeParse({ ...command, targetThreadId: TURN_ID }).success).toBe(false);
   });
 
   it("accepts an ordered v2 board batch and rejects duplicate filenames", () => {

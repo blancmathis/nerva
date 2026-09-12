@@ -84,6 +84,10 @@ export function MicIcon(props: IconProps) {
   return <svg {...base} {...props}><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg>;
 }
 
+export function PhoneIcon(props: IconProps) {
+  return <svg {...base} {...props}><path d="M7.2 3.5 10 8.2 7.8 10a14.8 14.8 0 0 0 6.2 6.2l1.8-2.2 4.7 2.8-.7 3.1a2 2 0 0 1-2.2 1.5C9.8 20.1 3.9 14.2 2.6 6.4a2 2 0 0 1 1.5-2.2l3.1-.7Z" /></svg>;
+}
+
 export function GlobeIcon(props: IconProps) {
   return <svg {...base} {...props}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>;
 }
@@ -110,6 +114,10 @@ export function RefreshIcon(props: IconProps) {
 
 export function MissionControlIcon(props: IconProps) {
   return <svg {...base} {...props}><circle cx="12" cy="12" r="3" /><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="5" cy="18" r="2" /><circle cx="19" cy="18" r="2" /><path d="m7 7.4 2.5 2.5M17 7.4l-2.5 2.5M7 16.6l2.5-2.5M17 16.6l-2.5-2.5" /></svg>;
+}
+
+export function BellIcon(props: IconProps) {
+  return <svg {...base} {...props}><path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 5 2 5.8 2 7.5h-15c0-1.7 2-2.5 2-7.5Z" /><path d="M9.5 20h5" /></svg>;
 }
 
 export function InboxIcon(props: IconProps) {

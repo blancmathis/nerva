@@ -23,6 +23,7 @@ import {
   ServerWsMessageSchema,
   SiteQaActionReceiptSchema,
   SiteAssociationSchema,
+  type ApiError,
   type Command,
   type CommandAck as ProtocolCommandAck,
   type CommandStatusResponse,
@@ -64,6 +65,17 @@ const HALF_OPEN_AFTER_MS = 38_000;
 const SNAPSHOT_FALLBACK_MS = 12_000;
 const WEB_SOCKET_PROTOCOL = "codex-pad.v1";
 const WEB_SOCKET_TICKET_PROTOCOL_PREFIX = "codex-pad.ticket.";
+// These HTTP/code pairs attest a rejection before command dispatch. Other
+// failures (including a typed 500) may happen after the command was accepted.
+const PRE_DISPATCH_ERROR_STATUS: Readonly<Partial<Record<ApiError["code"], number>>> = {
+  INVALID_REQUEST: 400,
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  PAYLOAD_TOO_LARGE: 413,
+  RATE_LIMITED: 429,
+};
 
 export class BridgeHttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -450,6 +462,7 @@ export class BridgeClient {
     private readonly callbacks: BridgeClientCallbacks,
     private readonly commandResponseTimeoutMs = 8_000,
     private readonly loadBearer: () => Promise<string | null> = loadBridgeBearer,
+    private readonly snapshotResponseTimeoutMs = 7_500,
   ) {}
 
   async start(): Promise<boolean> {
@@ -567,17 +580,32 @@ export class BridgeClient {
 
   async refreshSnapshot(): Promise<boolean> {
     const requestRevision = this.snapshotRevision;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), this.snapshotResponseTimeoutMs);
     try {
       const response = await this.authorizedFetch("/api/snapshot", {
         headers: { Accept: "application/json" },
         cache: "no-store",
+        signal: controller.signal,
       });
       const body = await responseJson(response);
       if (!response.ok) throw new BridgeHttpError(response.status, messageFrom(body, "Snapshot unavailable"));
       return this.acceptSnapshot(body, "http", requestRevision) !== "rejected";
     } catch {
       return false;
+    } finally {
+      window.clearTimeout(timeout);
     }
+  }
+
+  async retryConnection(): Promise<boolean> {
+    if (this.stopped || this.bearerToken === null) return false;
+    this.suspended = false;
+    const refreshed = await this.refreshSnapshot();
+    if (!refreshed) return false;
+    this.connect();
+    this.scheduleFallback();
+    return true;
   }
 
   async fetchCapabilities(): Promise<unknown | null> {
@@ -1069,8 +1097,26 @@ export class BridgeClient {
       });
       const body = await responseJson(response);
       const parsed = CommandAckApiResponseSchema.safeParse(body);
-      if (parsed.success && parsed.data.ok) return commandAckFromProtocol(parsed.data.data);
-      return failedAck(command.commandId, body, response.ok ? "Bridge returned an invalid acknowledgement" : "Command failed");
+      if (parsed.success && parsed.data.ok && response.ok) {
+        const ack = parsed.data.data;
+        if (
+          ack.commandId === command.commandId
+          && (command.type === "createTask" || ack.targetThreadId === command.expectedThreadId)
+        ) {
+          return commandAckFromProtocol(ack);
+        }
+      }
+      if (parsed.success && !parsed.data.ok && PRE_DISPATCH_ERROR_STATUS[parsed.data.error.code] === response.status) {
+        return failedAck(command.commandId, parsed.data, "Command failed");
+      }
+      // An invalid or unrelated response cannot settle this command. Preserve
+      // its ID for reconciliation; never retry a mutation after an uncertain ACK.
+      return {
+        commandId: command.commandId,
+        ok: false,
+        pending: true,
+        message: "Delivery is unknown. Nerva will check this command ID, never resend it.",
+      };
     } finally {
       globalThis.clearTimeout(timeout);
     }
@@ -1082,10 +1128,10 @@ export class BridgeClient {
         headers: { Accept: "application/json" },
         cache: "no-store",
       });
-      if (response.status === 404 || response.status === 405 || response.status === 501) return null;
+      if (!response.ok) return null;
       const body = await responseJson(response);
       const parsed = CommandStatusApiResponseSchema.safeParse(body);
-      if (!parsed.success || !parsed.data.ok) return null;
+      if (!parsed.success || !parsed.data.ok || parsed.data.data.commandId !== commandId) return null;
       return commandStatusResult(parsed.data.data);
     } catch {
       return null;

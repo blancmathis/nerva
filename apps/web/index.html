@@ -10,9 +10,42 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <title>Nerva</title>
+    <style>
+      .nerva-boot-fallback, .nerva-boot-fallback * { box-sizing: border-box; }
+      html, body, #root { width: 100%; min-height: 100%; margin: 0; }
+      body { background: #eef2f8; }
+      .nerva-boot-fallback { display: grid; min-height: 100dvh; padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); place-items: center; color: #151923; background: radial-gradient(620px 360px at 14% 4%, rgba(44, 112, 234, .13), transparent 70%), #eef2f8; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+      .nerva-boot-fallback__panel { width: min(460px, 100%); padding: 30px; border-radius: 26px; background: #fff; box-shadow: 0 24px 70px rgba(35, 48, 76, .16); }
+      .nerva-boot-fallback__brand { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+      .nerva-boot-fallback__mark { display: grid; width: 38px; height: 38px; padding: 8px; grid-template-columns: repeat(2, 1fr); gap: 4px; border-radius: 12px; background: #f1f4f9; box-sizing: border-box; box-shadow: 0 5px 12px rgba(35, 48, 76, .12); }
+      .nerva-boot-fallback__mark i { border-radius: 2px; background: #9aa4b5; }
+      .nerva-boot-fallback__mark i:nth-child(2) { background: #2c70ea; }
+      .nerva-boot-fallback h1 { max-width: 11ch; margin: 28px 0 14px; font-size: clamp(34px, 8vw, 48px); line-height: 1; letter-spacing: -.04em; }
+      .nerva-boot-fallback p { max-width: 42ch; margin: 0; color: #596273; }
+      .nerva-boot-fallback small { display: block; margin-top: 16px; color: #778194; }
+      .nerva-boot-fallback a { display: inline-flex; min-height: 48px; margin-top: 26px; padding: 0 18px; align-items: center; border-radius: 13px; color: #fff; background: #1f6fd8; box-shadow: 0 6px 14px rgba(31, 111, 216, .24), 0 3px 0 #1554a8; font-weight: 700; text-decoration: none; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #090b0f; }
+        .nerva-boot-fallback { color: rgba(255, 255, 255, .96); background: radial-gradient(620px 360px at 14% 4%, rgba(103, 162, 255, .16), transparent 70%), #090b0f; }
+        .nerva-boot-fallback__panel { background: #151820; box-shadow: 0 24px 70px rgba(0, 0, 0, .34); }
+        .nerva-boot-fallback__mark { background: #1b1f28; }
+        .nerva-boot-fallback p { color: rgba(239, 242, 248, .7); }
+        .nerva-boot-fallback small { color: rgba(239, 242, 248, .5); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="nerva-boot-fallback" data-nerva-boot-fallback role="status" aria-label="Opening Nerva">
+        <div class="nerva-boot-fallback__panel">
+          <strong class="nerva-boot-fallback__brand"><span class="nerva-boot-fallback__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Nerva</strong>
+          <h1>Connecting to your Mac…</h1>
+          <p>Nerva is opening its local shell and looking for the private Mac connection.</p>
+          <small>If this stays here, verify that Tailscale is connected on both the Mac and this device.</small>
+          <a href="/">Try opening Nerva again</a>
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

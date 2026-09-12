@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { doctorCodexPad, formatDoctorReport, runCommand, type CommandResult } from "../src/doctor.js";
+import { doctorCodexPad, doctorState, formatDoctorReport, runCommand, type CommandResult, type DoctorCheck } from "../src/doctor.js";
 import { PairingStore, pairingNonceFromUrl } from "../src/pairing.js";
 import { defaultDataPaths } from "../src/paths.js";
 import { setupCodexPad } from "../src/setup.js";
@@ -30,6 +30,7 @@ async function networkReadyDoctor(
   probeResult: WssProbeResult,
   bridgeHealthy = true,
   funnelStatus: CommandResult = result("{}"),
+  overrides: { fetch?: typeof globalThis.fetch; listener?: CommandResult } = {},
 ) {
   const fixture = await fakeDesktop();
   const setup = await setupCodexPad({ homeDirectory: fixture.home, platform: "darwin" });
@@ -62,7 +63,7 @@ async function networkReadyDoctor(
       }));
     }
     if (executable === "/usr/sbin/lsof") {
-      return result("node 123 user 20u IPv4 TCP 127.0.0.1:8787 (LISTEN)\n");
+      return overrides.listener ?? result("node 123 user 20u IPv4 TCP 127.0.0.1:8787 (LISTEN)\n");
     }
     return result("", 1, "not running");
   });
@@ -73,18 +74,38 @@ async function networkReadyDoctor(
     applicationCandidates: [fixture.app],
     environment: { PATH: fixture.home },
     runCommand,
-    fetch: async (input) => {
+    fetch: overrides.fetch ?? (async (input) => {
       if (String(input).endsWith("/api/health") && bridgeHealthy) {
         return Response.json({ ok: true, data: { version: "0.1.0", state: "ready" } });
       }
       return new Response("not found", { status: 404 });
-    },
+    }),
     probeWss,
   });
   return { report, probeWss, pairing, runCommand, tailscale };
 }
 
 describe("doctorCodexPad", () => {
+  it("keeps an owned compatible daemon limited until native controls and the private device route are proven", () => {
+    const capabilities = ["sessions", "models", "exactTaskMutations"].map((id) => ({
+      id: id as "sessions" | "models" | "exactTaskMutations",
+      state: "available" as const,
+      reason: "Compatible managed daemon fixture",
+    }));
+    const checks: DoctorCheck[] = [
+      "cdp-loopback", "micro-six-slots", "bridge-runtime", "tailscale",
+      "tailscale-funnel", "tailscale-serve", "tailscale-wss",
+    ].map((id) => ({ id, category: "system", status: "green", summary: id, proofBoundary: "fixture" }));
+    expect(doctorState(checks, { capabilities }, { verified: true })).toBe("ready");
+    for (const unavailable of ["cdp-loopback", "micro-six-slots", "bridge-runtime", "tailscale-wss"]) {
+      const degraded = checks.map((check) => check.id === unavailable ? { ...check, status: "warn" as const } : check);
+      expect(doctorState(degraded, { capabilities }, { verified: true }), unavailable).toBe("limited");
+      expect(doctorState(checks.filter((check) => check.id !== unavailable), { capabilities }, { verified: true }), unavailable).toBe("limited");
+    }
+    expect(doctorState(checks, { capabilities }, { verified: false })).toBe("limited");
+    expect(doctorState([...checks, { id: "unsafe-bind", category: "system", status: "red", summary: "unsafe", proofBoundary: "fixture" }], { capabilities }, { verified: true })).toBe("blocked");
+  });
+
   it("forces the bundled macOS Tailscale executable into CLI mode", async () => {
     const root = await mkdtemp(join(tmpdir(), "codex-pad-tailscale-cli-test-"));
     const executable = join(root, "Tailscale");
@@ -401,6 +422,49 @@ describe("doctorCodexPad", () => {
       status: "warn",
       detail: "The local Codex Pad bridge health/listener prerequisite failed.",
     });
+  });
+
+  it.each([
+    [new DOMException("private-request-url", "TimeoutError"), "Bridge health request timed out after 1500 ms."],
+    [new TypeError("private-request-url", { cause: { code: "ECONNREFUSED" } }), "Bridge health connection was refused."],
+    [new Error("private-request-url"), "Bridge health request failed before a complete HTTP response."],
+  ])("reports the health failure category without exposing exception text (%s)", async (error, detail) => {
+    const { report, probeWss } = await networkReadyDoctor({
+      outcome: "upgraded", closeCode: 4401, receivedData: false,
+    }, true, result("{}"), { fetch: async () => { throw error; } });
+
+    expect(report.checks.find((check) => check.id === "bridge-runtime")).toMatchObject({
+      status: "warn", detail: `${detail} The listener is verified on loopback.`,
+    });
+    expect(probeWss).not.toHaveBeenCalled();
+    expect(JSON.stringify(report)).not.toContain("private-request-url");
+  });
+
+  it.each([
+    [503, "Bridge health returned HTTP 503."],
+    [200, "Unexpected HTTP 200 response; bridge health payload was not recognized."],
+  ])("distinguishes HTTP %s from a valid bridge health response", async (status, detail) => {
+    const { report, probeWss } = await networkReadyDoctor({
+      outcome: "upgraded", closeCode: 4401, receivedData: false,
+    }, true, result("{}"), { fetch: async () => new Response("private-response-body", { status }) });
+
+    expect(report.checks.find((check) => check.id === "bridge-runtime")).toMatchObject({
+      status: "warn", detail: `${detail} The listener is verified on loopback.`,
+    });
+    expect(probeWss).not.toHaveBeenCalled();
+    expect(JSON.stringify(report)).not.toContain("private-response-body");
+  });
+
+  it("reports a failed listener inspection even when the health HTTP request succeeds", async () => {
+    const { report, probeWss } = await networkReadyDoctor({
+      outcome: "upgraded", closeCode: 4401, receivedData: false,
+    }, true, result("{}"), { listener: result("", 1, "private-command-error") });
+
+    expect(report.checks.find((check) => check.id === "bridge-runtime")).toMatchObject({
+      status: "warn", detail: "Codex Pad health, HTTP 200 Listener inspection failed (exit 1).",
+    });
+    expect(probeWss).not.toHaveBeenCalled();
+    expect(JSON.stringify(report)).not.toContain("private-command-error");
   });
 
   it("offers attestation creation only after a positive co-presence probe", async () => {

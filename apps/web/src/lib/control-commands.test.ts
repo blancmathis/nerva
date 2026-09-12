@@ -19,6 +19,7 @@ function snapshot(sequence: number, commandId = "mode.plan"): BridgeSnapshot {
     healthDetail: null,
     slots,
     activeThreadKey: THREAD,
+    voiceChat: { threadId: THREAD, status: "unavailable" },
     selectedSlotId: "AG00",
     selectedThreadKey: THREAD,
     pendingApprovals: [],

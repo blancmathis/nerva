@@ -10,6 +10,8 @@ interface UnpinnedSessionsDrawerProps {
   readonly sessions: readonly ProductSession[];
   readonly pinnedThreadIds: readonly string[];
   readonly onClose: () => void;
+  readonly activityCount: number;
+  readonly onOpenActivity: () => void;
   readonly onOpenSession: (session: ProductSession) => void;
   readonly onPin: (threadId: string) => void;
 }
@@ -19,6 +21,8 @@ export function UnpinnedSessionsDrawer({
   sessions,
   pinnedThreadIds,
   onClose,
+  activityCount,
+  onOpenActivity,
   onOpenSession,
   onPin,
 }: UnpinnedSessionsDrawerProps) {
@@ -51,12 +55,18 @@ export function UnpinnedSessionsDrawer({
       <aside ref={dialogRef} className="cp-session-drawer" role="dialog" aria-modal="true" aria-labelledby="unpinned-title" tabIndex={-1}>
         <header>
           <div>
-            <p className="cp-overline">Session archive</p>
-            <h2 id="unpinned-title">Unpinned Sessions</h2>
-            <p>{unpinned.length} available · {pinnedThreadIds.length}/{MAX_PINNED_SESSIONS} pinned</p>
+            <p className="cp-overline">Across every project</p>
+            <h2 id="unpinned-title">Conversations</h2>
+            <p>{unpinned.length} unpinned · {pinnedThreadIds.length}/{MAX_PINNED_SESSIONS} on Home</p>
           </div>
-          <button type="button" className="cp-icon-button" aria-label="Close Unpinned Sessions" onClick={onClose}><CloseIcon /></button>
+          <button type="button" className="cp-icon-button" aria-label="Close Conversations" onClick={onClose}><CloseIcon /></button>
         </header>
+        <nav className="cp-conversation-tabs" aria-label="Conversation views">
+          <div className="cp-segmented cp-segmented--small">
+            <button type="button" aria-pressed="true">Conversations</button>
+            <button type="button" aria-pressed="false" onClick={onOpenActivity}>Activity{activityCount > 0 && <span>{activityCount > 99 ? "99+" : activityCount}</span>}</button>
+          </div>
+        </nav>
         <div className="cp-drawer-controls">
           <label className="cp-search-field">
             <SearchIcon />

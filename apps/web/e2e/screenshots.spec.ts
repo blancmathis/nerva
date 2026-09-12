@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { MockBridge } from "./mock-bridge";
-import { THREADS, fixtureSessions } from "./fixture-data";
+import { THREADS, fixtureActivityHistory } from "./fixture-data";
 
 const CAPTURE_SCREENSHOTS = process.env.CODEX_PAD_CAPTURE_SCREENSHOTS === "1";
 const SCREENSHOT_NOW = Date.parse("2026-07-25T19:00:00.000Z");
@@ -341,7 +341,7 @@ async function installScreenshotSite(page: Page): Promise<void> {
       },
     },
   } as const;
-  const sessions = fixtureSessions({ sequence: 73, selectedIndex: 0 });
+  const sessions = fixtureActivityHistory(SCREENSHOT_NOW, 18);
   const withAssociation = sessions.data.sessions.map((session) => session.threadId === THREADS[0].id ? {
     ...session,
     siteAssociations: [association],
@@ -367,6 +367,7 @@ async function installScreenshotSite(page: Page): Promise<void> {
 }
 
 test("capture privacy-safe current iPad product screenshots", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   test.skip(!CAPTURE_SCREENSHOTS, "Generated only by npm run screenshots");
   const suffix = screenshotSuffix(testInfo.project.name);
   test.skip(suffix === null, "No screenshot naming profile for this project");
@@ -392,6 +393,40 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await resetViewportScroll(page);
   await captureVerifiedScreenshot(page, resolve(output, `dashboard${suffix}.png`));
 
+  await page.getByRole("button", { name: /Open Conversations/ }).click();
+  await page.getByRole("dialog", { name: "Conversations" }).getByRole("button", { name: /^Activity/ }).click();
+  await expect(page.getByRole("dialog", { name: "Activity" })).toBeVisible();
+  await page.waitForTimeout(400);
+  await captureVerifiedScreenshot(page, resolve(output, `activity${suffix}.png`));
+  if (testInfo.project.name === "iPad landscape") {
+    const activityRow = page.getByRole("button", { name: "Open Historical Codex task 01 from Activity" });
+    await activityRow.dispatchEvent("pointerdown", {
+      pointerId: 92,
+      pointerType: "touch",
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX: 180,
+      clientY: 590,
+    });
+    await page.waitForTimeout(520);
+    await activityRow.dispatchEvent("pointerup", {
+      pointerId: 92,
+      pointerType: "touch",
+      isPrimary: true,
+      button: 0,
+      buttons: 0,
+      clientX: 180,
+      clientY: 590,
+    });
+    const actions = page.getByRole("menu", { name: "Actions for Historical Codex task 01" });
+    await expect(actions).toBeVisible();
+    await captureVerifiedScreenshot(page, resolve(output, "activity-actions.png"));
+    await actions.press("Escape");
+  }
+  await page.getByRole("button", { name: "Close Activity" }).click();
+
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: /Note Catch a quick idea/ }).click();

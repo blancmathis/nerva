@@ -102,6 +102,7 @@ export interface DoctorDependencies {
 }
 
 const MAX_COMMAND_OUTPUT = 512 * 1024;
+const JSON_PROBE_TIMEOUT_MS = 1_500;
 const WSS_PROBE_TIMEOUT_MS = 3_000;
 
 export const runCommand: CommandRunner = async (executable, arguments_, timeoutMs = 5_000) =>
@@ -286,13 +287,20 @@ async function readDevToolsPort(homeDirectory: string): Promise<number | undefin
   return undefined;
 }
 
+interface JsonProbeResult {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly body?: unknown;
+  readonly failure?: "timeout" | "aborted" | "connection-refused" | "network-error";
+}
+
 async function fetchJson(
   fetchImplementation: typeof globalThis.fetch,
   url: string,
-): Promise<{ readonly ok: boolean; readonly status: number; readonly body?: unknown }> {
+): Promise<JsonProbeResult> {
   try {
     const response = await fetchImplementation(url, {
-      signal: AbortSignal.timeout(1_500),
+      signal: AbortSignal.timeout(JSON_PROBE_TIMEOUT_MS),
       redirect: "error",
     });
     const text = await response.text();
@@ -303,8 +311,34 @@ async function fetchJson(
       body = text;
     }
     return { ok: response.ok, status: response.status, ...(body === undefined ? {} : { body }) };
-  } catch {
-    return { ok: false, status: 0 };
+  } catch (error) {
+    // Preserve actionable categories without echoing a URL, response body, or
+    // arbitrary exception text into a diagnostic that may be shared.
+    const name = error instanceof Error ? error.name : undefined;
+    const cause = error instanceof Error ? error.cause : undefined;
+    const refused = typeof cause === "object" && cause !== null
+      && "code" in cause && cause.code === "ECONNREFUSED";
+    const failure = name === "TimeoutError" ? "timeout"
+      : name === "AbortError" ? "aborted"
+      : refused ? "connection-refused"
+      : "network-error";
+    return { ok: false, status: 0, failure };
+  }
+}
+
+function healthProbeDetail(health: JsonProbeResult): string {
+  if (health.ok) {
+    return isBridgeHealthResponse(health)
+      ? `Codex Pad health, HTTP ${health.status}`
+      : `Unexpected HTTP ${health.status} response; bridge health payload was not recognized.`;
+  }
+  if (health.status > 0) return `Bridge health returned HTTP ${health.status}.`;
+  switch (health.failure) {
+    case "timeout": return `Bridge health request timed out after ${JSON_PROBE_TIMEOUT_MS} ms.`;
+    case "aborted": return "Bridge health request was aborted.";
+    case "connection-refused": return "Bridge health connection was refused.";
+    case "network-error": return "Bridge health request failed before a complete HTTP response.";
+    default: return "Bridge health request was not attempted because the configured bind is unsafe.";
   }
 }
 
@@ -726,17 +760,24 @@ function overallStatus(checks: readonly DoctorCheck[]): CheckStatus {
       : "green";
 }
 
-function doctorState(
+export function doctorState(
   checks: readonly DoctorCheck[],
-  compatibility: RuntimeCompatibilityResult,
-  ownership: DesktopOwnershipInspection,
+  compatibility: Pick<RuntimeCompatibilityResult, "capabilities">,
+  ownership: Pick<DesktopOwnershipInspection, "verified">,
 ): DoctorState {
   if (checks.some((check) => check.status === "red")) return "blocked";
   const structuralReads = ["sessions", "models"].every((id) =>
     compatibility.capabilities.some((capability) => capability.id === id && capability.state === "available"));
   const coreMutations = compatibility.capabilities.some((capability) =>
     capability.id === "exactTaskMutations" && capability.state === "available");
-  return structuralReads && coreMutations && ownership.verified ? "ready" : "limited";
+  // A compatible shared daemon alone does not prove the native controls or
+  // the installed private iPad route. Keep the release gate limited until
+  // every required runtime layer has its own positive observation.
+  const runtimeReady = [
+    "cdp-loopback", "micro-six-slots", "bridge-runtime", "tailscale",
+    "tailscale-funnel", "tailscale-serve", "tailscale-wss",
+  ].every((id) => checks.some((check) => check.id === id && check.status === "green"));
+  return structuralReads && coreMutations && ownership.verified && runtimeReady ? "ready" : "limited";
 }
 
 function effectiveDoctorCapabilities(
@@ -1145,7 +1186,7 @@ export async function doctorCodexPad(
     proofBoundary: "Configuration intent is separate from the address of a running listener.",
   });
 
-  const health = safeBind
+  const health: JsonProbeResult = safeBind
     ? await fetchJson(fetchImplementation, `http://${DEFAULT_BRIDGE_HOST}:${configuredPort}/api/health`)
     : { ok: false, status: 0 as const };
   const listenerResult = await command(
@@ -1171,7 +1212,16 @@ export async function doctorCodexPad(
       : bridgeRuntimeHealthy
         ? "Bridge health responds on a verified loopback listener."
         : "Bridge is not currently proven healthy on loopback.",
-    ...(health.ok ? { detail: bridgeHealthVerified ? `Codex Pad health, HTTP ${health.status}` : `Unexpected HTTP ${health.status} response` } : {}),
+    detail: [
+      healthProbeDetail(health),
+      ...(listenerResult.exitCode !== 0
+        ? [`Listener inspection failed (exit ${listenerResult.exitCode}).`]
+        : !loopbackListener && !wildcardListener
+          ? ["No loopback listener was identified on the configured port."]
+          : !bridgeHealthVerified && loopbackListener && !wildcardListener
+            ? ["The listener is verified on loopback."]
+            : []),
+    ].join(" "),
     remediation: wildcardListener
       ? ["Stop the bridge and restart with the default loopback bind."]
       : ["Run: npm run start"],

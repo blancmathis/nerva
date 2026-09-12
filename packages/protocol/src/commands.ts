@@ -351,6 +351,24 @@ export const OpenSessionCommandSchema = z
     }
   });
 
+export const StartVoiceChatCommandSchema = z
+  .object({
+    ...CommandMetadataShape,
+    type: z.literal("startVoiceChat"),
+    targetThreadId: ThreadIdSchema,
+    expectedThreadId: ThreadIdSchema,
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.targetThreadId !== command.expectedThreadId) {
+      context.addIssue({
+        code: "custom",
+        message: "targetThreadId must match expectedThreadId",
+        path: ["targetThreadId"],
+      });
+    }
+  });
+
 export const OpenBrowserTabCommandSchema = z
   .object({
     ...CommandMetadataShape,
@@ -452,6 +470,7 @@ export const CommandSchema = z.union([
   SendReviewCommandSchema,
   RunLibraryCommandSchema,
   OpenSessionCommandSchema,
+  StartVoiceChatCommandSchema,
   OpenBrowserTabCommandSchema,
   RunSkillCommandSchema,
   AttachCaptureFilesCommandSchema,
@@ -558,6 +577,7 @@ export type AcknowledgeCompletionCommand = z.infer<typeof AcknowledgeCompletionC
 export type SendReviewCommand = z.infer<typeof SendReviewCommandSchema>;
 export type RunLibraryCommand = z.infer<typeof RunLibraryCommandSchema>;
 export type OpenSessionCommand = z.infer<typeof OpenSessionCommandSchema>;
+export type StartVoiceChatCommand = z.infer<typeof StartVoiceChatCommandSchema>;
 export type OpenBrowserTabCommand = z.infer<typeof OpenBrowserTabCommandSchema>;
 export type RunSkillCommand = z.infer<typeof RunSkillCommandSchema>;
 export type AttachCaptureFilesCommand = z.infer<typeof AttachCaptureFilesCommandSchema>;

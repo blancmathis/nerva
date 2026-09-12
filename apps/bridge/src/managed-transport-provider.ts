@@ -200,6 +200,8 @@ export class ReconnectingManagedTransport implements ThreadTransport {
       socketPath: this.#socketPath,
       codexBinaryPath: this.#codexBinaryPath,
       runCommand: runOwnershipCommand,
+      allowSafeRenewal: true,
+      expectedAdditionalClientPid: process.pid,
     });
     // An isolated fallback is fail-closed for standalone providers. Production
     // injects the consumer paired with BridgeStateService's issuer.

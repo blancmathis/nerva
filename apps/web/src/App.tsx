@@ -11,11 +11,13 @@ import type {
   RunSkillCommand,
   SelectAgentCommand,
   SetModelReasoningCommand,
+  StartVoiceChatCommand,
   SavedDrawingSummary,
   SiteAssociation,
 } from "@codex-pad/protocol";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandStatusToast } from "./components/CommandStatusToast";
+import { ConnectionRecovery } from "./components/ConnectionRecovery";
 import type {
   DrawingKeepPayload,
   DrawingSendPayload,
@@ -283,10 +285,22 @@ function App() {
   const deviceSystemTheme = useDeviceSystemTheme();
   const bridge = useBridge({ allSessionsEnabled: preferences.allSessionsEnabled });
   const pwa = usePwaUpdate();
+  const [connectionTroubleReady, setConnectionTroubleReady] = useState(false);
 
   useEffect(() => {
     if (bridge.phase === "update-required") void pwa.check();
   }, [bridge.phase, pwa.check]);
+  useEffect(() => {
+    const missingLiveWorkspace = bridge.snapshot === null
+      && (bridge.phase === "connecting" || bridge.phase === "reconnecting" || bridge.phase === "offline");
+    if (!missingLiveWorkspace) {
+      setConnectionTroubleReady(false);
+      return;
+    }
+    const delay = bridge.phase === "connecting" ? 7_500 : bridge.phase === "reconnecting" ? 1_500 : 0;
+    const timer = window.setTimeout(() => setConnectionTroubleReady(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [bridge.phase, bridge.snapshot]);
   const captureInbox = useCaptureInboxSummary();
   const [notificationPermission, setNotificationPermission] = useState<NervaNotificationPermission>(readNotificationPermission);
   const [pendingNotificationTarget, setPendingNotificationTarget] = useState<NervaNotificationTarget | null>(() => notificationTargetFromUrl(window.location));
@@ -935,6 +949,32 @@ function App() {
     }
   }
 
+  async function startVoiceChat(targetThreadId: string | null = viewedSession?.threadId ?? null) {
+    const snapshot = liveMutationSnapshot(mutationGate);
+    if (
+      !snapshot
+      || !targetThreadId
+      || snapshot.activeThreadKey !== targetThreadId
+      || snapshot.voiceChat.threadId !== targetThreadId
+      || snapshot.voiceChat.status !== "available"
+      || !supportsBridgeCommand(mutationGate, "startVoiceChat")
+      || !beginCommandMutation("voice-chat")
+    ) return;
+    const command: StartVoiceChatCommand = {
+      type: "startVoiceChat",
+      commandId: createId(),
+      expectedBridgeInstanceId: snapshot.bridgeInstanceId,
+      expectedSequence: snapshot.seq,
+      expectedThreadId: targetThreadId,
+      targetThreadId: targetThreadId,
+    };
+    try {
+      await bridge.command(command);
+    } finally {
+      finishCommandMutation();
+    }
+  }
+
   async function sendPrompt() {
     const submitAction = resolveAction("send");
     const active = dictationGesture;
@@ -1425,6 +1465,15 @@ function App() {
     );
   }
 
+  if (
+    connectionTroubleReady
+    && view !== "inbox"
+    && bridge.snapshot === null
+    && (bridge.phase === "connecting" || bridge.phase === "reconnecting" || bridge.phase === "offline")
+  ) {
+    return <ConnectionRecovery phase={bridge.phase} onRetry={bridge.retryConnection} onOpenCaptureInbox={() => { setCaptureInboxTargetThreadId(null); setView("inbox"); }} />;
+  }
+
   const targetReady = Boolean(
     viewedSession
     && selected?.threadId === viewedSession.threadId
@@ -1437,6 +1486,29 @@ function App() {
     ? bridge.snapshot?.pendingApprovals.filter((approval) => approval.threadId === viewedSession.threadId) ?? []
     : [];
   const macUnavailable = bridge.phase !== "online" || bridge.snapshot?.health === "offline";
+  const voiceChatTargetThreadId = view === "home"
+    ? mutationSnapshot?.activeThreadKey ?? null
+    : viewedSession?.threadId ?? null;
+  const voiceChatTarget = productSessions.find((session) => session.threadId === voiceChatTargetThreadId);
+  const voiceChatMatchesViewedSession = Boolean(
+    voiceChatTargetThreadId
+    && mutationSnapshot?.activeThreadKey === voiceChatTargetThreadId
+    && mutationSnapshot.voiceChat.threadId === voiceChatTargetThreadId,
+  );
+  const voiceChatStatus = voiceChatMatchesViewedSession
+    ? mutationSnapshot?.voiceChat.status ?? "unavailable"
+    : "unavailable";
+  const voiceChatEnabled = voiceChatStatus === "available"
+    && supportsBridgeCommand(mutationGate, "startVoiceChat");
+  const voiceChatDetail = macUnavailable
+    ? "Reconnect the Mac to check Voice."
+    : !voiceChatMatchesViewedSession
+      ? view === "home" ? "Open a task on the Mac to check Voice." : "Opening this task on the Mac to check Voice…"
+      : voiceChatStatus === "active"
+        ? "Voice is already active on the Mac."
+        : voiceChatStatus === "available"
+          ? "Uses the Mac microphone and speakers."
+          : "Codex does not offer Voice for this task; Dictation still works.";
 
   function toggleViewedSkill(skillId: string) {
     if (!viewedSession || !capabilities.skills.some((skill) => skill.id === skillId && skill.enabled)) return;
@@ -1473,7 +1545,7 @@ function App() {
           {view === "settings" && <span>Settings</span>}
         </nav>
         <div className="cp-topbar__status">
-          <span className={`cp-connection phase-${bridge.phase}`}><i aria-hidden="true" /><span>{bridge.phase === "online" ? "Mac connected" : statusLabel(bridge.phase)}</span></span>
+          <span className={`cp-connection phase-${bridge.phase}`} role="status" aria-label={bridge.phase === "online" ? "Mac connected" : statusLabel(bridge.phase)}><i aria-hidden="true" /><span>{bridge.phase === "online" ? "Mac connected" : statusLabel(bridge.phase)}</span></span>
           {bridge.snapshot && <span className="cp-sequence">#{bridge.snapshot.seq}</span>}
         </div>
       </header>
@@ -1486,6 +1558,11 @@ function App() {
             sessions={productSessions}
             compactCards={preferences.cardDensity === "compact"}
             macUnavailable={macUnavailable}
+            voiceChatStatus={voiceChatStatus}
+            voiceChatEnabled={voiceChatEnabled && busyAction === null}
+            voiceChatDetail={voiceChatDetail}
+            voiceChatTargetTitle={voiceChatTarget?.title ?? null}
+            onStartVoiceChat={() => void startVoiceChat(voiceChatTargetThreadId)}
             codexUsage={bridge.codexUsage}
             codexUsageLoaded={bridge.codexUsageLoaded}
             onLayoutAction={dispatchHomeLayout}
@@ -1496,9 +1573,9 @@ function App() {
             }}
             attentionRequestKey={homeAttentionRequestKey}
             onFocusChange={setHomeFocusActive}
-            onOpenCaptureInbox={() => { setCaptureInboxTargetThreadId(null); setView("inbox"); }}
-            captureInboxCount={captureInbox.summary.count}
             onOpenSettings={() => setView("settings")}
+            onOpenCaptureInbox={() => { setCaptureInboxTargetThreadId(null); setView("inbox"); }}
+            onRefreshSessions={() => void bridge.refreshSessions()}
             onRefreshCodexUsage={() => void bridge.refreshCodexUsage()}
           />
         )}
@@ -1556,6 +1633,9 @@ function App() {
             pinned={homeLayout?.pinnedThreadIds.includes(viewedSession.threadId) ?? false}
             followMac={followMac}
             targetReady={targetReady}
+            voiceChatStatus={voiceChatStatus}
+            voiceChatEnabled={voiceChatEnabled}
+            voiceChatDetail={voiceChatDetail}
             macUnavailable={macUnavailable}
             skills={capabilities.skills}
             selectedSkillIds={selectedSkillIds}
@@ -1593,6 +1673,7 @@ function App() {
             onRunAction={(action, value) => void runControl(action, value)}
             onSendPrompt={() => void sendPrompt()}
             onToggleDictation={() => void toggleDictation()}
+            onStartVoiceChat={() => void startVoiceChat()}
             onSetModelReasoning={setModelReasoning}
             onApprovalDecision={(approval, decision) => void respondToApproval(approval, decision)}
             onOpenDrawing={(importPhoto) => {

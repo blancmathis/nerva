@@ -861,7 +861,17 @@ async function startBridgeWithLifetimeLease(
         device.id,
         command.commandId,
         JSON.stringify(command),
-        () => executor.execute(command),
+        async () => {
+          // Durability can wait on disk after body admission. Revocation
+          // before dispatch must still prevent a native operation.
+          if (await credentialStore.activeDevice(device.id) === null) {
+            throw Object.assign(new Error("Pair this device again"), {
+              code: "UNAUTHENTICATED",
+              retryable: false,
+            });
+          }
+          return executor.execute(command);
+        },
       );
     } catch (error) {
       return commandAck(command, false, state, null, error);
@@ -1507,6 +1517,11 @@ async function startBridgeWithLifetimeLease(
         device === undefined
         || (!commandRequestLeases.has(request) && !inFlightDuplicateRequests.has(request))
       ) throw new SecurityError();
+      // Authentication preceded the upload. Re-read the credential before
+      // reserving or reconciling a command from its now-complete body.
+      if (await credentialStore.activeDevice(device.id) === null) {
+        return reply.code(401).send({ ok: false, error: apiError("UNAUTHENTICATED", "Pair this device again") });
+      }
       const { command } = CommandRequestSchema.parse(request.body);
       const admittedCommandId = admittedCommandIds.get(request);
       if (admittedCommandId !== undefined && admittedCommandId !== command.commandId) {

@@ -8,7 +8,17 @@ import {
   type NativeComposerTextAppend,
   type NativeComposerFileBatch,
   type NativeDispatch,
+  type NativeVoiceChatStart,
 } from "./types.js";
+
+const DEVICE_READY_MESSAGE = {
+  type: "codex-micro-device-state-changed",
+  state: {
+    status: "connected",
+    error: null,
+    battery: { percentage: 100, isCharging: true }
+  }
+} as const;
 
 /*
  * The native-state technique is independently implemented from observable Codex
@@ -190,6 +200,17 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
     : null;
 
   const bus = moduleValues.find((value) => value && typeof value === 'object' && value.handlers instanceof Map && (typeof value.dispatchHostMessage === 'function' || typeof value.dispatchMessage === 'function'));
+  const nativeHandlersReady = () => Boolean(
+    bus
+    && (bus.handlers.get('codex-micro-hid-event')?.size ?? 0) > 0
+    && (bus.handlers.get('codex-micro-joystick-event')?.size ?? 0) > 0
+  );
+  if (bus && !nativeHandlersReady()) {
+    const dispatch = bus.dispatchHostMessage ?? bus.dispatchMessage;
+    dispatch.call(bus, ${JSON.stringify(DEVICE_READY_MESSAGE)});
+    const deadline = Date.now() + 1200;
+    while (!nativeHandlersReady() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  }
   const hidHandler = Boolean(bus && (bus.handlers.get('codex-micro-hid-event')?.size ?? 0) > 0);
   const joystickHandler = Boolean(bus && (bus.handlers.get('codex-micro-joystick-event')?.size ?? 0) > 0);
   const reasoningAdjustable = Boolean(reasoningEffort && hidHandler);
@@ -269,11 +290,27 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
         ? composerCanonicalThread
         : null);
   const activeThreadConfirmed = activeThreadKey !== null;
+  const startVoiceControls = [...document.querySelectorAll('button[aria-label="Start voice chat"]')]
+    .filter((button) => button.isConnected && button.getAttribute('aria-hidden') !== 'true');
+  const activeVoiceControls = [...document.querySelectorAll('button[aria-label="End voice chat"]')]
+    .filter((button) => button.isConnected && button.getAttribute('aria-hidden') !== 'true');
+  const voiceChat = {
+    threadKey: activeThreadKey,
+    status: activeThreadConfirmed
+      && startVoiceControls.length === 1
+      && !startVoiceControls[0].disabled
+      && startVoiceControls[0].getAttribute('aria-disabled') !== 'true'
+        ? 'available'
+        : activeThreadConfirmed && activeVoiceControls.length === 1
+          ? 'active'
+          : 'unavailable'
+  };
 
   return {
     slots,
     activeThreadKey,
     activeThreadObserved: activeThreadConfirmed,
+    voiceChat,
     agentSource,
     actionLayout,
     joystickLayout,
@@ -283,14 +320,50 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
   };
 })()`;
 
-const DEVICE_READY_MESSAGE = {
-  type: "codex-micro-device-state-changed",
-  state: {
-    status: "connected",
-    error: null,
-    battery: { percentage: 100, isCharging: true }
-  }
-} as const;
+/** Starts the exact native Codex Voice control after a write-adjacent task recheck. */
+export function buildFixedVoiceChatStartExpression(input: NativeVoiceChatStart): string {
+  validateVoiceChatStart(input);
+  return `(() => {
+    let codexPadVoiceStartMayHaveFired = false;
+    try {
+      const expectedThreadId = ${JSON.stringify(input.expectedThreadId)};
+      const canonicalThreadId = (value) => typeof value === 'string'
+        ? value.match(/(?:^|[^0-9a-f])([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?=$|[^0-9a-f])/i)?.[1]?.toLowerCase() ?? null
+        : null;
+      const sidebarValue = document.querySelector('[data-app-action-sidebar-thread-id][aria-current="page"]')?.getAttribute('data-app-action-sidebar-thread-id') ?? null;
+      const composerValue = document.querySelector('[data-above-composer-conversation-id]')?.getAttribute('data-above-composer-conversation-id') ?? null;
+      const isClientNewThreadKey = (value) => typeof value === 'string'
+        && /^local:client-new-thread:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+      const sidebarThreadId = isClientNewThreadKey(sidebarValue) ? null : canonicalThreadId(sidebarValue);
+      const composerThreadId = canonicalThreadId(composerValue);
+      const activeThreadId = sidebarThreadId ?? composerThreadId;
+      if (
+        activeThreadId !== expectedThreadId
+        || (sidebarThreadId !== null && composerThreadId !== null && sidebarThreadId !== composerThreadId)
+      ) {
+        throw new Error('The exact Codex task changed before Voice could start.');
+      }
+      const controls = [...document.querySelectorAll('button[aria-label="Start voice chat"]')]
+        .filter((button) => button.isConnected && button.getAttribute('aria-hidden') !== 'true');
+      if (controls.length !== 1) {
+        throw new Error('Codex does not expose one exact Voice start control for this task.');
+      }
+      const control = controls[0];
+      if (control.disabled || control.getAttribute('aria-disabled') === 'true') {
+        throw new Error('Codex Voice is not currently available for this task.');
+      }
+      codexPadVoiceStartMayHaveFired = true;
+      control.click();
+      return true;
+    } catch (error) {
+      if (codexPadVoiceStartMayHaveFired) {
+        const message = error instanceof Error ? error.message : 'Native Voice start failed after it may have fired.';
+        throw new Error('CODEX_PAD_DELIVERY_UNKNOWN: ' + message);
+      }
+      throw error;
+    }
+  })()`;
+}
 
 /**
  * Builds only one of two typed native event shapes. JSON encoding makes validated
@@ -682,7 +755,9 @@ export function buildFixedComposerAttachmentExpression(
         const sidebar = isClientNewThreadKey(sidebarValue) ? null : canonicalThreadId(sidebarValue);
         if (isClientNewThreadKey(sidebarValue) && composer === expectedThreadId) return;
         const current = sidebar ?? composer;
-        if (current !== expectedThreadId) throw new Error('The exact Codex composer changed before image attachment.');
+        if (current !== expectedThreadId || (sidebar !== null && composer !== null && sidebar !== composer)) {
+          throw new Error('The exact Codex composer changed before image attachment.');
+        }
       };
       assertExpectedComposer();
 
@@ -748,8 +823,13 @@ export function buildFixedComposerBatchAttachmentExpression(batch: NativeCompose
       const assertExpectedComposer = () => {
         const sidebarValue = document.querySelector('[data-app-action-sidebar-thread-id][aria-current="page"]')?.getAttribute('data-app-action-sidebar-thread-id') ?? null;
         const composerValue = document.querySelector('[data-above-composer-conversation-id]')?.getAttribute('data-above-composer-conversation-id') ?? null;
-        const current = canonicalThreadId(sidebarValue) ?? canonicalThreadId(composerValue);
-        if (current !== expectedThreadId) throw new Error('The exact Codex composer changed before image attachment.');
+        const isClientNewThreadKey = (value) => typeof value === 'string'
+          && /^local:client-new-thread:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+        const composer = canonicalThreadId(composerValue);
+        const sidebar = isClientNewThreadKey(sidebarValue) ? null : canonicalThreadId(sidebarValue);
+        if ((sidebar ?? composer) !== expectedThreadId || (sidebar !== null && composer !== null && sidebar !== composer)) {
+          throw new Error('The exact Codex composer changed before image attachment.');
+        }
       };
       assertExpectedComposer();
       const controls = [...document.querySelectorAll('button[data-composer-navigation-target="add-context"]')];
@@ -909,6 +989,16 @@ function validateComposerAttachment(attachment: NativeComposerImageAttachment): 
     || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   ) {
     throw new CodexDesktopAdapterError("control-not-configured", "Refusing an invalid native composer PNG.");
+  }
+}
+
+function validateVoiceChatStart(input: NativeVoiceChatStart): void {
+  const threadId = extractThreadId(input.expectedThreadId);
+  if (threadId === null || threadId !== input.expectedThreadId) {
+    throw new CodexDesktopAdapterError(
+      "invalid-thread-key",
+      "Refusing native Voice start without a canonical expected thread UUID.",
+    );
   }
 }
 

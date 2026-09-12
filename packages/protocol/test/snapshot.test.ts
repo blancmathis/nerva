@@ -67,6 +67,7 @@ function snapshot(): MicroSnapshot {
       },
     },
     activeThreadId: THREAD_ID,
+    voiceChat: { threadId: THREAD_ID, status: "available" },
     selectedThreadId: THREAD_ID,
     pendingApprovals: [],
     reasoning: { effort: "high", adjustable: true },
@@ -79,6 +80,13 @@ describe("MicroSnapshotSchema", () => {
     const parsed = MicroSnapshotSchema.parse(snapshot());
     expect(parsed.bridgeInstanceId).toBe(BRIDGE_INSTANCE_ID);
     expect(parsed.slots).toHaveLength(6);
+  });
+
+  it("rejects Voice state for a task other than the exact active task", () => {
+    expect(MicroSnapshotSchema.safeParse({
+      ...snapshot(),
+      voiceChat: { threadId: "019f6de7-44c2-7fe2-9d17-9322c952e627", status: "available" },
+    }).success).toBe(false);
   });
 
   it("validates runtime identity while accepting one legacy snapshot without it", () => {

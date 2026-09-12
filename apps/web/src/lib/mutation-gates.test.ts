@@ -41,6 +41,7 @@ function degradedSnapshot(commands: readonly string[]): BridgeSnapshot {
     healthDetail: "Reasoning metadata is unavailable.",
     slots: [selected, ...Array.from({ length: 5 }, (_, index) => emptySlot(index + 1))],
     activeThreadKey: THREAD_ID,
+    voiceChat: { threadId: THREAD_ID, status: "unavailable" },
     selectedSlotId: selected.slotId,
     selectedThreadKey: selected.threadKey,
     pendingApprovals: [],

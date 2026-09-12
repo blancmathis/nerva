@@ -1,4 +1,5 @@
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
+import type { CommandAckApiResponse } from "@codex-pad/protocol";
 import {
   INITIAL_BRIDGE_INSTANCE_ID,
   RESTARTED_BRIDGE_INSTANCE_ID,
@@ -39,6 +40,26 @@ function errorEnvelope(code: string, message: string) {
   return {
     ok: false,
     error: { code, message, retryable: false, details: null },
+  };
+}
+
+function commandFailureEnvelope(
+  command: MockCommand,
+  sequence: number,
+  code: string,
+  message: string,
+  retryable = false,
+): CommandAckApiResponse {
+  return {
+    ok: true,
+    data: {
+      commandId: command.commandId,
+      disposition: "accepted",
+      status: "failed",
+      sequence,
+      targetThreadId: typeof command.expectedThreadId === "string" ? command.expectedThreadId : null,
+      error: { code, message, retryable },
+    },
   };
 }
 
@@ -704,14 +725,16 @@ export class MockBridge {
         body.command.expectedBridgeInstanceId !== this.bridgeInstanceId
         || body.command.expectedSequence !== this.sequence
       ) {
-        await fulfillJson(route, 409, errorEnvelope("STALE_SNAPSHOT", "Command snapshot identity is stale."));
+        await fulfillJson(route, 200, commandFailureEnvelope(body.command, this.sequence, "STALE_SNAPSHOT", "Command snapshot identity is stale."));
         return;
       }
       this.commands.push(body.command);
       if (this.nextCommandFailureMessage !== null) {
         const message = this.nextCommandFailureMessage;
         this.nextCommandFailureMessage = null;
-        await fulfillJson(route, 409, errorEnvelope("APP_SERVER_UNAVAILABLE", message));
+        // Executor failures use a command ACK, including its exact target;
+        // HTTP API error envelopes describe admission failures only.
+        await fulfillJson(route, 200, commandFailureEnvelope(body.command, this.sequence, "APP_SERVER_UNAVAILABLE", message, true));
         return;
       }
       if (body.command.type === "selectAgent" && typeof body.command.slot === "number") {

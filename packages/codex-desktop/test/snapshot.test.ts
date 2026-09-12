@@ -64,6 +64,27 @@ describe("native Micro snapshot projection", () => {
     expect(projectNativeStatus("future-native-state").known).toBe(false);
   });
 
+  it("projects Voice only for the exact active task and otherwise fails closed", async () => {
+    const raw = await fixture();
+    raw.voiceChat = {
+      threadKey: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      status: "available",
+    };
+    expect(parseNativeSnapshot(raw, 123).snapshot.voiceChat).toEqual({
+      threadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      status: "available",
+    });
+
+    raw.voiceChat = {
+      threadKey: "019f7ec2-68eb-7183-bb3a-0e67312a8ba2",
+      status: "available",
+    };
+    expect(parseNativeSnapshot(raw, 123).snapshot.voiceChat).toEqual({
+      threadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
+      status: "unavailable",
+    });
+  });
+
   it.each([
     ["running", "working"],
     ["input", "awaiting-response"],

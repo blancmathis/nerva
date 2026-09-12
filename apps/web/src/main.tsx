@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { AppBootBoundary } from "./components/AppBootBoundary";
 import { initializeReviewStore } from "./lib/review-store";
 import { startPwaUpdateMonitor } from "./lib/pwa-updates";
 import "./styles/tokens.css";
@@ -10,6 +11,8 @@ import "./styles/site-experience.css";
 import "./styles/status-lighting.css";
 import "./styles/capture-inbox.css";
 import "./styles/polish.css";
+import "./styles/activity-sidebar.css";
+import "./styles/home-dock.css";
 
 // Storage maintenance is independent of pairing, connectivity, and native
 // slot discovery. Opening version 6 here purges legacy PWA audio stores even
@@ -21,7 +24,9 @@ if (!root) throw new Error("Nerva root element is missing");
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <AppBootBoundary>
+      <App />
+    </AppBootBoundary>
   </StrictMode>,
 );
 

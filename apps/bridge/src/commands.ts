@@ -516,6 +516,17 @@ export class ProtocolCommandExecutor {
         await this.sessions.openSession(command.targetThreadId);
         return result(this.state.current().sequence, command.targetThreadId, "Exact Codex session opened on the Mac");
       }
+      case "startVoiceChat": {
+        const snapshot = await this.state.startVoiceChat(
+          command.expectedSequence,
+          command.targetThreadId,
+        );
+        return result(
+          snapshot.sequence,
+          command.targetThreadId,
+          "Codex Voice started on the Mac",
+        );
+      }
       case "openBrowserTab": {
         this.state.assertExactTarget(command.expectedSequence, command.targetThreadId, true);
         if (this.openBrowserTab === undefined) {
