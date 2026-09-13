@@ -9,75 +9,159 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Node.js 22
+  quality:
+    name: Build, unit tests and release audit (Node.js 22)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 25
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
-
+      - name: Install dependencies and browser test prerequisites
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
       - name: Check documentation
         run: npm run docs:check
-
       - name: Check
         run: npm run check
-
       - name: Test
         run: npm test
-
       - name: Build
         run: npm run build
-
       - name: Check bundle budget
         run: npm run check:bundle
-
-      - name: Test iPad PWA flows
-        run: npm run test:e2e
-
-      - name: Test the production bridge boundary
-        run: npm run test:e2e:bridge
-
-      - name: Verify public screenshots
-        run: npm run screenshots:check
-
       - name: Audit release artifacts
         run: npm run audit:release
-
       - name: Check Context Room
         run: npm run context-room:doctor
-
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
+  browsers:
+    name: Mobile PWA — ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: iPad landscape
+            browser: chromium
+            artifact: chromium-ipad-landscape
+          - profile: iPad portrait
+            browser: chromium
+            artifact: chromium-ipad-portrait
+          - profile: iPhone
+            browser: chromium
+            artifact: chromium-iphone
+          - profile: WebKit iPad landscape
+            browser: webkit
+            artifact: webkit-ipad-landscape
+          - profile: WebKit iPad portrait
+            browser: webkit
+            artifact: webkit-ipad-portrait
+          - profile: WebKit iPhone
+            browser: webkit
+            artifact: webkit-iphone
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies and browser
+        run: |
+          npm ci
+          npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Test every flow in this mobile profile
+        run: npx playwright test --project="${{ matrix.profile }}" --workers=1
+      - name: Upload UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nerva-ui-${{ matrix.artifact }}-${{ github.run_attempt }}
+          path: test-results/**/activity-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload Playwright diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-diagnostics-${{ github.run_attempt }}
+          name: playwright-${{ matrix.artifact }}-${{ github.run_attempt }}
           path: |
             test-results
             playwright-report
           if-no-files-found: ignore
           retention-days: 7
+
+  release:
+    name: Production bridge and public screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies and browsers
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Build the actual production artifacts
+        run: npm run build
+      - name: Test the production bridge boundary
+        run: npm run test:e2e:bridge
+      - name: Verify public screenshots
+        run: npm run screenshots:check
+      - name: Upload public screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nerva-public-screenshots-${{ github.run_attempt }}
+          path: test-results/public-screenshots
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload production-boundary diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-boundary-diagnostics-${{ github.run_attempt }}
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  compatibility:
+    name: Node.js 26 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies and test prerequisites
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Build shared packages
+        run: npm run build:packages
+      - name: Test with the newer Node Web Storage globals
+        run: npm test
 
   macos-setup-check:
     name: macOS setup check (read-only)
@@ -130,3 +214,27 @@ jobs:
           path: setup-check.json
           if-no-files-found: error
           retention-days: 7
+
+  ci:
+    # Keep the original required-check name, but never allow a green core job
+    # to conceal a failed, skipped or cancelled mobile profile or release gate.
+    name: Node.js 22
+    if: always()
+    needs: [quality, browsers, release, compatibility, macos-setup-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all validation groups
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          BROWSERS: ${{ needs.browsers.result }}
+          RELEASE: ${{ needs.release.result }}
+          COMPATIBILITY: ${{ needs.compatibility.result }}
+          MACOS: ${{ needs.macos-setup-check.result }}
+        run: |
+          for result in "$QUALITY" "$BROWSERS" "$RELEASE" "$COMPATIBILITY" "$MACOS"; do
+            if [ "$result" != "success" ]; then
+              echo "Required validation did not succeed: $result"
+              exit 1
+            fi
+          done

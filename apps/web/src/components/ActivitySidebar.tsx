@@ -19,7 +19,7 @@ import {
 import type { ProductSession } from "../lib/session-presentation";
 import { relativeSessionActivity } from "../lib/session-presentation";
 import { useModalFocus } from "../lib/use-modal-focus";
-import { ChevronIcon, CloseIcon, FolderIcon, PinIcon } from "./Icons";
+import { ChevronIcon, CloseIcon, FolderIcon, MoreIcon, PinIcon } from "./Icons";
 
 interface ActivitySidebarProps {
   readonly open: boolean;
@@ -63,6 +63,8 @@ function ActivityRow({
   const shellRef = useRef<HTMLElement | null>(null);
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const actionsRef = useRef<HTMLButtonElement | null>(null);
+  const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const suppressOpen = useRef(false);
   const pointerStart = useRef<{ readonly id: number; readonly x: number; readonly y: number } | null>(null);
@@ -73,9 +75,10 @@ function ActivityRow({
     pointerStart.current = null;
   }
 
-  function openMenu() {
+  function openMenu(trigger: HTMLButtonElement | null = rowRef.current) {
+    menuTrigger.current = trigger;
     cancelLongPress();
-    suppressOpen.current = true;
+    suppressOpen.current = trigger === rowRef.current;
     setMenuOpen(true);
   }
 
@@ -100,7 +103,7 @@ function ActivityRow({
     cancelLongPress();
     suppressOpen.current = false;
     pointerStart.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-    longPressTimer.current = window.setTimeout(openMenu, ACTIVITY_LONG_PRESS_MS);
+    longPressTimer.current = window.setTimeout(() => openMenu(), ACTIVITY_LONG_PRESS_MS);
   }
 
   function moveLongPress(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -111,7 +114,7 @@ function ActivityRow({
 
   function closeMenuAndRestoreFocus() {
     setMenuOpen(false);
-    rowRef.current?.focus();
+    (menuTrigger.current ?? rowRef.current)?.focus({ preventScroll: true });
   }
 
   return (
@@ -154,6 +157,18 @@ function ActivityRow({
         </span>
         <span className={`cp-activity-row__state${state ? "" : " is-history"}`}><ChevronIcon /></span>
       </button>
+      <button
+        ref={actionsRef}
+        type="button"
+        className="cp-activity-row__more"
+        aria-label={`Actions for ${session.title}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => {
+          if (menuOpen) closeMenuAndRestoreFocus();
+          else openMenu(actionsRef.current);
+        }}
+      ><MoreIcon /></button>
       {menuOpen && (
         <div
           ref={menuRef}
@@ -165,14 +180,30 @@ function ActivityRow({
               event.preventDefault();
               event.stopPropagation();
               closeMenuAndRestoreFocus();
+              return;
+            }
+            const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
+            const current = items.indexOf(document.activeElement as HTMLButtonElement);
+            const direction = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1
+              : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+            if (direction || event.key === "Home" || event.key === "End") {
+              event.preventDefault();
+              event.stopPropagation();
+              const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+                : (current + direction + items.length) % items.length;
+              items[next]?.focus();
+            } else if (event.key === "Tab") {
+              // Restore the anchor synchronously, then let the owning modal
+              // move to the previous/next control outside this menu.
+              closeMenuAndRestoreFocus();
             }
           }}
         >
-          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onOpen(session); }}>
+          <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuOpen(false); onOpen(session); }}>
             Open conversation <ChevronIcon />
           </button>
-          <button type="button" role="menuitem" onClick={() => {
-            setMenuOpen(false);
+          <button type="button" role="menuitem" tabIndex={-1} onClick={() => {
+            closeMenuAndRestoreFocus();
             if (pinned) onUnpin(session.threadId);
             else onPin(session.threadId);
           }}>
@@ -235,7 +266,7 @@ export function ActivitySidebar({
           <div>
             <p className="cp-overline">Across every project</p>
             <h2 id="activity-title">Activity</h2>
-            <p>Tap to open. Press and hold for Home actions.</p>
+            <p>Open a conversation, or use its menu to pin or unpin.</p>
           </div>
           <button type="button" className="cp-icon-button" aria-label="Close Activity" onClick={onClose}><CloseIcon /></button>
         </header>
@@ -245,7 +276,7 @@ export function ActivitySidebar({
             <button type="button" aria-pressed="true">Activity{visibleCount > 0 && <span>{visibleCount > 99 ? "99+" : visibleCount}</span>}</button>
           </div>
         </nav>
-        <p id="activity-actions-hint" className="sr-only">Press and hold for conversation actions.</p>
+        <p id="activity-actions-hint" className="sr-only">Use the actions button or press and hold for conversation actions.</p>
 
         <div className="cp-activity-summary" aria-label="Activity summary">
           <span className="status-in-progress"><i aria-hidden="true" />{workingCount} in progress</span>

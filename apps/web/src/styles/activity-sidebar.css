@@ -70,7 +70,7 @@
   border-radius: var(--cp-radius-round);
   color: var(--cp-ink-secondary);
   background: var(--cp-content);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -99,6 +99,7 @@
 
 .cp-activity-sidebar__body {
   display: grid;
+  background: var(--cp-content);
   align-content: start;
   gap: 10px;
   padding: 10px 14px 22px;
@@ -141,6 +142,29 @@
 .cp-activity-row-shell {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: start;
+}
+
+.cp-activity-row__more {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 48px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  color: var(--cp-ink-secondary);
+  background: transparent;
+}
+
+.cp-activity-row__more svg { width: 22px; height: 22px; }
+
+.cp-activity-row__more:active,
+.cp-activity-row__more[aria-expanded="true"] {
+  color: var(--cp-ink);
+  background: var(--cp-content-strong);
 }
 
 .cp-activity-row {
@@ -209,6 +233,7 @@
 
 .cp-activity-row-actions {
   display: grid;
+  grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 4px 6px 6px;
@@ -216,7 +241,7 @@
 
 .cp-activity-row-actions button {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 9px;
   align-items: center;
   justify-content: center;
@@ -225,7 +250,7 @@
   border-radius: 9px;
   color: var(--cp-ink-secondary);
   background: var(--cp-content);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -247,7 +272,7 @@
 
 .cp-activity-row__copy strong {
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -261,7 +286,7 @@
   gap: 4px;
   overflow: hidden;
   color: var(--cp-ink-tertiary);
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

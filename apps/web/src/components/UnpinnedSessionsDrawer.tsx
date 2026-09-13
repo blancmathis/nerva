@@ -101,8 +101,8 @@ export function UnpinnedSessionsDrawer({
           ))}
           {unpinned.length === 0 && (
             <div className="cp-empty-list">
-              <strong>{query ? "No matching sessions" : "Everything is pinned"}</strong>
-              <p>{query ? "Try a session name, project, or status." : "Unpin a session from Home to find it here."}</p>
+              <strong>{query ? "No matching sessions" : sessions.length === 0 ? "No conversations yet" : "Everything is pinned"}</strong>
+              <p>{query ? "Try a session name, project, or status." : sessions.length === 0 ? "Start a conversation in Codex on your Mac. It will appear here when connected." : "Unpin a session from Home to find it here."}</p>
             </div>
           )}
         </div>

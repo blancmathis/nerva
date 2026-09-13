@@ -1,4 +1,6 @@
 ---
+
+> Audit supplement, 13 September 2026: see [Production readiness](PRODUCTION_READINESS.md) for current installation blockers, UI/UX corrections and the candidate validation gates. Historical observations below are not a current production certificate.
 context_room:
   kind: canonical
   scope: product

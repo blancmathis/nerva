@@ -21,3 +21,16 @@ Object.defineProperty(globalThis, "createImageBitmap", {
     close: () => undefined,
   }),
 });
+
+// Newer Node versions expose their own Web Storage globals. Browser tests
+// must use the per-test JSDOM origin, not Node's optional file-backed store.
+// https://vitest.dev/config/environment documents the jsdom instance global.
+const browserWindow = (globalThis as typeof globalThis & {
+  jsdom: { window: Pick<Window, "localStorage" | "sessionStorage"> };
+}).jsdom.window;
+for (const key of ["localStorage", "sessionStorage"] as const) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value: browserWindow[key],
+  });
+}
