@@ -212,14 +212,14 @@ export function PairingScreen({ onPair }: PairingScreenProps) {
         ) : invitation ? (
           <>
             <span className="pairing-icon" aria-hidden="true"><LinkIcon /></span>
-            <p className="eyebrow">Private tailnet connection</p>
+            <p className="eyebrow">Private connection</p>
             <h1 id="pairing-title">Connect to {displayMacName}</h1>
-            <p className="pairing-intro">Nerva will receive a revocable credential for this app only. The invitation disappears after it is used.</p>
+            <p className="pairing-intro">Connect once to access your Codex tasks from this device. You can disconnect at any time in Settings.</p>
             {message && <p className="form-error" role="alert">{message}</p>}
             <button className="pair-button" type="button" disabled={pending} onClick={() => void connect()}>
               {pending ? "Connecting…" : "Connect"}
             </button>
-            <p className="pairing-footnote">No Nerva account, password, device name, or daily QR is required.</p>
+            <p className="pairing-footnote">No separate account needed. Nerva remembers this Mac.</p>
           </>
         ) : (
           <>

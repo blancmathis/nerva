@@ -2,7 +2,7 @@ import { createExportGeometry, createScene } from "@codex-pad/drawing";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listCaptureInboxItems, saveCaptureInboxItem, type CaptureInboxItem } from "../lib/capture-inbox-store";
+import { listCaptureInboxItems, loadCaptureInboxItem, saveCaptureInboxItem, type CaptureInboxItem } from "../lib/capture-inbox-store";
 import { CaptureInboxPage } from "./CaptureInboxPage";
 import { exportSceneToBoundedPng } from "./drawing-export";
 
@@ -215,4 +215,39 @@ describe("CaptureInboxPage save recovery", () => {
     expect(saveCaptureInboxItem).toHaveBeenCalledTimes(stage === "export" ? 1 : 2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+});
+
+
+it("opens a complete long note and restores focus without sharing or changing it", async () => {
+  const text = `${savedCapture.title}\n${"A detailed observation. ".repeat(90)}Final detail that must stay readable.`;
+  vi.mocked(listCaptureInboxItems).mockResolvedValue([{ ...savedCapture, text }]);
+  const use = vi.fn();
+  const attach = vi.fn();
+  render(<CaptureInboxPage targetSession={null} macUnavailable onUseInSession={use}
+    onAttachFiles={attach} onBackToSession={vi.fn()} />);
+  const open = await screen.findByRole("button", { name: `Open ${savedCapture.title}` });
+  fireEvent.click(open);
+  const dialog = screen.getByRole("dialog", { name: savedCapture.title });
+  expect(within(dialog).getByText(/Final detail that must stay readable/).textContent).toBe(text);
+  expect(within(dialog).queryByRole("button", { name: "Select for this task" })).not.toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close capture" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await waitFor(() => expect(open).toHaveFocus());
+  expect(use).not.toHaveBeenCalled();
+  expect(attach).not.toHaveBeenCalled();
+  expect(saveCaptureInboxItem).not.toHaveBeenCalled();
+});
+
+it("keeps a failed media preview dismissible and leaves the saved capture intact", async () => {
+  const photo = { ...savedCapture, kind: "photo" as const, title: "Whiteboard", text: null, mimeType: "image/png", byteLength: 120 };
+  vi.mocked(listCaptureInboxItems).mockResolvedValue([photo]);
+  vi.mocked(loadCaptureInboxItem).mockRejectedValue(new Error("Local media read failed"));
+  render(<CaptureInboxPage targetSession={null} macUnavailable onUseInSession={vi.fn()} onAttachFiles={vi.fn()} onBackToSession={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Whiteboard" }));
+  const dialog = screen.getByRole("dialog", { name: "Whiteboard" });
+  await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("The saved media could not be opened."));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close capture" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Whiteboard" })).toBeVisible();
+  expect(saveCaptureInboxItem).not.toHaveBeenCalled();
 });

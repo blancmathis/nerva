@@ -11,7 +11,7 @@ import {
 import type { ProductSession } from "../lib/session-presentation";
 import type { CodexUsageSnapshot } from "@codex-pad/protocol";
 import { activityPriorityCount } from "../lib/activity-groups";
-import { ArrowDownIcon, ArrowUpIcon, InboxIcon, MacIcon, MissionControlIcon, MoreIcon, PhoneIcon, PinIcon, PlusIcon, SlidersIcon } from "./Icons";
+import { ArrowDownIcon, ArrowUpIcon, InboxIcon, MacIcon, MissionControlIcon, MoreIcon, PhoneIcon, LayersIcon, PlusIcon, SlidersIcon } from "./Icons";
 import { ActivitySidebar } from "./ActivitySidebar";
 import { CodexUsageCard } from "./CodexUsageCard";
 import { DIRECT_HOME_DROP_TARGET, SessionCard } from "./SessionCard";
@@ -34,6 +34,8 @@ interface HomeDashboardProps {
   readonly onOpenSession: (session: ProductSession) => void;
   readonly onOpenCurrentMacSession: () => void;
   readonly attentionRequestKey: number;
+  readonly conversationsRequested: boolean;
+  readonly onConversationsOpened: () => void;
   readonly onFocusChange: (focused: boolean) => void;
   readonly onOpenSettings: () => void;
   readonly onOpenCaptureInbox: () => void;
@@ -113,6 +115,8 @@ export function HomeDashboard({
   onOpenSession,
   onOpenCurrentMacSession,
   attentionRequestKey,
+  conversationsRequested,
+  onConversationsOpened,
   onFocusChange,
   onOpenSettings,
   onOpenCaptureInbox,
@@ -152,8 +156,15 @@ export function HomeDashboard({
   }, [attentionRequestKey]);
 
   useEffect(() => {
-    onFocusChange(focus !== "manual");
-  }, [focus, onFocusChange]);
+    if (!conversationsRequested) return;
+    setDrawerOpen(true);
+    onRefreshSessions();
+    onConversationsOpened();
+  }, [conversationsRequested, onConversationsOpened, onRefreshSessions]);
+
+  useEffect(() => {
+    onFocusChange(focus !== "manual" || drawerOpen || activityOpen);
+  }, [focus, drawerOpen, activityOpen, onFocusChange]);
 
   useEffect(() => () => onFocusChange(false), [onFocusChange]);
 
@@ -307,6 +318,7 @@ export function HomeDashboard({
       <button
         type="button"
         className="cp-voice-chat cp-home-voice"
+        data-state={voiceChatStatus}
         aria-pressed={voiceChatStatus === "active"}
         disabled={!voiceChatEnabled}
         onClick={onStartVoiceChat}
@@ -332,7 +344,7 @@ export function HomeDashboard({
             aria-expanded={drawerOpen || activityOpen}
             onClick={openUnpinnedSessions}
           >
-            <PinIcon /><span className="cp-home-dock__key-label">Sessions</span>{activityCount > 0 && <strong className="cp-home-dock__badge">{activityCount > 99 ? "99+" : activityCount}</strong>}
+            <LayersIcon /><span className="cp-home-dock__key-label">Sessions</span>{activityCount > 0 && <strong className="cp-home-dock__badge">{activityCount > 99 ? "99+" : activityCount}</strong>}
           </button>
           <button
             type="button"
@@ -368,9 +380,8 @@ export function HomeDashboard({
           {pinned.length === 0 && (
             <section className="cp-home-empty">
               <span className="cp-home-empty__orb" aria-hidden="true"><PlusIcon /></span>
-              <p className="cp-overline">Home is ready</p>
-              <h2>Pin only what matters now.</h2>
-              <p>Sessions stay on the Mac. Home is your personal view of the ones you want within reach.</p>
+              <h2>Keep your tasks within reach.</h2>
+              <p>Choose a task from Sessions and pin it here. You can open every other task from Sessions at any time.</p>
               <button type="button" onClick={openUnpinnedSessions}>Choose sessions</button>
             </section>
           )}
@@ -488,6 +499,7 @@ export function HomeDashboard({
         onOpenActivity={openActivity}
         onOpenSession={(session) => { setDrawerOpen(false); onOpenSession(session); }}
         onPin={requestPin}
+        onUnpin={(threadId) => onLayoutAction({ type: "unpin", threadId })}
       />
 
       {replacementThreadId && (

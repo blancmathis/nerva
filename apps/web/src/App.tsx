@@ -306,6 +306,7 @@ function App() {
   const [pendingNotificationTarget, setPendingNotificationTarget] = useState<NervaNotificationTarget | null>(() => notificationTargetFromUrl(window.location));
   const pairingJourneyRef = useRef(false);
   const [view, setView] = useState<WorkspaceView>("home");
+  const [conversationsRequested, setConversationsRequested] = useState(false);
   const [homeAttentionRequestKey, setHomeAttentionRequestKey] = useState(0);
   const [homeFocusActive, setHomeFocusActive] = useState(false);
   const [reviewReturnView, setReviewReturnView] = useState<"session" | "inbox">("session");
@@ -1534,7 +1535,7 @@ function App() {
       <header className="cp-topbar">
         <button type="button" className="cp-brand" aria-label="Open Nerva Home" onClick={returnHome}>
           <span className="cp-brand__mark" aria-hidden="true"><i /><i /><i /><i /></span>
-          <span><strong>Nerva</strong><small>Agentic dev control</small></span>
+          <span><strong>Nerva</strong><small>{view === "home" ? "Home" : "Back to Home"}</small></span>
         </button>
         <nav aria-label="Current location">
           {viewedSession && view !== "inbox" && <button type="button" aria-current={view === "session" ? "page" : undefined} onClick={() => setView("session")}>{viewedSession.title}</button>}
@@ -1572,6 +1573,8 @@ function App() {
               if (current) void openProductSession(current);
             }}
             attentionRequestKey={homeAttentionRequestKey}
+            conversationsRequested={conversationsRequested}
+            onConversationsOpened={() => setConversationsRequested(false)}
             onFocusChange={setHomeFocusActive}
             onOpenSettings={() => setView("settings")}
             onOpenCaptureInbox={() => { setCaptureInboxTargetThreadId(null); setView("inbox"); }}
@@ -1639,7 +1642,6 @@ function App() {
             macUnavailable={macUnavailable}
             skills={capabilities.skills}
             selectedSkillIds={selectedSkillIds}
-            reasoningModes={capabilities.reasoningModes}
             currentReasoningMode={capabilities.currentReasoningMode}
             currentModel={capabilities.currentModel ?? null}
             models={capabilities.models ?? []}
@@ -1656,6 +1658,7 @@ function App() {
             busyAction={busyAction}
             drawingAvailable={drawingWorkspaceTarget !== null}
             captureInboxCount={captureInbox.summary.count}
+            onSwitchSession={() => { setConversationsRequested(true); setView("home"); }}
             onTogglePin={() => {
               if (!homeLayout) return;
               if (homeLayout.pinnedThreadIds.includes(viewedSession.threadId)) {
@@ -1843,25 +1846,36 @@ function App() {
         </Suspense>
       </div>
 
-      {pwa.updateReady && (
-        <PwaUpdateBanner
-          safeToReload={!drawingOpen && !captureInboxBusy && view !== "review" && view !== "site"}
-          availableBuildId={pwa.availableBuild?.buildId ?? null}
-          onReload={pwa.reload}
-        />
-      )}
+      <div className="cp-notice-stack">
+        {pwa.updateReady && (
+          <PwaUpdateBanner
+            safeToReload={!drawingOpen && !captureInboxBusy && view !== "review" && view !== "site"}
+            availableBuildId={pwa.availableBuild?.buildId ?? null}
+            onReload={pwa.reload}
+          />
+        )}
 
-      {previousIpadView && (
-        <div className="cp-return-banner" role="status">
-          <span><strong>Mac changed sessions.</strong><small>Your previous iPad view is saved.</small></span>
-          <button type="button" onClick={() => {
-            setView(previousIpadView.view);
-            setSessionThreadId(previousIpadView.sessionThreadId);
-            setPreviousIpadView(null);
-          }}>Return to previous iPad view</button>
-          <button type="button" className="cp-icon-button" aria-label="Dismiss saved view" onClick={() => setPreviousIpadView(null)}><CloseIcon /></button>
-        </div>
-      )}
+        {previousIpadView && (
+          <div className="cp-return-banner" role="status">
+            <span><strong>Now following another task</strong><small>Your previous view is saved.</small></span>
+            <button type="button" onClick={() => {
+              setView(previousIpadView.view);
+              setSessionThreadId(previousIpadView.sessionThreadId);
+              setPreviousIpadView(null);
+            }}>Return to previous task</button>
+            <button type="button" className="cp-icon-button" aria-label="Dismiss saved view" onClick={() => setPreviousIpadView(null)}><CloseIcon /></button>
+          </div>
+        )}
+
+        {!hasMutationAuthority && bridge.snapshot && (
+          <div className="offline-strip" role="status">
+            <span>{bridge.cached ? "Showing the last snapshot saved on this iPad." : "Live state is unavailable; the last good snapshot is display-only."}</span>
+            <span>No command will be queued or replayed.</span>
+          </div>
+        )}
+
+        {bridge.lastAck && <CommandStatusToast ack={bridge.lastAck} onDismiss={bridge.clearAck} />}
+      </div>
 
       {savedDrawingsOpen && (
         <div className="cp-drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSavedDrawings(); }}>
@@ -1926,15 +1940,6 @@ function App() {
           </section>
         </div>
       )}
-
-      {!hasMutationAuthority && bridge.snapshot && (
-        <div className="offline-strip" role="status">
-          <span>{bridge.cached ? "Showing the last snapshot saved on this iPad." : "Live state is unavailable; the last good snapshot is display-only."}</span>
-          <span>No command will be queued or replayed.</span>
-        </div>
-      )}
-
-      {bridge.lastAck && <CommandStatusToast ack={bridge.lastAck} onDismiss={bridge.clearAck} />}
 
       {drawingOpen && (
         <Suspense fallback={<div className="drawing-studio"><FeatureLoading label="Drawing studio" /></div>}>

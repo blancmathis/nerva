@@ -115,17 +115,17 @@ export function SettingsPage({
     <main className="cp-settings">
       <header className="cp-settings__header cp-enter">
         <button type="button" className="cp-back-button" onClick={onBack}><ChevronIcon direction="left" />Home</button>
-        <div><p className="cp-overline">Nerva</p><h1>Settings</h1><p>Global presentation and session controls.</p></div>
+        <div><h1>Settings</h1><p>Make Nerva work the way you do.</p></div>
         <span><SlidersIcon /></span>
       </header>
 
       <div className="cp-settings__grid cp-enter cp-enter--2">
         <section className="cp-settings-card">
-          <header><p className="cp-overline">Appearance</p><h2>Light, material, density.</h2></header>
+          <header><h2>Appearance</h2></header>
           <div className="cp-setting-row">
-            <div><strong>Session cards</strong><small>Use the same density across Home.</small></div>
+            <div><strong>Session cards</strong><small>Choose how much detail appears on Home.</small></div>
             <div className="cp-segmented cp-segmented--small">
-              <button type="button" aria-pressed={preferences.cardDensity === "rich"} onClick={() => update({ cardDensity: "rich" })}>Rich</button>
+              <button type="button" aria-pressed={preferences.cardDensity === "rich"} onClick={() => update({ cardDensity: "rich" })}>Comfortable</button>
               <button type="button" aria-pressed={preferences.cardDensity === "compact"} onClick={() => update({ cardDensity: "compact" })}>Compact</button>
             </div>
           </div>
@@ -136,66 +136,45 @@ export function SettingsPage({
             </select>
           </div>
           <div className="cp-setting-row">
-            <div><strong>Motion</strong><small>Reduced uses opacity only and respects accessibility settings.</small></div>
+            <div><strong>Motion</strong><small>Reduce animation, or follow your device settings.</small></div>
             <select aria-label="Motion" value={preferences.motion} onChange={(event) => update({ motion: event.target.value as UiPreferences["motion"] })}>
               <option value="system">System</option><option value="full">Full</option><option value="reduced">Reduced</option>
             </select>
           </div>
           <div className="cp-setting-row">
-            <div><strong>Haptics</strong><small>{hapticsAvailable ? "Mode, capture, approval, and transfer feedback." : "Not exposed by installed iPad web apps."}</small></div>
+            <div><strong>Haptics</strong><small>{hapticsAvailable ? "Mode, capture, approval, and transfer feedback." : "Not supported by this device."}</small></div>
             <Toggle label="Haptics" checked={hapticsAvailable && preferences.haptics} disabled={!hapticsAvailable} onChange={(haptics) => update({ haptics })} />
           </div>
         </section>
 
-        <section className="cp-settings-card">
-          <header>
-            <p className="cp-overline">System</p>
-            <h2>Connection and diagnostics.</h2>
-            <p>Check Nerva’s Mac bridge, native controls, notifications, versions, and available updates.</p>
-          </header>
-          <CapabilityCenter
-            phase={connectionPhase}
-            diagnostics={runtimeDiagnostics}
-            diagnosticsLoaded={runtimeDiagnosticsLoaded}
-            pwa={pwa}
-            pushStatus={pushStatus}
-            pushStatusLoaded={pushStatusLoaded}
-            onRefresh={onRefreshRuntimeDiagnostics}
-            onCheckForUpdate={onCheckForUpdate}
-          />
-        </section>
+        <div className="cp-settings-stack">
+          <section className="cp-settings-card">
+            <header>
+              <h2>Connection &amp; updates</h2>
+              <p>Check the Mac connection, available controls and app updates.</p>
+            </header>
+            <CapabilityCenter
+              phase={connectionPhase}
+              diagnostics={runtimeDiagnostics}
+              diagnosticsLoaded={runtimeDiagnosticsLoaded}
+              pwa={pwa}
+              pushStatus={pushStatus}
+              pushStatusLoaded={pushStatusLoaded}
+              onRefresh={onRefreshRuntimeDiagnostics}
+              onCheckForUpdate={onCheckForUpdate}
+            />
+          </section>
 
-        <section className="cp-settings-card">
-          <header><p className="cp-overline">Agentic system</p><h2>Context Room.</h2></header>
-          <NervaCard document={{
-            version: 1,
-            id: "context-room-status",
-            source: "context-room",
-            title: contextRoomStatus?.roomName ?? "Context Room",
-            subtitle: "Read-only health adapter. Review and orchestration mutations stay outside this surface.",
-            tone: contextRoomStatus?.available ? "success" : contextRoomStatus?.configured ? "warning" : "neutral",
-            blocks: [
-              {
-                type: "status",
-                label: "Connection",
-                value: !contextRoomStatusLoaded ? "Checking" : contextRoomStatus?.available ? "Available" : contextRoomStatus?.configured ? "Unavailable" : "Not configured",
-                tone: contextRoomStatus?.available ? "success" : contextRoomStatus?.configured ? "warning" : "neutral",
-              },
-              ...(contextRoomStatus?.version ? [{ type: "metric" as const, label: "Version", value: contextRoomStatus.version, detail: null }] : []),
-              ...(contextRoomStatus?.reason ? [{ type: "text" as const, text: contextRoomStatus.reason }] : []),
-            ],
-          }} />
-          <button type="button" className="cp-refresh-devices" onClick={() => void onRefreshContextRoom()}>Refresh Context Room</button>
-          <p className="cp-settings-caveat">Nerva Cards render a strict data schema—never arbitrary agent HTML or JavaScript.</p>
-        </section>
 
-        <section className="cp-settings-card">
-          <header><p className="cp-overline">Home</p><h2>Your layout stays yours.</h2><p>Status filters temporarily focus the same Home without changing its sections, cases or order.</p></header>
-          <button type="button" className="cp-settings-action" onClick={onManageSavedDrawings}><span><strong>Saved Drawings</strong><small>Review or delete drawings kept on the Mac.</small></span><ChevronIcon /></button>
-        </section>
+
+          <section className="cp-settings-card">
+            <header><h2>Saved drawings</h2><p>Find drawings you have kept on the Mac.</p></header>
+            <button type="button" className="cp-settings-action" onClick={onManageSavedDrawings}><span><strong>Saved Drawings</strong><small>Review or delete drawings kept on the Mac.</small></span><ChevronIcon /></button>
+          </section>
+        </div>
 
         <section className="cp-settings-card cp-settings-card--wide">
-          <header><p className="cp-overline">Model + Reasoning</p><h2>Build the one-touch slider.</h2><p>Presets are ordered from lighter to stronger. Unsupported combinations remain disabled rather than falling back silently.</p></header>
+          <header><h2>Model shortcuts</h2><p>Choose the model and reasoning combinations you want in the task menu, in your preferred order.</p></header>
           <div className="cp-preset-list">
             {preferences.modelReasoningPresets.map((preset, index) => (
               <article key={preset.id}>
@@ -207,7 +186,7 @@ export function SettingsPage({
                 <button type="button" aria-label={`Remove ${preset.model} ${preset.reasoning}`} onClick={() => update({ modelReasoningPresets: preferences.modelReasoningPresets.filter((candidate) => candidate.id !== preset.id) })}><CloseIcon /></button>
               </article>
             ))}
-            {preferences.modelReasoningPresets.length === 0 && <p className="cp-preset-empty">No presets yet. The Session page continues to show the current Codex reasoning control.</p>}
+            {preferences.modelReasoningPresets.length === 0 && <p className="cp-preset-empty">No shortcuts yet. The task menu shows the available Codex models.</p>}
           </div>
           {addingPreset ? (
             <form className="cp-preset-form" onSubmit={(event) => {
@@ -230,21 +209,21 @@ export function SettingsPage({
               <button type="button" onClick={() => setAddingPreset(false)}>Cancel</button>
             </form>
           ) : <button type="button" className="cp-add-preset" disabled={models.length === 0} onClick={beginAddingPreset}><PlusIcon />{models.length === 0 ? "Waiting for Codex models…" : "Add preset"}</button>}
-          <p className="cp-settings-caveat">Only models and reasoning levels currently reported by Codex can be added. Presets remain synchronized across paired devices.</p>
+          <p className="cp-settings-caveat">Shortcuts sync across your paired devices. Adding one does not change the current task.</p>
         </section>
 
         <section className="cp-settings-card">
-          <header><p className="cp-overline">Notifications</p><h2>Only the moments that matter.</h2></header>
+          <header><h2>Notifications</h2></header>
           <div className="cp-notification-permission" data-state={pushStatus?.subscribed ? "subscribed" : notificationPermission}>
             <span><strong>Background alerts</strong><small>{pushStatus?.subscribed
               ? "Active—even when Nerva is fully suspended."
               : notificationPermission === "granted"
-                ? pushStatusLoaded ? "Permission granted. Finish the private Mac subscription." : "Checking the private Mac subscription…"
+                ? pushStatusLoaded ? "Permission granted. Enable alerts to finish setup." : "Checking notification setup…"
               : notificationPermission === "denied"
                 ? "Blocked in iPadOS Settings."
                 : notificationPermission === "unsupported"
-                  ? "Unavailable in this browser context."
-                  : "Enable from one explicit touch in the installed app."}</small></span>
+                  ? "Install Nerva on your Home Screen to enable alerts."
+                  : "Get updates when Nerva is in the background."}</small></span>
             {pushStatus !== null && notificationPermission !== "denied" && notificationPermission !== "unsupported" && <button type="button" disabled={requestingNotifications} onClick={() => {
               setRequestingNotifications(true);
               setNotificationMessage(null);
@@ -261,11 +240,11 @@ export function SettingsPage({
           ] as const).map(([key, label]) => (
             <div className="cp-setting-row" key={key}><div><strong>{label}</strong></div><Toggle label={`${label} notifications`} checked={preferences.notifications[key]} onChange={(checked) => update({ notifications: { ...preferences.notifications, [key]: checked } })} /></div>
           ))}
-          <p className="cp-settings-caveat">Nerva sends only blocking questions, approvals, errors, important pinned completions, and grouped review-ready results. The Lock Screen never offers an approval action; tapping opens the exact Session or Home Priority.</p>
+          <p className="cp-settings-caveat">Tap a notification to open the task in Nerva. Decisions and approvals happen inside the app.</p>
         </section>
 
         <section className="cp-settings-card">
-          <header><p className="cp-overline">Devices</p><h2>Private tailnet connection.</h2></header>
+          <header><h2>Connected devices</h2><p>Manage which devices can access this Mac.</p></header>
           <div className="cp-device-list">
             {devices.filter((device) => device.revokedAt === null).map((device) => {
               const current = device.id === currentDeviceId;
@@ -296,6 +275,29 @@ export function SettingsPage({
           {deviceMessage && <p className="cp-settings-caveat" role="status">{deviceMessage}</p>}
           <button type="button" className="cp-refresh-devices" disabled={deviceBusy !== null} onClick={() => void onRefreshDevices()}>Refresh devices</button>
         </section>
+        <details className="cp-settings-card cp-settings-integration">
+          <summary><strong>Context Room</strong><span>Optional workspace connection</span></summary>
+          <NervaCard document={{
+            version: 1,
+            id: "context-room-status",
+            source: "context-room",
+            title: contextRoomStatus?.roomName ?? "Context Room",
+            subtitle: "Workspace connection",
+            tone: contextRoomStatus?.available ? "success" : contextRoomStatus?.configured ? "warning" : "neutral",
+            blocks: [
+              {
+                type: "status",
+                label: "Connection",
+                value: !contextRoomStatusLoaded ? "Checking" : contextRoomStatus?.available ? "Available" : contextRoomStatus?.configured ? "Unavailable" : "Not configured",
+                tone: contextRoomStatus?.available ? "success" : contextRoomStatus?.configured ? "warning" : "neutral",
+              },
+              ...(contextRoomStatus?.version ? [{ type: "metric" as const, label: "Version", value: contextRoomStatus.version, detail: null }] : []),
+              ...(contextRoomStatus?.reason ? [{ type: "text" as const, text: contextRoomStatus.reason }] : []),
+            ],
+          }} />
+          <button type="button" className="cp-refresh-devices" onClick={() => void onRefreshContextRoom()}>Refresh Context Room</button>
+
+        </details>
       </div>
     </main>
   );

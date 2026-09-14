@@ -316,7 +316,7 @@ test("Capture Inbox stays local, persists, and is reused from the exact open Ses
   await page.getByRole("button", { name: /Capture Inbox/ }).click();
   await expect(page.getByRole("heading", { name: "Capture Inbox", level: 1 })).toBeVisible();
   await expect(page.getByLabel("Using Capture Inbox with Release checklist")).toBeVisible();
-  await expect(page.getByText("Nothing leaves automatically.")).toBeVisible();
+  await expect(page.getByText("You choose what to share.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Voice/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: /Note Catch a quick idea/ }).click();
@@ -325,6 +325,14 @@ test("Capture Inbox stays local, persists, and is reused from the exact open Ses
   await expect(page.getByRole("heading", { name: "Header jump" })).toBeVisible();
   await page.getByLabel("Capture photo").setInputFiles({ name: "whiteboard.png", mimeType: "image/png", buffer: Buffer.from(PNG_1X1, "base64") });
   await expect(page.getByText("Photo saved locally.")).toBeVisible();
+  expect(bridge.commandRequests).toBe(commandCountAfterFirstOpen);
+
+  await page.getByRole("button", { name: /^Select Photo/ }).click();
+  await page.getByRole("button", { name: "Open Header jump" }).click();
+  const preview = page.getByRole("dialog", { name: "Header jump" });
+  await expect(preview).toContainText("Reproduce after rotating the iPad.");
+  await preview.getByRole("button", { name: "Select for this task" }).click();
+  await expect(page.getByRole("toolbar", { name: "Selected capture actions" })).toContainText("2 selected");
   expect(bridge.commandRequests).toBe(commandCountAfterFirstOpen);
 
   await page.reload();
@@ -357,7 +365,7 @@ test("Capture Inbox stays local, persists, and is reused from the exact open Ses
   await page.getByRole("button", { name: "Use in session" }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
   await expect(page.getByLabel(/General instruction/)).toHaveValue(/Reproduce after rotating the iPad/);
-  await expect(page.getByRole("button", { name: "Preview atomic send" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Preview review" })).toBeVisible();
   expect(bridge.commandRequests).toBe(commandCountBeforeFirstUse);
 
   await page.getByRole("button", { name: "Close review" }).click();
@@ -601,7 +609,7 @@ test("opens one exact pinned session on both surfaces", async ({ page }) => {
   await page.getByRole("button", { name: /Open Research queue/ }).click();
 
   await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
-  await expect(page.locator(".cp-session-workspace .cp-back-button")).toHaveCount(0);
+  await expect(page.locator(".cp-session-workspace").getByRole("button", { name: "All sessions", exact: true })).toBeVisible();
   await expect.poll(() => bridge.commands.at(-1)?.type).toBe("openSession");
   expect(bridge.commands.at(-1)).toMatchObject({
     expectedBridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,
@@ -736,11 +744,18 @@ test("keeps only Conversations, Mac, and Settings in the bottom Home dock", asyn
   expect(geometry.bottomGap).toBeGreaterThanOrEqual(-2);
   expect(geometry.bottomGap).toBeLessThanOrEqual(34);
   if (geometry.phone) {
-    expect(geometry.dockWidth).toBeLessThanOrEqual(154);
+    expect(geometry.dockWidth).toBeLessThanOrEqual(272);
     expect(geometry.keyHeight).toBeGreaterThanOrEqual(44);
-    expect(geometry.keyHeight).toBeLessThanOrEqual(48);
+    expect(geometry.keyHeight).toBeLessThanOrEqual(72);
   } else {
     expect(geometry.keyHeight).toBeGreaterThanOrEqual(44);
+  }
+  for (const label of ["Sessions", "Mac", "Settings"]) {
+    const destination = page.locator(".cp-home-dock__key-label").filter({ hasText: new RegExp(`^${label}$`) });
+    // Visible names should be readable, not clipped to the screen-reader-only pixel.
+    const bounds = await destination.boundingBox();
+    expect(bounds!.height).toBeGreaterThanOrEqual(12);
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
   }
   expect(geometry.keyFaceBackground).not.toBe("none");
   expect(geometry.keyShadow).not.toBe("none");
@@ -1445,7 +1460,7 @@ test("keeps manual sections visible below the empty Home state with no pins", as
   const emptyState = page.locator(".cp-home-empty");
   const section = page.locator(".cp-home-section").filter({ hasText: "Planning" });
   const createSection = page.getByRole("button", { name: "Create a new section", exact: true });
-  await expect(emptyState).toContainText("Pin only what matters now.");
+  await expect(emptyState).toContainText("Keep your tasks within reach.");
   await expect(section.getByRole("heading", { name: "Planning" })).toBeVisible();
   await expect(section).toContainText("Next up");
   await expect(section).toContainText("Move pinned sessions here.");
@@ -1583,6 +1598,18 @@ test("groups multi-skill providers while keeping singleton skills directly visib
   await page.getByRole("button", { name: /Project kickoff/ }).click();
   await expect(page.locator(".cp-skill-chips")).toContainText("artifact-template-project-kickoff");
   await expect(groups.filter({ hasText: "OpenAI Templates" }).locator(".cp-skill-group__header")).toContainText("1 selected");
+
+  const search = page.getByRole("searchbox", { name: "Search skills" });
+  await search.fill("kickoff");
+  await expect(page.locator(".cp-skill-option")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Project kickoff/ })).toHaveAttribute("aria-pressed", "true");
+  await search.fill("no-matching-skill");
+  await expect(page.getByRole("status").filter({ hasText: "0 skills found" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Project kickoff/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Done · 1 selected" }).click();
+  await expect(page.getByRole("dialog", { name: "Skill library" })).toBeHidden();
+  await expect(page.locator(".cp-skill-chips")).toContainText("artifact-template-project-kickoff");
 });
 
 test("commits a Pencil stroke when iPadOS ends pointer capture so Send becomes available", async ({ page }) => {
@@ -2055,7 +2082,7 @@ test("recovers Draw Send and Model + Reasoning without waiting for a native snap
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
 
-  const modelSlider = page.getByRole("slider", { name: "Model and reasoning preset" });
+  const modelSlider = page.getByRole("combobox", { name: "Model and reasoning preset" });
   await expect(modelSlider).toBeDisabled();
   await page.getByRole("button", { name: "Draw Start a local canvas" }).click();
   await drawPenStroke(page.getByRole("img", { name: /^Sketch canvas/ }));
@@ -2074,9 +2101,8 @@ test("recovers Draw Send and Model + Reasoning without waiting for a native snap
 test("applies one exact live Model + Reasoning preset", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
-  const slider = page.getByRole("slider", { name: "Model and reasoning preset" });
-  await slider.focus();
-  await slider.press("End");
+  const slider = page.getByRole("combobox", { name: "Model and reasoning preset" });
+  await slider.selectOption(await slider.locator("option:not([disabled])").last().getAttribute("value") as string);
   await expect.poll(() => bridge.commands.at(-1)?.type).toBe("setModelReasoning");
   expect(bridge.commands.at(-1)).toMatchObject({
     expectedThreadId: THREADS[0].id,
@@ -2085,20 +2111,15 @@ test("applies one exact live Model + Reasoning preset", async ({ page }) => {
   });
 });
 
-test("applies the final touch slider value when Safari reports input after pointerup", async ({ page }) => {
+test("changes a model only after choosing a preset and never resends on blur", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
-  const slider = page.getByRole("slider", { name: "Model and reasoning preset" });
-  await expect(slider).toBeEnabled();
-
-  await slider.evaluate((element) => {
-    const input = element as HTMLInputElement;
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    input.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch" }));
-    valueSetter?.call(input, input.max);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  const selector = page.getByRole("combobox", { name: "Model and reasoning preset" });
+  await expect(selector).toBeEnabled();
+  await selector.focus();
+  expect(bridge.commands.filter((command) => command.type === "setModelReasoning")).toHaveLength(0);
+  await selector.selectOption(await selector.locator("option:not([disabled])").last().getAttribute("value") as string);
+  await selector.blur();
 
   await expect.poll(() => bridge.commands.filter((command) => command.type === "setModelReasoning").length).toBe(1);
   expect(bridge.commands.at(-1)).toMatchObject({
@@ -2351,6 +2372,8 @@ test("attaches a drawing to the Mac composer without text even when a skill is a
 test("approves only the exact pending request tuple", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Approval audit/ }).click();
+  const approvalPanel = page.locator(".cp-context-panel--approval");
+  expect(await approvalPanel.evaluate((panel) => Boolean(panel.compareDocumentPosition(document.querySelector(".cp-primary-actions")!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await page.getByRole("button", { name: /Approve/ }).click();
   await expect.poll(() => bridge.commands.at(-1)?.type).toBe("respondToApproval");
   expect(bridge.commands.at(-1)).toMatchObject({
@@ -2368,7 +2391,7 @@ test("shows real Settings controls and paired device management", async ({ page 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByText("This iPad", { exact: true })).toBeVisible();
   await expect(page.getByText("Background alerts", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Only the moments that matter/)).toBeVisible();
+  await expect(page.getByText("Tap a notification to open the task in Nerva. Decisions and approvals happen inside the app.")).toBeVisible();
   const systemDiagnostics = page.getByRole("button", { name: /Open System Diagnostics/ });
   await expect(systemDiagnostics).toBeVisible();
   const [diagnosticsButtonBounds, diagnosticsChevronBounds] = await Promise.all([
@@ -2446,4 +2469,42 @@ test("starts Voice from Home and the exact Session", async ({ page }, testInfo) 
   await sessionVoice.click();
   await expect.poll(() => bridge.commands.filter((command) => command.type === "startVoiceChat").length).toBe(3);
   expect(bridge.commands.at(-1)).toMatchObject({ type: "startVoiceChat", expectedThreadId: THREADS[0]!.id, targetThreadId: THREADS[0]!.id });
+});
+
+
+test("keeps navigation reachable beneath Mac-follow notices and protects the open conversation list", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  bridge.selectOnMac(1);
+  await expect(page.getByRole("heading", { name: "Bridge hardening", level: 1 })).toBeVisible();
+  await expect(page.locator(".cp-return-banner")).toBeVisible();
+  await page.getByRole("button", { name: "Open Nerva Home" }).click();
+  const dock = page.locator(".cp-home-dock");
+  const notice = await page.locator(".cp-return-banner").boundingBox();
+  const dockBox = await dock.boundingBox();
+  expect(notice).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  expect(notice!.y + notice!.height).toBeLessThanOrEqual(dockBox!.y);
+  const conversations = await openConversations(page);
+  bridge.selectOnMac(2);
+  await expect(conversations).toBeVisible();
+  await conversations.getByRole("textbox", { name: "Search sessions" }).fill("Release checklist");
+  await expect(conversations.getByText("Release checklist", { exact: true })).toBeVisible();
+  await conversations.getByRole("button", { name: /^Release checklist/ }).click();
+  await page.getByRole("button", { name: /Skills/ }).click();
+  await expect(page.locator(".cp-return-banner")).toBeVisible();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Skill library" })).toBeHidden();
+});
+
+test("switches from a session to the complete searchable list and closes back to Home", async ({ page }) => {
+  await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: /Open Release checklist/ }).click();
+  await page.getByRole("button", { name: "All sessions", exact: true }).click();
+  const conversations = page.getByRole("dialog", { name: "Conversations" });
+  await expect(conversations).toBeVisible();
+  await conversations.getByRole("textbox", { name: "Search sessions" }).fill("Release checklist");
+  await expect(conversations.getByText("Release checklist", { exact: true })).toBeVisible();
+  await conversations.getByRole("button", { name: "Close Conversations" }).click();
+  await expect(page.getByRole("heading", { name: "Your working set." })).toBeVisible();
+  await expect(conversations).toBeHidden();
 });

@@ -330,7 +330,7 @@
   flex: 0 0 150px;
   gap: 3px;
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .cp-browser-site__width input { width: 100%; }
@@ -568,7 +568,7 @@
 .drawing-target small,
 .drawing-target code {
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .drawing-target strong {
@@ -615,7 +615,7 @@
   box-shadow: var(--cp-shadow-glass);
   -webkit-backdrop-filter: var(--cp-glass-filter);
   backdrop-filter: var(--cp-glass-filter);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .drawing-studio__workspace {
@@ -737,7 +737,7 @@
   display: grid;
   gap: 5px;
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .drawing-text-entry input,
@@ -749,7 +749,7 @@
   border-radius: 12px;
   color: var(--cp-ink);
   background: var(--cp-content);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drawing-colors {
@@ -766,7 +766,7 @@
   grid-column: 1 / -1;
   padding: 0 3px 5px;
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .drawing-swatch {
@@ -856,7 +856,7 @@
 
 .drawing-diagram-library strong {
   color: var(--cp-ink);
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .drawing-diagram-library small {
@@ -967,7 +967,7 @@
   border-radius: 11px;
   color: var(--cp-ink-tertiary);
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .drawing-zoom button:first-child,
@@ -991,7 +991,7 @@
   gap: 7px;
   border-radius: 12px;
   color: var(--cp-ink-secondary);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .pencil-mode input {
@@ -1151,18 +1151,18 @@
 
 .drawing-send-sheet__choices { display: grid; margin: 14px 0; gap: 8px; }
 .drawing-send-sheet__choices > button { display: grid; min-height: 68px; padding: 12px 14px; gap: 4px; border: 1px solid var(--cp-stroke); border-radius: 16px; color: var(--cp-ink); text-align: left; background: var(--cp-content); }
-.drawing-send-sheet__choices > button small { color: var(--cp-ink-tertiary); font-size: 10px; }
+.drawing-send-sheet__choices > button small { color: var(--cp-ink-tertiary); font-size: 12px; }
 .drawing-send-sheet__choices > button.is-active { border-color: rgba(var(--cp-blue-rgb), .56); background: rgba(var(--cp-blue-rgb), .1); box-shadow: 0 0 18px rgba(var(--cp-blue-rgb), .08); }
 .drawing-send-sheet__footer { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; }
 .drawing-send-sheet__package { display: grid; min-width: 0; flex: 1; gap: 6px; }
-.drawing-send-sheet__package > span { max-width: 230px; color: var(--cp-ink-tertiary); font-size: 9px; }
-.drawing-send-sheet__package details { min-width: 0; color: var(--cp-ink-secondary); font-size: 9px; }
+.drawing-send-sheet__package > span { max-width: 230px; color: var(--cp-ink-tertiary); font-size: 12px; }
+.drawing-send-sheet__package details { min-width: 0; color: var(--cp-ink-secondary); font-size: 12px; }
 .drawing-send-sheet__package summary { width: fit-content; min-height: 28px; padding: 7px 0; cursor: pointer; color: var(--cp-blue); font-weight: 700; list-style-position: inside; }
 .drawing-send-sheet__regions { display: grid; max-height: 190px; margin-top: 3px; padding: 7px; gap: 5px; overflow: auto; border: 1px solid var(--cp-stroke); border-radius: 12px; background: var(--cp-surface); }
-.drawing-send-sheet__regions > strong { padding: 4px 5px; color: var(--cp-blue); font-size: 9px; }
+.drawing-send-sheet__regions > strong { padding: 4px 5px; color: var(--cp-blue); font-size: 12px; }
 .drawing-send-sheet__regions > span { display: grid; min-width: 0; padding: 7px 8px; gap: 2px; border-radius: 9px; background: var(--cp-content); }
-.drawing-send-sheet__regions b { color: var(--cp-ink); font-size: 10px; }
-.drawing-send-sheet__regions small { overflow: hidden; color: var(--cp-ink-tertiary); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.drawing-send-sheet__regions b { color: var(--cp-ink); font-size: 12px; }
+.drawing-send-sheet__regions small { overflow: hidden; color: var(--cp-ink-tertiary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .drawing-send-sheet__footer button { min-height: 48px; padding: 0 18px; border: 0; border-radius: 14px; color: #fff; background: var(--cp-blue); box-shadow: 0 8px 20px rgba(var(--cp-blue-rgb), .25); font-weight: 700; }
 
 .drawing-boards-sheet {
@@ -1176,12 +1176,12 @@
   background: var(--cp-content);
   box-shadow: 0 32px 90px rgba(0, 0, 0, .36);
 }
-.drawing-boards-sheet > p { color: var(--cp-ink-tertiary); font-size: 11px; }
+.drawing-boards-sheet > p { color: var(--cp-ink-tertiary); font-size: 12px; }
 .drawing-boards-sheet__list { display: grid; gap: 8px; }
 .drawing-boards-sheet__list > button { display: flex; min-height: 66px; padding: 12px 14px; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--cp-stroke); border-radius: 16px; color: var(--cp-ink); text-align: left; background: var(--cp-surface); }
 .drawing-boards-sheet__list span { display: grid; gap: 4px; }
 .drawing-boards-sheet__list small,
-.drawing-boards-sheet__list time { color: var(--cp-ink-tertiary); font-size: 9px; }
+.drawing-boards-sheet__list time { color: var(--cp-ink-tertiary); font-size: 12px; }
 
 .drawing-canvas__empty {
   position: absolute;
@@ -1196,7 +1196,7 @@
 
 .drawing-canvas__empty span {
   color: #65707c;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1208,7 +1208,7 @@
 
 .drawing-canvas__empty small {
   color: #89919a;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drawing-selection,
@@ -1312,8 +1312,8 @@
   gap: 2px;
 }
 
-.drawing-diagram-update strong { font-size: 10px; }
-.drawing-diagram-update small { color: var(--cp-ink-tertiary); font-size: 8px; }
+.drawing-diagram-update strong { font-size: 12px; }
+.drawing-diagram-update small { color: var(--cp-ink-tertiary); font-size: 12px; }
 
 .drawing-graph-chip {
   position: absolute;
@@ -1363,7 +1363,7 @@
 .drawing-graph-chip__identity strong,
 .drawing-graph-chip__identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawing-graph-chip__identity strong { font: 650 11px/1.15 var(--cp-font-display); }
-.drawing-graph-chip__identity small { color: var(--cp-ink-tertiary); font-size: 9px; }
+.drawing-graph-chip__identity small { color: var(--cp-ink-tertiary); font-size: 12px; }
 
 .drawing-graph-chip__actions {
   display: flex;
@@ -1385,7 +1385,7 @@
 }
 
 .drawing-graph-chip__actions button .drawing-icon { width: 16px; height: 16px; }
-.drawing-graph-chip__actions button > span:last-child { font-size: 9px; font-weight: 650; }
+.drawing-graph-chip__actions button > span:last-child { font-size: 12px; font-weight: 650; }
 .drawing-graph-chip__actions button.is-primary { color: #fff; background: var(--cp-blue); }
 
 .drawing-graph-chip__synced {
@@ -1396,7 +1396,7 @@
   justify-content: center;
   gap: 5px;
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1504,7 +1504,7 @@
 .drawing-diagram-node-name > span,
 .drawing-diagram-more > label > span {
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1534,7 +1534,7 @@
   min-height: 40px;
   border-color: transparent;
   background: transparent;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1672,13 +1672,13 @@
 
 .drawing-diagram-more > button:not(.drawing-diagram-delete) small {
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drawing-diagram-panel__hint {
   margin: 0;
   color: var(--cp-ink-tertiary);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1742,7 +1742,7 @@
 .drawing-diagram-picker__warning {
   margin: 0;
   color: var(--cp-ink-tertiary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1812,12 +1812,12 @@
 
 .drawing-diagram-picker__list small {
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drawing-diagram-picker__list em {
   color: var(--cp-blue);
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 700;
 }
@@ -1863,7 +1863,7 @@
 
 .drawing-instruction label {
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1891,7 +1891,7 @@
   min-height: 1.2em;
   margin: 0;
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -1993,7 +1993,7 @@
 .drawing-import-sheet p,
 .drawing-export-preview p {
   color: var(--cp-ink-secondary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2055,20 +2055,20 @@
 
 .drawing-export-preview__facts dt {
   color: var(--cp-ink-tertiary);
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .drawing-export-preview__facts dd {
   margin: 0;
   color: var(--cp-ink);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .drawing-export-preview__instruction {
   display: grid;
   gap: 6px;
   color: var(--cp-ink-tertiary);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drawing-export-preview__instruction textarea {
@@ -2492,7 +2492,7 @@
 
   .drawing-target strong {
     margin: 0 0 2px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .drawing-target code {
@@ -2751,3 +2751,29 @@
     min-height: 44px;
   }
 }
+
+
+/* Review shares Nerva's reading scale; technical typography stays in details. */
+.cp-app-content .review-studio .section-register,
+.cp-app-content .review-draft-state,
+.cp-app-content .review-filmstrip > header,
+.cp-app-content .review-general-instruction label > span {
+  font-family: var(--cp-font-text);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cp-app-content .review-frame-select strong,
+.cp-app-content .review-add-menu button,
+.cp-app-content .review-add-menu label,
+.cp-app-content .review-surface-controls button,
+.cp-app-content .review-compare-modes button { font-size: 13px; }
+.cp-app-content .review-send-dock > small,
+.cp-app-content .review-atomic-note { font: 400 13px/1.5 var(--cp-font-text); text-transform: none; letter-spacing: 0; }
+.cp-app-content .review-send-dock > button { font-size: 15px; }
+.cp-app-content .review-update-banner span,
+.cp-app-content .review-update-banner strong { font-size: 13px; line-height: 1.5; }
+.cp-app-content .review-frame-order button,
+.cp-app-content .review-add-menu button,
+.cp-app-content .review-add-menu label { min-width: 44px; min-height: 44px; }

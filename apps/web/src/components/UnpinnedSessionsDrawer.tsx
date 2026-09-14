@@ -14,6 +14,7 @@ interface UnpinnedSessionsDrawerProps {
   readonly onOpenActivity: () => void;
   readonly onOpenSession: (session: ProductSession) => void;
   readonly onPin: (threadId: string) => void;
+  readonly onUnpin?: (threadId: string) => void;
 }
 
 export function UnpinnedSessionsDrawer({
@@ -25,26 +26,26 @@ export function UnpinnedSessionsDrawer({
   onOpenActivity,
   onOpenSession,
   onPin,
+  onUnpin,
 }: UnpinnedSessionsDrawerProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
   const [organization, setOrganization] = useState<"recent" | "project">("recent");
-  const unpinned = useMemo(() => sessions
-    .filter((session) => !pinnedThreadIds.includes(session.threadId))
+  const visibleSessions = useMemo(() => sessions
     .filter((session) => searchProductSession(session, query))
     .sort((left, right) => organization === "project"
       ? (left.project ?? "No project").localeCompare(right.project ?? "No project") || left.title.localeCompare(right.title)
-      : (right.activityAt ?? 0) - (left.activityAt ?? 0)), [organization, pinnedThreadIds, query, sessions]);
+      : (right.activityAt ?? 0) - (left.activityAt ?? 0)), [organization, query, sessions]);
 
   const groups = useMemo(() => {
-    if (organization === "recent") return [["Recent", unpinned] as const];
+    if (organization === "recent") return [["Recent", visibleSessions] as const];
     const byProject = new Map<string, ProductSession[]>();
-    for (const session of unpinned) {
+    for (const session of visibleSessions) {
       const project = session.project ?? "No project";
       byProject.set(project, [...(byProject.get(project) ?? []), session]);
     }
     return [...byProject.entries()];
-  }, [organization, unpinned]);
+  }, [organization, visibleSessions]);
   useModalFocus(dialogRef, onClose, { active: open, initialFocus: "input" });
 
   if (!open) return null;
@@ -55,9 +56,8 @@ export function UnpinnedSessionsDrawer({
       <aside ref={dialogRef} className="cp-session-drawer" role="dialog" aria-modal="true" aria-labelledby="unpinned-title" tabIndex={-1}>
         <header>
           <div>
-            <p className="cp-overline">Across every project</p>
             <h2 id="unpinned-title">Conversations</h2>
-            <p>{unpinned.length} unpinned · {pinnedThreadIds.length}/{MAX_PINNED_SESSIONS} on Home</p>
+            <p>{sessions.length} sessions across your projects · {pinnedThreadIds.length}/{MAX_PINNED_SESSIONS} on Home</p>
           </div>
           <button type="button" className="cp-icon-button" aria-label="Close Conversations" onClick={onClose}><CloseIcon /></button>
         </header>
@@ -73,7 +73,7 @@ export function UnpinnedSessionsDrawer({
             <span className="sr-only">Search sessions</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions or projects" />
           </label>
-          <div className="cp-segmented cp-segmented--small" aria-label="Organize unpinned sessions">
+          <div className="cp-segmented cp-segmented--small" aria-label="Organize sessions">
             <button type="button" aria-pressed={organization === "recent"} onClick={() => setOrganization("recent")}>Last used</button>
             <button type="button" aria-pressed={organization === "project"} onClick={() => setOrganization("project")}>By project</button>
           </div>
@@ -92,17 +92,21 @@ export function UnpinnedSessionsDrawer({
                     </span>
                     <span className="cp-unpinned-row__project"><FolderIcon />{session.project ?? "No project"}</span>
                   </button>
-                  <button type="button" className="cp-pin-button" aria-label={`Pin ${session.title} to Home`} onClick={() => onPin(session.threadId)}>
-                    <PinIcon /><span>Pin</span>
+                  <button type="button" className="cp-pin-button" aria-pressed={pinnedThreadIds.includes(session.threadId)}
+                    aria-label={pinnedThreadIds.includes(session.threadId) ? `Unpin ${session.title} from Home` : `Pin ${session.title} to Home`}
+                    disabled={pinnedThreadIds.includes(session.threadId) && !onUnpin}
+                    onClick={() => pinnedThreadIds.includes(session.threadId) ? onUnpin?.(session.threadId) : onPin(session.threadId)}>
+                    <PinIcon /><span>{pinnedThreadIds.includes(session.threadId) ? "Pinned" : "Pin"}</span>
                   </button>
                 </article>
               ))}
             </section>
           ))}
-          {unpinned.length === 0 && (
+          {visibleSessions.length === 0 && (
             <div className="cp-empty-list">
-              <strong>{query ? "No matching sessions" : sessions.length === 0 ? "No conversations yet" : "Everything is pinned"}</strong>
-              <p>{query ? "Try a session name, project, or status." : sessions.length === 0 ? "Start a conversation in Codex on your Mac. It will appear here when connected." : "Unpin a session from Home to find it here."}</p>
+              <strong>{query ? "No matching sessions" : "No conversations yet"}</strong>
+              <p>{query ? "Try a session name, project, or status." : "Start a conversation in Codex on your Mac. It will appear here when connected."}</p>
+              {query && <button type="button" className="cp-secondary-button" onClick={() => setQuery("")}>Clear search</button>}
             </div>
           )}
         </div>

@@ -387,3 +387,14 @@
     backdrop-filter: none;
   }
 }
+
+/* Every dock destination stays named, including on phones. */
+.cp-home-dock .cp-commandbar__right > .cp-home-dock__key {
+  width: 72px; min-width: 72px; height: 62px; min-height: 62px; max-height: none;
+  padding: 6px 4px; grid-template-rows: 24px 16px; gap: 4px; flex: 0 0 72px;
+}
+.cp-home-dock__key-label {
+  position: relative; width: 100%; height: auto; clip: auto; clip-path: none;
+  color: var(--cp-ink-secondary); font-size: 12px; line-height: 16px;
+}
+.cp-home-dock__badge { min-width: 16px; height: 16px; font-size: 9px; }

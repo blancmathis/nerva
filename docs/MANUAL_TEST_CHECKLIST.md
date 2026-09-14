@@ -104,8 +104,13 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 
 ## D. Session navigation and controls
 
+- [ ] Keep a Mac-follow notice visible, then open Sessions, Activity, Skills and Capture selection. Required actions remain tappable; notices never cover the Home dock or modal actions.
+- [ ] Search a skill by name, description or provider; select a result, clear the search and verify selection is preserved. Empty results offer Clear search; an empty library still has a Close action.
+- [ ] Open a long Capture note on a phone and iPad, read its final paragraph, close it and verify focus returns. Previewing/selection sends nothing; a failed local media read remains dismissible and preserves the original.
+- [ ] Review and QA review fit portrait and phone widths. Evidence and issue panels never overlap, and Delete/Continue/Send remain inside the viewport. Scroll all content and try both themes.
+
 - [ ] Every Session clearly shows its exact title/context and whether it is pinned.
-- [ ] Enter a pinned Session from both the manual layout and a status focus; confirm there is no rail, pagination or previous/next UI. Horizontal, diagonal and curved drags anywhere on the Session page must never move the surface, open another session or return Home. Vertical page scrolling remains native. Tap the floating product mark once to return Home, then choose the next exact session explicitly.
+- [ ] Enter a pinned Session from both the manual layout and a status focus; confirm there is no rail, pagination or previous/next UI. Horizontal, diagonal and curved drags anywhere on the Session page must never move the surface, open another session or return Home. Vertical page scrolling remains native. Use `All sessions` to search and switch tasks, including pinned tasks; or tap the product mark to return Home.
 - [ ] Start vertically anywhere on the Session page and confirm the page scrolls without navigating. Horizontal or diagonal drags have no app-level navigation effect.
 - [ ] Confirm Model + Reasoning remains directly adjustable and that editable fields, Draw, Review and Pencil strokes never arm the Session/Home gesture.
 - [ ] `Pin to Home`/`Unpin from Home` changes Home membership only.
@@ -135,8 +140,8 @@ Owner-confirmed evidence already recorded on 20 July 2026: Tailscale was connect
 - [ ] A text-bearing Nerva-originated send appends `Use the following skills for this task: skill-a, skill-b.` after all other instruction text.
 - [ ] A Drawing send contains only its PNG, does not append a skill suffix, and leaves selected skills armed for the next text-bearing action.
 - [ ] `Send prompt` appends the validated Skills suffix exactly once through the exact visible composer paste handler before the separately attested native submit. A confirmed submit consumes those skills; a definitive failure or unknown result keeps them armed. Composer text never reaches the bridge/PWA.
-- [ ] Model + Reasoning shows only combinations returned by the installed live `model/list` catalog and applies the exact selected combination through `thread/settings/update` after one touch drag/release, including Safari's final-input-after-`pointerup` ordering.
-- [ ] A definitive Model + Reasoning rejection returns the slider to the last observed live combination; an unknown-delivery result remains explicit and is not silently retried.
+- [ ] Model + Reasoning shows only combinations returned by the installed live `model/list` catalog and applies the exact selected combination through `thread/settings/update` after an explicit menu choice; opening or closing the menu never applies a change.
+- [ ] A definitive Model + Reasoning rejection returns the menu to the last observed live combination; an unknown-delivery result remains explicit and is not silently retried.
 - [ ] If the first capability response is degraded, the foreground two-second capability poll automatically refreshes Drawing, Skills and Model + Reasoning without requiring a native snapshot change, reload or re-pairing.
 - [ ] On a task with a large history, at least 12 consecutive foreground refreshes keep Drawing, Skills and Model + Reasoning stable; bridge logs show no managed-socket disconnect, and exact active-turn resolution uses only the latest turn without items.
 - [ ] Settings offers only models returned by live `model/list` and only the selected model's supported reasoning levels; no free-form model identifier can be entered.

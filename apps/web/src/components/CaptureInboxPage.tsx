@@ -131,10 +131,13 @@ function useNearViewport(): { readonly ref: React.RefObject<HTMLDivElement | nul
   return { ref, active };
 }
 
-function useCaptureObjectUrl(item: CaptureInboxItem, active: boolean): string | null {
+function useCaptureMedia(item: CaptureInboxItem, active: boolean): { source: string | null; unavailable: boolean } {
   const [source, setSource] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const previewable = Boolean(item.mimeType?.startsWith("image/") || item.mimeType?.startsWith("audio/"));
   useEffect(() => {
+    setSource(null);
+    setUnavailable(false);
     if (!previewable || !active) {
       setSource(null);
       return;
@@ -142,16 +145,17 @@ function useCaptureObjectUrl(item: CaptureInboxItem, active: boolean): string | 
     let alive = true;
     let objectUrl: string | null = null;
     void loadCaptureInboxItem(item.id).then((loaded) => {
-      if (!alive || !loaded?.blob) return;
+      if (!alive) return;
+      if (!loaded?.blob) { setUnavailable(true); return; }
       objectUrl = URL.createObjectURL(loaded.blob);
       setSource(objectUrl);
-    });
+    }).catch(() => { if (alive) setUnavailable(true); });
     return () => {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [active, item.id, previewable]);
-  return source;
+  return { source, unavailable };
 }
 
 function notePreviewText(item: CaptureInboxItem): string {
@@ -170,7 +174,7 @@ function notePreviewText(item: CaptureInboxItem): string {
 
 function CapturePreview({ item }: { readonly item: CaptureInboxItem }) {
   const viewport = useNearViewport();
-  const source = useCaptureObjectUrl(item, viewport.active);
+  const { source } = useCaptureMedia(item, viewport.active);
   let content: React.ReactNode;
   if (source && item.mimeType?.startsWith("image/")) {
     content = <img src={source} alt="" draggable={false} />;
@@ -189,6 +193,32 @@ function CapturePreview({ item }: { readonly item: CaptureInboxItem }) {
   return <div ref={viewport.ref} className="cp-capture-card__media">{content}</div>;
 }
 
+function CaptureDetail({ item, canSelect, onSelect, onClose }: {
+  readonly item: CaptureInboxItem;
+  readonly canSelect: boolean;
+  readonly onSelect: () => void;
+  readonly onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const { source, unavailable } = useCaptureMedia(item, true);
+  useModalFocus(dialogRef, onClose, { initialFocus: "[aria-label='Close capture']" });
+  return (
+    <div className="cp-capture-modal-layer" role="presentation">
+      <section ref={dialogRef} className="cp-capture-sheet cp-capture-detail" role="dialog" aria-modal="true" aria-label={item.title} tabIndex={-1}>
+        <header><div><p>Saved on this device</p><h2 id="capture-detail-title">{item.kind === "note" ? "Quick note" : item.title}</h2></div><button type="button" className="cp-icon-button" aria-label="Close capture" onClick={onClose}><CloseIcon /></button></header>
+        <div className="cp-capture-detail__content">
+          {unavailable && <p role="status">The saved media could not be opened. Close this preview and try again.</p>}
+          {item.kind === "note" ? <p className="cp-capture-detail__note">{item.text}</p>
+            : source && item.mimeType?.startsWith("image/") ? <img src={source} alt={item.title} />
+              : source && item.mimeType?.startsWith("audio/") ? <audio controls preload="metadata" src={source} aria-label={`Play ${item.title}`} />
+                : <p>{item.fileName ?? item.title}{item.byteLength > 0 ? ` · ${formatReviewBytes(item.byteLength)}` : ""}</p>}
+        </div>
+        <footer><button type="button" className="cp-secondary-button" onClick={onClose}>Done</button>{canSelect && <button type="button" className="cp-capture-primary" onClick={onSelect}>Select for this task</button>}</footer>
+      </section>
+    </div>
+  );
+}
+
 function CaptureAction({ icon, label, detail, onClick }: {
   readonly icon: React.ReactNode;
   readonly label: string;
@@ -196,7 +226,7 @@ function CaptureAction({ icon, label, detail, onClick }: {
   readonly onClick: () => void;
 }) {
   return (
-    <button type="button" className="cp-capture-action" onClick={(event) => { event.currentTarget.focus(); onClick(); }}>
+    <button type="button" className="cp-capture-action" aria-label={`${label} ${detail}`} onClick={(event) => { event.currentTarget.focus(); onClick(); }}>
       <span>{icon}</span><strong>{label}</strong><small>{detail}</small>
     </button>
   );
@@ -289,6 +319,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [deletePendingIds, setDeletePendingIds] = useState<readonly string[] | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<CaptureInboxItem | null>(null);
   const [sketchOpen, setSketchOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -323,6 +354,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
   useEffect(() => {
     setSelectedIds(new Set());
     setSelecting(targetSession !== null);
+    setPreviewItem(null);
   }, [targetSession?.threadId]);
 
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
@@ -447,7 +479,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
       )}
       <header className="cp-capture-inbox__hero cp-enter">
         <div>
-          <p className="cp-overline">Local context shelf</p>
+          <p className="cp-overline">Saved on this device</p>
           <h1>Capture Inbox</h1>
           <p>{targetSession ? "Choose the local context you want to use in this Session." : "Collect once. Reuse it later from any Session."}</p>
         </div>
@@ -465,7 +497,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
         <input ref={fileInputRef} aria-label="Keep received file" hidden type="file" onChange={(event) => void importFile(event, "file")} />
       </section>
 
-      <aside className="cp-capture-safety cp-enter cp-enter--2"><span><CheckIcon /></span><p><strong>Nothing leaves automatically.</strong> {targetSession ? `Images and notes open in a local Review. Files attach to ${targetSession.title}'s exact Mac composer without submitting it.` : "Open Capture Inbox from a Session when you want to use something. No assignment is stored."}</p></aside>
+      <aside className="cp-capture-safety cp-enter cp-enter--2"><span><CheckIcon /></span><p><strong>You choose what to share.</strong> {targetSession ? `Review images and notes before sending. Files are added to ${targetSession.title} without sending its message.` : "Open Capture Inbox from a task to add a saved item. Everything stays here until you choose to use it."}</p></aside>
 
       <section className="cp-capture-library cp-enter cp-enter--3">
         <header className="cp-capture-toolbar">
@@ -479,7 +511,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
         {loading ? (
           <div className="cp-capture-empty" aria-busy="true"><span className="cp-capture-empty__mark"><InboxIcon /></span><h2>Opening your local Inbox…</h2></div>
         ) : visibleItems.length === 0 ? (
-          <div className="cp-capture-empty"><span className="cp-capture-empty__mark"><PlusIcon /></span><p className="cp-overline">Ready when context appears</p><h2>{items.length === 0 ? "Capture without interrupting your flow." : "No captures match this search."}</h2><p>{items.length === 0 ? "Take a photo, sketch with Pencil, scan a document, keep a file, or write a note." : "Try a different search."}</p></div>
+          <div className="cp-capture-empty"><span className="cp-capture-empty__mark"><PlusIcon /></span><h2>{items.length === 0 ? "Keep an idea for later" : "No captures match this search."}</h2><p>{items.length === 0 ? "Take a photo, sketch with Pencil, scan a document, keep a file, or write a note." : "Try a different search."}</p></div>
         ) : (
           <div className="cp-capture-grid">
             {visibleItems.map((item) => {
@@ -491,6 +523,7 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
                     <h2>{item.title}</h2>
                     <p>{formatAge(item.createdAt)}{item.byteLength > 0 ? ` · ${formatReviewBytes(item.byteLength)}` : ""}</p>
                     <span className="cp-capture-reusable">Available in every Session</span>
+                    <button type="button" className="cp-capture-card__open" aria-label={`Open ${item.title}`} onClick={(event) => { event.currentTarget.focus(); setPreviewItem(item); }}>Open<ChevronIcon /></button>
                   </div>
                   {!selecting && <button type="button" className="cp-capture-card__delete" aria-label={`Delete ${item.title}`} onClick={() => setDeletePendingIds([item.id])}><TrashIcon /></button>}
                   {selecting ? (
@@ -517,6 +550,12 @@ export function CaptureInboxPage({ targetSession, macUnavailable, onUseInSession
           }</small>}
         </div>
       )}
+
+      {previewItem && <CaptureDetail item={previewItem} canSelect={targetSession !== null} onClose={() => setPreviewItem(null)} onSelect={() => {
+        setSelectedIds((current) => new Set([...current, previewItem.id]));
+        setSelecting(true);
+        setPreviewItem(null);
+      }} />}
 
       {noteOpen && <QuickNoteSheet onClose={() => setNoteOpen(false)} onSave={async (text) => { const firstLine = text.split(/\r?\n/u).find((line) => line.trim())?.trim().slice(0, 72) ?? "Quick note"; await saveLocalCapture({ kind: "note", title: firstLine, text }, "Quick note saved locally."); setNoteOpen(false); }} />}
       {sketchOpen && <SketchSheet onClose={() => setSketchOpen(false)} onSave={async (scene) => { const { blob } = await exportSceneToBoundedPng(scene, { background: "white", padding: 28, maxWidth: 2_048, maxHeight: 2_048, pixelRatio: 1 }); await saveLocalCapture({ kind: "sketch", title: captureTitle("sketch"), blob, fileName: `sketch-${Date.now()}.png` }, "Sketch saved locally."); setSketchOpen(false); }} />}

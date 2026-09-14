@@ -157,6 +157,13 @@ export function CapabilityCenter({
       ? "recovering"
       : capabilitySummary([...checks, clientCheck]);
 
+  const summaryLabel = phase === "offline" || phase === "pairing"
+    ? "Mac disconnected"
+    : summary === "unavailable" ? "Some controls unavailable"
+      : summary === "recovering" ? "Checking connection…"
+        : summary === "needsVerification" ? "Some checks need verification"
+          : "All checks available";
+
   async function refresh(): Promise<void> {
     if (refreshing) return;
     setRefreshing(true);
@@ -183,13 +190,13 @@ export function CapabilityCenter({
         type="button"
         className="cp-settings-action"
         data-state={summary}
-        aria-label={`Open System Diagnostics — ${STATE_LABELS[summary]}`}
+        aria-label={`Open System Diagnostics — ${summaryLabel}`}
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
         <span>
           <strong>System Diagnostics</strong>
-          <small>{STATE_LABELS[summary]} · Mac connection, native controls, notifications, and app versions.</small>
+          <small>{summaryLabel}</small>
         </span>
         <ChevronIcon />
       </button>

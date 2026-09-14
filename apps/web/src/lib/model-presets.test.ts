@@ -16,7 +16,7 @@ const models = [{
 }] as const;
 
 describe("resolveModelReasoningPresets", () => {
-  it("never leaks unselected catalog models into a configured slider", () => {
+  it("never leaks unselected catalog models into a configured preset menu", () => {
     expect(resolveModelReasoningPresets([{
       id: "sol-low",
       model: "sol",
