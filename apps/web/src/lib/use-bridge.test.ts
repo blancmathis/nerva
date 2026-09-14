@@ -13,6 +13,7 @@ import {
   shouldPollNativeSessions,
 } from "./use-bridge";
 import { fixtureSessions } from "../../e2e/fixture-data";
+import { normalizeSnapshot } from "./normalize";
 
 function snapshot(seq: number, bridgeInstanceId = "7d35b974-62cc-4db8-9b4e-5a8dc8a4d812"): BridgeSnapshot {
   return {
@@ -48,6 +49,18 @@ function snapshot(seq: number, bridgeInstanceId = "7d35b974-62cc-4db8-9b4e-5a8dc
 }
 
 describe("chooseLiveSnapshot", () => {
+  it("restores live native controls when a reloaded display cache has the same sequence", () => {
+    const live = snapshot(50);
+    const withActions: BridgeSnapshot = { ...live, capabilities: { ...live.capabilities,
+      commands: ["runMicroAction"],
+      microActions: [{ actionSlot: "ACT10_ACT11", keycapId: "MIC", nativeCommandId: null, label: "MIC", enabled: true }],
+    } };
+    const cached = normalizeSnapshot(JSON.parse(JSON.stringify(withActions)));
+    expect(cached?.capabilities.microActions).toEqual([]);
+    expect(chooseLiveSnapshot(cached, withActions, false).capabilities.microActions).toEqual(withActions.capabilities.microActions);
+    expect(chooseLiveSnapshot(withActions, snapshot(50), true)).toBe(withActions);
+  });
+
   it("replaces a higher-sequence cache with the first snapshot from a restarted bridge", () => {
     const restarted = snapshot(1, "0bb7bb32-f477-4792-ad7b-06fef8287138");
     expect(chooseLiveSnapshot(snapshot(50), restarted, false)).toBe(restarted);

@@ -1475,6 +1475,36 @@ test("keeps manual sections visible below the empty Home state with no pins", as
   expect(verticalOrder[3]).toBeGreaterThanOrEqual(verticalOrder[2]);
 });
 
+test("restores native controls after reload without requiring a new Mac snapshot sequence", async ({ page }) => {
+  const bridge = await openAuthenticatedApp(page);
+  await page.getByRole("button", { name: "Open current Mac session" }).click();
+  await expect(page.getByRole("button", { name: /^Dictation/ })).toBeEnabled();
+  const commandCount = bridge.commandRequests;
+  bridge.pauseSocketSnapshots();
+  let releaseSnapshot!: () => void;
+  const snapshotGate = new Promise<void>((resolve) => { releaseSnapshot = resolve; });
+  await page.route("**/api/snapshot", async (route) => {
+    await snapshotGate;
+    await route.fallback();
+  });
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    // Force the real IndexedDB cache to reach React before the live snapshot.
+    await expect(page.locator(".offline-strip")).toContainText("Showing the last snapshot saved on this iPad.");
+    releaseSnapshot();
+    bridge.releaseSocketSnapshot();
+    await expect(page.locator(".cp-connection.phase-online")).toBeVisible();
+    await page.getByRole("button", { name: "Open current Mac session" }).click();
+    await expect(page.getByRole("button", { name: /^Dictation/ })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /^Fast/ })).toBeEnabled();
+    expect(bridge.commandRequests).toBe(commandCount);
+  } finally {
+    releaseSnapshot();
+    bridge.releaseSocketSnapshot();
+  }
+});
+
 test("starts and stops Mac dictation with two deliberate taps", async ({ page }) => {
   const bridge = await openAuthenticatedApp(page);
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
