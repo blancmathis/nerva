@@ -22,10 +22,14 @@ function automaticDeviceName(): string {
   return /iPad/u.test(navigator.userAgent) ? "iPad — Nerva" : "Nerva — Touch device";
 }
 
-function macName(): string {
-  const firstLabel = window.location.hostname.split(".")[0]?.replace(/[-_]+/gu, " ").trim();
-  if (!firstLabel || ["localhost", "127 0 0 1"].includes(firstLabel.toLowerCase())) return "your Mac";
-  return firstLabel.replace(/\b\w/gu, (character) => character.toUpperCase());
+export function pairingMacName(hostname: string): string {
+  const host = hostname.trim().replace(/\.$/u, "").toLowerCase();
+  // An IP address is not a machine name. Splitting it produced "Connect to 127"
+  // for loopback previews, and similarly misleading names for private IPv4/IPv6.
+  if (!host || host === "localhost" || host.endsWith(".localhost")
+    || host.includes(":") || /^\d+(?:\.\d+){3}$/u.test(host)) return "your Mac";
+  const firstLabel = host.split(".")[0]?.replace(/[-_]+/gu, " ").trim();
+  return firstLabel ? firstLabel.replace(/\b\w/gu, (character) => character.toUpperCase()) : "your Mac";
 }
 
 export function pairingInvitationFromUrl(value: string): PairingInvitation | null {
@@ -59,15 +63,22 @@ export function PairingScreen({ onPair }: PairingScreenProps) {
   const [invitation, setInvitation] = useState<PairingInvitation | null>(() => pairingInvitationFromUrl(window.location.href));
   const [pending, setPending] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [cameraPending, setCameraPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [standalone] = useState(isStandaloneWebApp);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const scannerGenerationRef = useRef(0);
+  const cameraRequestRef = useRef(false);
   const scanTimerRef = useRef<number | null>(null);
   const installing = invitation?.source === "fragment" && !standalone;
-  const displayMacName = useMemo(macName, []);
+  const displayMacName = useMemo(() => pairingMacName(window.location.hostname), []);
 
   const stopScanner = useCallback(() => {
+    // Invalidate permission/playback/decode promises before releasing the stream.
+    scannerGenerationRef.current += 1;
+    cameraRequestRef.current = false;
+    setCameraPending(false);
     if (scanTimerRef.current !== null) window.clearTimeout(scanTimerRef.current);
     scanTimerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -90,39 +101,57 @@ export function PairingScreen({ onPair }: PairingScreenProps) {
     return true;
   }, [stopScanner]);
 
-  const scanVideo = useCallback(async () => {
+  const scanVideo = useCallback(async (generation: number) => {
     const video = videoRef.current;
-    if (!streamRef.current) return;
+    if (generation !== scannerGenerationRef.current || !streamRef.current) return;
     if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      scanTimerRef.current = window.setTimeout(() => void scanVideo(), 180);
+      scanTimerRef.current = window.setTimeout(() => void scanVideo(generation), 180);
       return;
     }
-    const value = await qrFromImage(video, video.videoWidth, video.videoHeight);
-    if (!value || !acceptScannedValue(value)) {
-      scanTimerRef.current = window.setTimeout(() => void scanVideo(), 180);
+    try {
+      const value = await qrFromImage(video, video.videoWidth, video.videoHeight);
+      if (generation !== scannerGenerationRef.current || !streamRef.current) return;
+      if (!value || !acceptScannedValue(value)) {
+        scanTimerRef.current = window.setTimeout(() => void scanVideo(generation), 180);
+      }
+    } catch {
+      if (generation !== scannerGenerationRef.current) return;
+      stopScanner();
+      setMessage("The camera preview could not be read. Use Camera or Photos below.");
     }
-  }, [acceptScannedValue]);
+  }, [acceptScannedValue, stopScanner]);
 
   async function beginScanner() {
-    if (scanning) return;
+    if (cameraRequestRef.current || streamRef.current) return;
     setMessage(null);
     if (!navigator.mediaDevices?.getUserMedia) {
       setMessage("Camera access is unavailable here. Use Camera or Photos below.");
       return;
     }
+    const generation = ++scannerGenerationRef.current;
+    cameraRequestRef.current = true;
+    setCameraPending(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1_280 }, height: { ideal: 720 } },
       });
-      streamRef.current = stream;
-      setScanning(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      if (generation !== scannerGenerationRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
       }
-      void scanVideo();
+      streamRef.current = stream;
+      cameraRequestRef.current = false;
+      setCameraPending(false);
+      setScanning(true);
+      const video = videoRef.current;
+      if (!video) { stopScanner(); return; }
+      video.srcObject = stream;
+      await video.play();
+      if (generation !== scannerGenerationRef.current) return;
+      void scanVideo(generation);
     } catch {
+      if (generation !== scannerGenerationRef.current) return;
       stopScanner();
       setMessage("Camera access was not granted. Use Camera or Photos below.");
     }
@@ -152,6 +181,8 @@ export function PairingScreen({ onPair }: PairingScreenProps) {
     try {
       const result = await onPair(invitation.nonce, automaticDeviceName());
       if (!result.ok) setMessage(result.message.replace(/code/giu, "invitation"));
+    } catch {
+      setMessage("Could not connect to your Mac. Check the private connection and try again.");
     } finally {
       setPending(false);
     }
@@ -202,8 +233,8 @@ export function PairingScreen({ onPair }: PairingScreenProps) {
             </div>
             {message && <p className="form-error" role="alert">{message}</p>}
             <div className="pairing-actions">
-              <button className="pair-button" type="button" disabled={scanning} onClick={() => void beginScanner()}>{scanning ? "Scanning…" : "Scan QR"}</button>
-              {scanning && <button className="pairing-secondary" type="button" onClick={stopScanner}>Cancel</button>}
+              <button className="pair-button" type="button" disabled={scanning || cameraPending} onClick={() => void beginScanner()}>{cameraPending ? "Starting camera…" : scanning ? "Scanning…" : "Scan QR"}</button>
+              {(scanning || cameraPending) && <button className="pairing-secondary" type="button" onClick={stopScanner}>Cancel</button>}
               <label className="pairing-secondary pairing-file">
                 <span>Use Camera or Photos</span>
                 <input type="file" accept="image/*" capture="environment" onChange={(event) => void decodeFile(event.target.files?.[0])} />

@@ -6,6 +6,7 @@ async function openActivity(page: Page): Promise<MockBridge> {
   const bridge = new MockBridge({ authorized: false });
   await bridge.install(page);
   await page.goto("/pair?nonce=fixture-pairing-code");
+  await expect(page.getByRole("heading", { name: "Connect to your Mac", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
@@ -78,4 +79,23 @@ test("Activity remains readable and operable in light mode on small and rotated 
   await page.screenshot({ path: testInfo.outputPath("activity-light-phone.png"), animations: "disabled", scale: "css" });
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical")).toEqual([]);
+});
+
+
+test("Pairing keeps camera permission cancelable without starting another request", async ({ page }) => {
+  const bridge = new MockBridge({ authorized: false });
+  await bridge.install(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: () => new Promise(() => undefined) },
+    });
+  });
+  await page.goto("/pair");
+  await page.getByRole("button", { name: "Scan QR", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Starting camera…", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Scan QR", exact: true })).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(bridge.commands).toHaveLength(0);
 });
