@@ -84,6 +84,16 @@ afterEach(() => {
   Reflect.deleteProperty(URL, "revokeObjectURL");
 });
 
+// Media preparation exercises real IndexedDB transactions. Confirmation waits
+// for completion within 5 seconds, below the 15-second integration-test budget.
+async function openReviewPreview(): Promise<void> {
+  const preview = screen.getByRole("button", { name: "Preview review" });
+  // Loading a draft and preparing its sendable-image manifest are separate.
+  // Follow the enabled control rather than clicking during that transition.
+  await waitFor(() => expect(preview).toBeEnabled());
+  fireEvent.click(preview);
+}
+
 describe("ReviewStudio", () => {
   it("opens an exact-thread persistent draft with the complete responsive review surface", async () => {
     const send = vi.fn();
@@ -109,8 +119,8 @@ describe("ReviewStudio", () => {
     expect(screen.queryByText(/voice trail|voice notes|transcript/i)).not.toBeInTheDocument();
     expect(document.querySelector("audio")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/screenshot, photo, or annotation/i));
+    expect(screen.getByRole("button", { name: "Preview review" })).toBeDisabled();
+    expect(screen.getByText("Add a screenshot, photo, or annotation to preview your review.")).toBeVisible();
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -252,9 +262,9 @@ describe("ReviewStudio", () => {
     const title = await screen.findByLabelText(/Frame title/);
     expect(title).toBeEnabled();
     fireEvent.change(title, { target: { value: "Edited offline" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
+    await openReviewPreview();
     const dialog = await screen.findByRole("dialog", { name: "Send one review to Offline review" });
-    expect(dialog).toHaveTextContent(/preview remains saved locally/i);
+    expect(dialog).toHaveTextContent(/review stays on your device/i);
     expect(screen.getByRole("button", { name: "Send unavailable" })).toBeDisabled();
     expect(send).not.toHaveBeenCalled();
   });
@@ -310,7 +320,7 @@ describe("ReviewStudio", () => {
     );
 
     await screen.findByRole("heading", { name: "Mono review" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
+    await openReviewPreview();
     const confirm = await screen.findByRole(
       "button",
       { name: "Send review" },
@@ -378,8 +388,8 @@ describe("ReviewStudio", () => {
     );
 
     await screen.findByRole("heading", { name: "Retry review" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await openReviewPreview();
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }, { timeout: 5_000 }));
     await waitFor(() => expect(send).toHaveBeenCalledOnce());
     const payload = send.mock.calls[0]?.[0];
     await expect(loadReviewDraft(THREAD_ID)).resolves.toMatchObject({ id: "review-retry" });
@@ -428,8 +438,8 @@ describe("ReviewStudio", () => {
       />,
     );
     await screen.findByRole("heading", { name: "Reload retry" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await openReviewPreview();
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }, { timeout: 5_000 }));
     await waitFor(() => expect(send).toHaveBeenCalledOnce());
     const original = send.mock.calls[0]![0];
     first.unmount();
@@ -448,8 +458,8 @@ describe("ReviewStudio", () => {
       />,
     );
     await screen.findByRole("heading", { name: "Reload retry" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await openReviewPreview();
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }, { timeout: 5_000 }));
     await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
     expect(send.mock.calls[1]![0]).toMatchObject({
       commandId: original.commandId,
@@ -503,8 +513,8 @@ describe("ReviewStudio", () => {
     );
 
     await screen.findByRole("heading", { name: "Cross-tab review" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Send review" }));
+    await openReviewPreview();
+    fireEvent.click(await screen.findByRole("button", { name: "Send review" }, { timeout: 5_000 }));
     await waitFor(() => expect(send).toHaveBeenCalledOnce());
     const clearButton = await screen.findByRole("button", { name: "Clear local review" });
     await expect(loadReviewDraft(THREAD_ID)).resolves.toEqual(newerDraft);
@@ -552,7 +562,7 @@ describe("ReviewStudio", () => {
 
     await screen.findByRole("heading", { name: "Local deck" });
     expect(screen.getByText("2 frames · saved locally")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Preview atomic send" }));
+    await openReviewPreview();
     const dialog = await screen.findByRole("dialog", { name: "Send one review to Local deck" });
     expect(dialog).toHaveTextContent(/can send one image per review/i);
     expect(dialog).toHaveTextContent(/will not drop, flatten, or split/i);

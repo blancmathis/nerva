@@ -272,11 +272,12 @@ function ComparisonPanel({
 }
 
 function reviewDeliveryLimitReason(reviewMaxImages: number, imageCount: number): string | null {
-  if (imageCount >= 1 && imageCount <= reviewMaxImages) return null;
+  if (imageCount === 0) return "Add a screenshot, photo, or annotation to preview your review.";
+  if (imageCount <= reviewMaxImages) return null;
   if (reviewMaxImages === 1 && imageCount > 1) {
     return `This Codex connection can send one image per review. This ${imageCount}-image deck remains saved locally; Nerva will not drop, flatten, or split its images.`;
   }
-  return "This exact image manifest exceeds the currently verified Codex review capability. It remains saved locally and nothing will be sent.";
+  return "This review cannot be sent with the current Mac connection. Your work stays saved on this device.";
 }
 
 function SendSheet({
@@ -349,7 +350,7 @@ function SendSheet({
     <div className="review-send-backdrop" role="presentation">
       <section ref={dialogRef} className="review-send-sheet" role="dialog" aria-modal="true" aria-labelledby="review-send-title">
         <header>
-          <span className="section-register">Atomic send</span>
+          <span className="section-register">Review before sending</span>
           <h2 id="review-send-title">Send one review to {targetLabel}</h2>
           <p>Exact thread <code>…{threadSuffix(payload.targetThreadId)}</code> · command <code>{payload.commandId.slice(-10)}</code></p>
         </header>
@@ -370,8 +371,8 @@ function SendSheet({
             })}
           </ol>
         </section>
-        <p className="review-atomic-note">Ordered images leave through one callback. A retry keeps the same command ID.</p>
-        {!sendEnabled && <p className="review-delivery-unavailable" role="status">Bridge delivery is unavailable. This preview remains saved locally and nothing will be queued or replayed.</p>}
+        <p className="review-atomic-note">Your images and instruction will be sent together, in the order shown.</p>
+        {!sendEnabled && <p className="review-delivery-unavailable" role="status">Sending is unavailable. You can keep editing; this review stays on your device.</p>}
         {sendEnabled && capabilityReason && <p className="review-delivery-unavailable" role="status">{capabilityReason} Multi-image input has not been verified for this connection.</p>}
         {result && <p className={result.pending ? "review-result is-pending" : result.ok ? "review-result is-success" : "review-result is-error"} role="status">{result.message}</p>}
         {sent && confirmClear && (
@@ -1110,10 +1111,11 @@ export function ReviewStudio({
 
           <section className="review-send-dock">
             <div><strong>{manifestPreview?.images.length ?? "—"}</strong><span>images</span></div>
-            <button type="button" disabled={readOnly || sendPreparing || manifestPreview === null} onClick={() => void prepareSend()}>{sendPreparing ? "Preparing media…" : "Preview atomic send"}</button>
+            <button type="button" disabled={readOnly || sendPreparing || manifestPreview === null || manifestPreview.images.length === 0} onClick={() => void prepareSend()}>{sendPreparing ? "Preparing media…" : "Preview review"}</button>
             {manifestPreviewState.error && <small>{manifestPreviewState.error}</small>}
-            {!sendEnabled && <small>Local editing and preview stay available; bridge delivery is currently disabled.</small>}
-            {sendEnabled && manifestDeliveryReason && <small>{manifestDeliveryReason} Multi-image input has not been verified for this connection.</small>}
+            {manifestPreview?.images.length === 0 && <small>Add a screenshot, photo, or annotation to preview your review.</small>}
+            {!sendEnabled && <small>Sending is unavailable. You can keep editing on this device.</small>}
+            {sendEnabled && manifestDeliveryReason && (manifestPreview?.images.length ?? 0) > 0 && <small>{manifestDeliveryReason}</small>}
           </section>
         </aside>
       </div>

@@ -2,7 +2,7 @@ import type { ModelCapability } from "./model";
 import type { ModelReasoningPreset } from "./storage";
 
 /**
- * A configured slider is an allowlist. A temporarily unavailable or disabled
+ * A configured preset menu is an allowlist. A temporarily unavailable or disabled
  * preset must never be replaced by unselected models from the live catalog.
  */
 export function resolveModelReasoningPresets(

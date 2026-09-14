@@ -53,6 +53,17 @@ The repository is public pre-alpha at [`blancmathis/nerva`](https://github.com/b
 
 ## Presentation now implemented
 
+The September 14 UI/UX refinement keeps the same task and delivery boundaries:
+
+- Sessions has visible dock labels on phones and shows the complete searchable catalog, including pinned tasks. `All sessions` opens that same chooser from a task. An open chooser or Activity panel holds the iPad view steady while the Mac changes tasks.
+- Global notices share one stack above the Home dock and below modal/selection controls. Approval and error panels appear before secondary task controls.
+- Model/effort combinations are explicit menu options, not an ambiguous slider. A current combination outside saved shortcuts stays visible; rejection restores the last observed combination. Skills search includes names, descriptions and providers without dropping selections.
+- Capture cards expose a full local preview, also during selection. Notes stay readable in full; supported image/audio media are opened locally. Selecting from preview preserves the existing selection and never sends.
+- Settings uses direct labels and groups connection utilities together. Optional Context Room details remain collapsed until requested.
+- Phone Review uses tracks that shrink to the viewport; QA review stacks evidence and issues without overlap and keeps all footer actions visible. Supporting tool labels are larger. Screenshot checks cover these phone and portrait sheets as well as landscape.
+
+These are source and fixture UI guarantees. They do not establish native Codex authority, physical Pencil behavior, or background notification delivery. See the [manual checklist](../MANUAL_TEST_CHECKLIST.md) for separate device gates.
+
 The visual layer does not change protocol, exact-task routing, storage, synchronization, or send rules.
 
 - Adaptive tokens define atmospheric background, opaque content, navigation/sheet glass, and material controls.
@@ -61,7 +72,7 @@ The visual layer does not change protocol, exact-task routing, storage, synchron
 - Home is three columns in iPad landscape, two in portrait, and one on phone; cards do not shrink as the count grows.
 - The compact Home header keeps brand/title, Codex usage, Open current Mac session, and one Settings control in a coherent band. Diagnostics exist only at **Settings → System Diagnostics**.
 - Capture Inbox has five material capture keys and a 3/2/1-column opaque grid. Its session context is temporary; no assignment picker exists.
-- Session uses a compact console, four primary inputs, Send prompt, a progressive-disclosure Skills sheet, a continuous Model + Reasoning control, and separate Fast.
+- Session uses a compact console, four primary inputs, Send prompt, a searchable Skills sheet, an explicit Model + Reasoning menu, and separate Fast.
 - Sites is a responsive full page with address/navigation, exact-session pages, favorites, live viewport, and Record flow. It never shows Drawing's filmstrip/import tools.
 - Draw and Capture Inbox start with finger input on screens whose short edge is below 700 CSS pixels, including rotated phones; larger tablets default to Pencil-only. Existing drafts preserve the selected mode. Draw reserves most of the screen for the canvas. Select moves and resizes ordinary board content and graph blocks through the same interaction. Graph controls remain a compact floating capsule; the contextual inspector occupies extra space only after explicit editing.
 - Settings is split on iPad and stacked on phone. Pairing has one primary action when an invitation is known.

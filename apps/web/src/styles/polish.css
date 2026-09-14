@@ -638,3 +638,93 @@
     background: linear-gradient(90deg, transparent, var(--cp-content-strong));
   }
 }
+
+
+/* Clear task choices and readable supporting controls. */
+.cp-model-preset-select {
+  display: block;
+  width: calc(100% - 28px);
+  min-width: 0;
+  min-height: 52px;
+  margin: 0 14px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cp-stroke-strong);
+  border-radius: var(--cp-radius-sm);
+  color: var(--cp-ink);
+  background: var(--cp-content-raised);
+  font: 550 16px/1.4 var(--cp-font-text);
+}
+.cp-model-preset-select:focus-visible { outline: 3px solid var(--cp-blue); outline-offset: 3px; }
+.cp-model-preset-select:disabled { opacity: .65; }
+.cp-model-control > p { padding: 0 14px 14px; font-size: 12px; line-height: 1.5; }
+.cp-pin-button[aria-pressed="true"] { color: var(--cp-blue); background: rgba(var(--cp-blue-rgb), .09); }
+.cp-brand small { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.cp-session-hero h1 { font-size: clamp(25px, 3vw, 34px); line-height: 1.15; }
+.cp-session-hero__authority { background: transparent; border-color: transparent; box-shadow: none; }
+.cp-session-hero__authority > span { font-size: 14px; }
+.cp-session-hero__authority > small { font-size: 12px; line-height: 1.5; }
+.cp-voice-chat[data-state="unavailable"] { min-height: 44px; padding: 8px 0; border: 0; background: transparent; box-shadow: none; opacity: 1; }
+.cp-voice-chat[data-state="unavailable"] .cp-voice-chat__icon { width: 30px; height: 30px; border: 0; background: transparent; color: var(--cp-ink-tertiary); box-shadow: none; }
+.cp-voice-chat[data-state="unavailable"] strong { color: var(--cp-ink-secondary); font-size: 14px; }
+.cp-voice-chat[data-state="unavailable"] small { white-space: normal; font-size: 12px; line-height: 1.5; }
+.cp-home-voice[data-state="unavailable"] { width: 100%; max-width: 600px; margin-block: 0 14px; }
+.cp-home-voice[data-state="unavailable"] > span:last-child > span { display: none; }
+.cp-settings__grid { align-items: start; }
+.cp-settings-card { box-shadow: none; }
+.cp-settings-card > header > p:last-child { font-size: 14px; line-height: 1.5; }
+.cp-setting-row strong, .cp-settings-action strong, .cp-device-row strong { font-size: 15px; }
+.cp-setting-row small, .cp-settings-action small, .cp-device-row small, .cp-settings-caveat { font-size: 13px; line-height: 1.5; }
+.cp-settings-integration summary { min-height: 44px; cursor: pointer; font-size: 16px; }
+.cp-settings-integration summary span { display: block; margin-top: 6px; color: var(--cp-ink-secondary); font-size: 13px; }
+.cp-settings-integration[open] summary { margin-bottom: 16px; }
+
+/* Keep the skill library readable and searchable with large local catalogs. */
+.cp-skill-picker { align-content: start; }
+.cp-skill-picker__header strong { font-size: 18px; }
+.cp-skill-picker__header small, .cp-skill-group__identity small,
+.cp-skill-option small, .cp-skill-note { font-size: 13px; line-height: 1.5; }
+.cp-skill-group__identity strong, .cp-skill-option strong { font-size: 15px; }
+.cp-skill-search { display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--cp-stroke-strong); border-radius: 12px; background: var(--cp-content); }
+.cp-skill-search svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--cp-ink-secondary); }
+.cp-skill-search input { width: 100%; min-width: 0; min-height: 46px; border: 0; outline-offset: -2px; color: var(--cp-ink); background: transparent; font-size: 16px; }
+.cp-skill-results { margin: 8px 4px; color: var(--cp-ink-secondary); font-size: 13px; }
+.cp-skill-done { position: sticky; bottom: 0; min-height: 46px; border: 1px solid var(--cp-stroke-strong); border-radius: 12px; background: var(--cp-content-raised); color: var(--cp-ink); font-size: 15px; font-weight: 600; }
+
+.cp-settings-stack { display: grid; min-width: 0; gap: 16px; }
+.cp-pin-label-short { display: none; }
+.cp-primary-actions__grid strong, .cp-control-header strong, .cp-fast-control strong { font-size: 15px; }
+.cp-primary-actions__grid small, .cp-control-header small, .cp-fast-control small,
+.cp-voice-chat small { font-size: 12px; line-height: 1.4; }
+.cp-voice-chat strong { font-size: 14px; }
+@media (max-width: 700px) {
+  .cp-session-nav { grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
+  .cp-session-nav > .cp-back-button { padding-inline: 4px; font-size: 13px; }
+  .cp-session-nav__controls { width: auto; }
+  .cp-session-nav__controls button { flex: 0 1 auto; gap: 5px; padding-inline: 8px; font-size: 12px; }
+  .cp-pin-label { display: none; }
+  .cp-pin-label-short { display: inline; }
+  .cp-session-hero { gap: 12px; padding: 16px; }
+  .cp-session-hero__authority { grid-template-columns: minmax(0, 1fr); padding: 0; gap: 4px; }
+  .cp-session-hero__authority > small { max-width: none; }
+  .cp-session-hero__authority .cp-voice-chat { width: 100%; margin-top: 6px; }
+  .cp-primary-actions__grid, .cp-primary-actions__grid.has-site { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cp-primary-actions__grid > button { align-items: start; flex-direction: column; min-height: 124px; gap: 10px; }
+  .cp-primary-actions__grid strong { font-size: 15px; }
+}
+
+/* Flexible tracks must shrink to the phone width, including a large canvas. */
+.cp-app-content .review-studio { width: 100%; grid-template-columns: minmax(0, 1fr); }
+.cp-app-content .review-studio > *, .cp-app-content .review-main-layout > * { min-width: 0; }
+@media (max-width: 980px), (orientation: portrait) {
+  .cp-app-content .review-studio { height: auto; }
+}
+@media (max-width: 700px) {
+  .cp-session-nav__controls { grid-column: auto; }
+  .cp-app-content .review-studio-header { align-items: stretch; text-align: left; }
+  .cp-app-content .review-add-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cp-app-content .review-notes { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 360px) {
+  .cp-pin-label-short { display: none; }
+  .cp-session-nav__controls button:first-child { min-width: 44px; justify-content: center; }
+}

@@ -4029,6 +4029,50 @@ button:disabled {
   backdrop-filter: var(--cp-glass-filter);
 }
 
+.cp-notice-stack {
+  position: fixed;
+  z-index: 70;
+  right: var(--cp-safe-right);
+  bottom: var(--cp-safe-bottom);
+  left: var(--cp-safe-left);
+  display: grid;
+  gap: 8px;
+  width: min(620px, calc(100% - var(--cp-safe-left) - var(--cp-safe-right)));
+  max-height: 40dvh;
+  margin-inline: auto;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.cp-app-shell[data-view="home"] .cp-notice-stack {
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 90px);
+}
+
+.cp-notice-stack > .cp-return-banner,
+.cp-notice-stack > .cp-update-banner,
+.cp-notice-stack > .offline-strip,
+.cp-notice-stack > .ack-toast {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.cp-notice-stack > .ack-toast,
+.cp-notice-stack > .offline-strip {
+  pointer-events: none;
+}
+
+.cp-return-banner {
+  flex-wrap: wrap;
+}
+
+.cp-return-banner > span {
+  flex: 1 1 180px;
+  font-size: 14px;
+}
+
 .ack-toast {
   pointer-events: none;
 }

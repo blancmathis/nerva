@@ -4,7 +4,7 @@ context_room:
   scope: product
   status: current
   canonical_for: implemented Capture Inbox behavior
-  last_verified: 2026-07-26
+  last_verified: 2026-09-14
   sources: [apps/web/src/components/CaptureInboxPage.tsx, apps/web/src/lib/capture-inbox-store.ts, apps/web/src/lib/capture-review.ts, packages/protocol/src/commands.ts, apps/bridge/src/commands.ts, packages/codex-desktop/src/renderer-expression.ts, apps/web/e2e/codex-pad.spec.ts, apps/web/e2e/pwa-offline.spec.ts]
 ---
 
@@ -21,15 +21,15 @@ A capture is never assigned to a Session. Nerva stores no destination, routing s
 1. Open `Capture Inbox` from Home.
 2. Choose `Photo`, `Scan`, `Sketch`, `File`, or `Note`.
 3. Nerva stores the capture in IndexedDB on this iPad, without a Session or Mac request.
-4. Search, filter, or inspect captures. Every card has a direct touch delete control; `Select` also enables explicit multi-delete.
+4. Search or open a capture. `Open` shows a full local note, image/audio preview, or file details and restores focus when closed. Outside selection mode each card has a direct delete control; `Select` also enables explicit multi-delete.
 5. Every deletion requires confirmation. Cancel preserves the original; confirm removes it only from this iPad.
 
 ### Use from a Session
 
 1. Open the exact Session first.
-2. Under `Choose an input`, tap `Capture Inbox`.
+2. Under `Add to this task`, tap `Capture Inbox`.
 3. The Inbox shows a temporary context with that Session's title. This context is never written into the captures.
-4. Select compatible notes/images and tap `Use in session`, or select only files and tap `Attach to composer`.
+4. Open a capture to inspect it before selecting; `Select for this task` adds it to the existing selection without sending. Select compatible notes/images and tap `Use in session`, or select only files and tap `Attach to composer`.
 5. Notes and images are copied into the local Review for the exact displayed `threadId`. Files use one bounded native paste into that Session's exact visible Mac composer. Neither path removes the originals.
 6. The same item can be reused later from another Session. Use never moves, consumes, or assigns it, and a file attachment never submits the composer.
 

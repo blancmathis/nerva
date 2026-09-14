@@ -92,6 +92,14 @@ The interface is an operating surface, not a marketing display. Glass belongs to
 - physical controls with a top highlight, grounded shadow, and compressed active state;
 - calm system typography and short English action labels.
 
+## Navigation and reading hierarchy
+
+The Home dock keeps three named destinations: Sessions, Mac, and Settings. Names stay visible on phones. Secondary surfaces offer Home, All sessions, or a contextual Session return; changes on the Mac must not replace an open chooser or editor.
+
+Use discrete menus for named model/effort combinations, searchable lists for large skill catalogs, and plain settings headings. Keep a task title once in the main hierarchy and place approval/error decisions before secondary actions. Supporting labels in drawing, capture, and QA tools use at least 12px; reading and entry fields use 15–16px. Compact machine identifiers may remain smaller.
+
+Notifications clear the Home dock and sit beneath sheets. Phone review pages must shrink to the viewport rather than clip horizontal overflow; only explicit filmstrips and tool rows may scroll horizontally. A local preview never implies selection, sharing, or delivery.
+
 ## Colors
 
 The palette is neutral until state or intent earns color. Working blue, completed green, approval amber, error red, waiting violet, and idle silver remain semantic and consistent.

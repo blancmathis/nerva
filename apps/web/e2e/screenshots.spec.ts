@@ -46,6 +46,22 @@ async function resetViewportScroll(page: Page): Promise<void> {
 }
 
 async function captureVerifiedScreenshot(page: Page, path: string): Promise<void> {
+  // Wait for finite entrance animations; a screenshot taken during remount can
+  // otherwise contain a barely visible page even with animations disabled.
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => undefined)));
+  });
+  const imageReview = page.locator(".review-studio");
+  if (await imageReview.isVisible()) {
+    const bounds = await imageReview.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    const close = await imageReview.getByRole("button", { name: "Close review" }).boundingBox();
+    expect(close!.x + close!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  }
   const png = await page.screenshot({ path, scale: "css", animations: "disabled" });
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("Screenshot verification requires a fixed viewport");
@@ -474,6 +490,19 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
     await page.locator(".cp-settings .cp-back-button").click();
   }
 
+  if (testInfo.project.name !== "iPad landscape") {
+    await page.getByRole("button", { name: /Open Research queue/ }).click();
+    await page.getByRole("button", { name: "Review result" }).click();
+    await expect(page.getByLabel("Multimodal review for Research queue")).toBeVisible();
+    await captureVerifiedScreenshot(page, resolve(output, `review${suffix}.png`));
+    await page.getByRole("button", { name: "Close review" }).click();
+    await page.getByRole("button", { name: "Open Nerva Home" }).click();
+    await page.getByRole("button", { name: "Open Settings" }).click();
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+    await captureVerifiedScreenshot(page, resolve(output, `settings${suffix}.png`));
+    await page.locator(".cp-settings .cp-back-button").click();
+  }
+
   await page.getByRole("button", { name: /Open Release checklist/ }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
   const dismissCommandStatus = page.getByRole("button", { name: "Dismiss command status" });
@@ -486,18 +515,19 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   await page.getByRole("button", { name: /Select Toolbar shifts/ }).click();
   await resetViewportScroll(page);
   await captureVerifiedScreenshot(page, resolve(output, `capture-inbox-session${suffix}.png`));
+  await page.getByRole("button", { name: /^Open Toolbar shifts/ }).click();
+  await expect(page.getByRole("dialog", { name: /^Toolbar shifts/ })).toBeVisible();
+  await captureVerifiedScreenshot(page, resolve(output, `capture-preview${suffix}.png`));
+  await page.getByRole("button", { name: "Close capture" }).click();
   await page.getByRole("button", { name: "Session", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
 
-  if (testInfo.project.name === "iPad landscape") {
     await page.locator(".cp-skill-control > .cp-control-header").click();
     const openAiTemplates = page.locator(".cp-skill-group").filter({ hasText: "OpenAI Templates" });
     await expect(openAiTemplates).toHaveCount(1);
     await openAiTemplates.locator(".cp-skill-group__header").click();
-    await captureVerifiedScreenshot(page, resolve(output, "skills.png"));
+    await captureVerifiedScreenshot(page, resolve(output, `skills${suffix}.png`));
     await page.getByRole("button", { name: "Close Skills" }).click();
-  }
-
   await page.getByRole("button", { name: /Site/ }).click();
   const sitesHub = page.getByRole("main", { name: "Sites" });
   await expect(sitesHub).toBeVisible();
@@ -533,17 +563,27 @@ test("capture privacy-safe current iPad product screenshots", async ({ page }, t
   expect(luminanceRange).toBeGreaterThan(80);
   await captureVerifiedScreenshot(page, resolve(output, `site${suffix}.png`));
 
-  if (testInfo.project.name === "iPad landscape") {
     await page.getByRole("button", { name: "Record flow" }).click();
     await page.getByRole("button", { name: "Mark issue" }).click();
     await markCanvas(page.getByLabel("Annotate current site frame"));
     await page.getByPlaceholder("Explain the visible problem").fill("The result panel disappears after the action.");
-    await captureVerifiedScreenshot(page, resolve(output, "site-qa-issue.png"));
+    await captureVerifiedScreenshot(page, resolve(output, `site-qa-issue${suffix}.png`));
     await page.getByRole("button", { name: "Save & review" }).click();
     await expect(page.getByRole("heading", { name: "Review recording" })).toBeVisible();
-    await captureVerifiedScreenshot(page, resolve(output, "site-qa-review.png"));
-    await page.getByRole("button", { name: "Live page" }).click();
+    await captureVerifiedScreenshot(page, resolve(output, `site-qa-review${suffix}.png`));
+  if (page.viewportSize()!.width <= 860) {
+    const evidence = await page.locator(".cp-site-recording-review__evidence").boundingBox();
+    const timeline = await page.locator(".cp-site-recording-review__timeline").boundingBox();
+    expect(evidence!.y + evidence!.height).toBeLessThanOrEqual(timeline!.y);
   }
+  const qaActions = page.locator(".cp-site-recording-review > footer");
+  for (const button of await qaActions.getByRole("button").all()) {
+    const box = await button.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  }
+  await page.getByRole("button", { name: "Live page" }).click();
   await page.getByRole("button", { name: "Sites", exact: true }).click();
   await page.getByRole("main", { name: "Sites" }).getByRole("button", { name: "Session" }).click();
 

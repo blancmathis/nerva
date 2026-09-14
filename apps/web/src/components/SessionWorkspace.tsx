@@ -28,6 +28,7 @@ import {
   PencilIcon,
   PhoneIcon,
   PinIcon,
+  SearchIcon,
   SlidersIcon,
   SparkIcon,
   ArrowUpIcon,
@@ -46,7 +47,6 @@ interface SessionWorkspaceProps {
   readonly macUnavailable: boolean;
   readonly skills: readonly SkillCapability[];
   readonly selectedSkillIds: readonly string[];
-  readonly reasoningModes: readonly string[];
   readonly currentReasoningMode: string | null;
   readonly currentModel: string | null;
   readonly models: readonly ModelCapability[];
@@ -61,6 +61,7 @@ interface SessionWorkspaceProps {
   readonly busyAction: string | null;
   readonly captureInboxCount: number;
   readonly onTogglePin: () => void;
+  readonly onSwitchSession: () => void;
   readonly onToggleFollow: () => void;
   readonly onToggleSkill: (skillId: string) => void;
   readonly onRunAction: (action: string, value?: string) => void;
@@ -95,7 +96,6 @@ export function SessionWorkspace({
   macUnavailable,
   skills,
   selectedSkillIds,
-  reasoningModes,
   currentReasoningMode,
   currentModel,
   models,
@@ -110,6 +110,7 @@ export function SessionWorkspace({
   busyAction,
   captureInboxCount,
   onTogglePin,
+  onSwitchSession,
   onToggleFollow,
   onToggleSkill,
   onRunAction,
@@ -126,6 +127,7 @@ export function SessionWorkspace({
   onOpenOnMac,
 }: SessionWorkspaceProps) {
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState("");
   const [expandedSkillGroupIds, setExpandedSkillGroupIds] = useState<readonly string[]>([]);
   const [approvalDetail, setApprovalDetail] = useState<PendingApproval | null>(null);
   const skillsDialogRef = useRef<HTMLDivElement | null>(null);
@@ -167,73 +169,48 @@ export function SessionWorkspace({
         : next;
     });
   }, [groupedSkillSections, standaloneSkills.length]);
-  const observedPresetIndex = useMemo(() => {
-    const exact = modelPresets.findIndex((preset) => (
-      preset.model === currentModel && preset.reasoning === currentReasoningMode
+  const skillMatches = useMemo(() => {
+    const query = skillQuery.trim().toLocaleLowerCase();
+    return skillGroups.flatMap((group) => group.skills.filter((skill) =>
+      `${group.label} ${skill.label} ${skill.description ?? ""} ${skill.id}`.toLocaleLowerCase().includes(query),
     ));
-    if (exact >= 0) return exact;
-    const defaultModel = models.find((model) => model.isDefault);
-    const catalogDefault = defaultModel === undefined ? -1 : modelPresets.findIndex((preset) => (
-      preset.model === defaultModel.model && preset.reasoning === defaultModel.defaultReasoningEffort
-    ));
-    return Math.max(0, catalogDefault);
-  }, [currentModel, currentReasoningMode, modelPresets, models]);
+  }, [skillGroups, skillQuery]);
+  const observedPresetIndex = useMemo(() => modelPresets.findIndex((preset) => (
+    preset.model === currentModel && preset.reasoning === currentReasoningMode
+  )), [currentModel, currentReasoningMode, modelPresets]);
   const [presetIndex, setPresetIndex] = useState(observedPresetIndex);
-  const presetIndexRef = useRef(observedPresetIndex);
-  const presetCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [presetPending, setPresetPending] = useState(false);
+  const presetRequestRef = useRef(0);
   useEffect(() => {
-    if (presetCommitTimerRef.current !== null) clearTimeout(presetCommitTimerRef.current);
-    presetCommitTimerRef.current = null;
-    presetIndexRef.current = observedPresetIndex;
+    presetRequestRef.current += 1;
     setPresetIndex(observedPresetIndex);
-  }, [observedPresetIndex]);
-  useEffect(() => () => {
-    if (presetCommitTimerRef.current !== null) clearTimeout(presetCommitTimerRef.current);
-  }, []);
-  const selectedPreset = modelPresets[presetIndex] ?? null;
-  const selectedModel = selectedPreset === null
-    ? null
-    : models.find((model) => model.model === selectedPreset.model) ?? null;
+    setPresetPending(false);
+    return () => { presetRequestRef.current += 1; };
+  }, [observedPresetIndex, session.threadId]);
+  const currentModelLabel = models.find((model) => model.model === currentModel)?.displayName ?? currentModel ?? "Codex model";
   const commitPresetIndex = useCallback((index: number) => {
     const preset = modelPresets[index];
     if (!preset || index === observedPresetIndex) return;
+    const request = ++presetRequestRef.current;
+    setPresetIndex(index);
+    setPresetPending(true);
     void onSetModelReasoning(preset).then((accepted) => {
-      if (accepted) return;
-      presetIndexRef.current = observedPresetIndex;
-      setPresetIndex(observedPresetIndex);
+      if (!accepted && presetRequestRef.current === request) setPresetIndex(observedPresetIndex);
+    }).catch(() => {
+      if (presetRequestRef.current === request) setPresetIndex(observedPresetIndex);
+    }).finally(() => {
+      if (presetRequestRef.current === request) setPresetPending(false);
     });
   }, [modelPresets, observedPresetIndex, onSetModelReasoning]);
-  const clearPresetCommit = () => {
-    if (presetCommitTimerRef.current !== null) clearTimeout(presetCommitTimerRef.current);
-    presetCommitTimerRef.current = null;
-  };
-  const commitPreset = () => {
-    clearPresetCommit();
-    commitPresetIndex(presetIndexRef.current);
-  };
-  const previewPreset = (index: number) => {
-    presetIndexRef.current = index;
-    setPresetIndex(index);
-    clearPresetCommit();
-    // iPadOS can deliver the range input after pointerup. This short fallback
-    // commits the final value without requiring a second touch.
-    presetCommitTimerRef.current = setTimeout(() => {
-      presetCommitTimerRef.current = null;
-      commitPresetIndex(index);
-    }, 180);
-  };
   const nativeControlsDisabled = macUnavailable || !targetReady || busyAction !== null;
   const status = sessionStatusLabel(session.status);
 
   return (
     <main className={`cp-session-workspace status-${session.status}`}>
       <header className="cp-session-nav cp-enter">
-        <div className="cp-session-nav__identity">
-          <span className="cp-session-nav__signal" aria-hidden="true" />
-          <span><strong>{session.title}</strong><small>{session.threadId.slice(-8)}</small></span>
-        </div>
+        <button type="button" className="cp-back-button" onClick={onSwitchSession}><ChevronIcon direction="left" />All sessions</button>
         <div className="cp-session-nav__controls">
-          <button type="button" aria-pressed={pinned} onClick={onTogglePin}><PinIcon />{pinned ? "Unpin from Home" : "Pin to Home"}</button>
+          <button type="button" aria-label={pinned ? "Unpin from Home" : "Pin to Home"} aria-pressed={pinned} onClick={onTogglePin}><PinIcon /><span className="cp-pin-label">{pinned ? "Unpin from Home" : "Pin to Home"}</span><span className="cp-pin-label-short" aria-hidden="true">{pinned ? "Pinned" : "Pin"}</span></button>
           <button
             type="button"
             aria-pressed={followMac}
@@ -246,25 +223,25 @@ export function SessionWorkspace({
       <section className="cp-session-hero cp-enter cp-enter--2">
         <span className="cp-session-hero__light" aria-hidden="true" />
         <div className="cp-session-hero__copy">
-          <p className="cp-overline">Exact Codex session</p>
           <h1>{session.title}</h1>
           <div className="cp-session-hero__meta">
             {session.project && <span><FolderIcon />{session.project}</span>}
             <span className="cp-session-hero__status"><i aria-hidden="true" />{status}</span>
             {session.activeOnMac && <span><MacIcon />Open on Mac</span>}
           </div>
-          <p className="cp-session-hero__activity">{relativeSessionActivity(session)}</p>
+          {relativeSessionActivity(session) !== status && <p className="cp-session-hero__activity">{relativeSessionActivity(session)}</p>}
         </div>
         <div className="cp-session-hero__authority">
-          <span>{targetReady ? "Exact target verified" : macUnavailable ? "Mac unavailable" : "Display only"}</span>
+          <span>{targetReady ? "Connected to this task" : macUnavailable ? "Mac unavailable" : "Display only"}</span>
           <small>{targetReady
-            ? "Native actions are bound to this thread."
+            ? "Actions below apply to this task on your Mac."
             : macUnavailable
               ? "Local drawing remains available. Nothing will send until the Mac reconnects."
               : "Native Mac controls are not verified for this task. Local drawing remains available."}</small>
           <button
             type="button"
             className="cp-voice-chat"
+            data-state={voiceChatStatus}
             aria-pressed={voiceChatStatus === "active"}
             disabled={!voiceChatEnabled || busyAction !== null}
             title={voiceChatDetail}
@@ -279,9 +256,45 @@ export function SessionWorkspace({
         </div>
       </section>
 
+      {(pendingApprovals.length > 0 || session.status === "awaiting-approval") && (
+        <section className="cp-context-panel cp-context-panel--approval cp-enter" aria-labelledby="approval-title">
+          <div><p className="cp-overline">Action required</p><h2 id="approval-title">Codex needs your approval.</h2></div>
+          {pendingApprovals.length === 0 ? (
+            <p>The status is visible, but the exact request identity is unavailable. Approval remains locked.</p>
+          ) : pendingApprovals.map((approval) => (
+            <article key={`${typeof approval.requestId}:${String(approval.requestId)}`}>
+              <div><strong>{approvalKind(approval.kind)}</strong><p>{approval.summary ?? "Codex requested a decision for this exact item."}</p></div>
+              <div className="cp-context-panel__actions">
+                <button type="button" onClick={() => setApprovalDetail(approval)}>View command</button>
+                <button type="button" className="is-approve" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "accept")}><CheckIcon />Approve</button>
+                <button type="button" className="is-reject" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "decline")}><XIcon />Reject</button>
+                <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
+      {session.status === "error" && (
+        <section className="cp-context-panel cp-context-panel--error cp-enter">
+          <div><p className="cp-overline">Agent error</p><h2>The session needs attention on the Mac.</h2></div>
+          <div className="cp-context-panel__actions">
+            <button type="button" disabled={macUnavailable} onClick={onOpenOnMac}><MacIcon />Open on Mac</button>
+            <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
+          </div>
+        </section>
+      )}
+
+      {session.status === "unread" && (
+        <section className="cp-context-panel cp-context-panel--completed cp-enter">
+          <div><p className="cp-overline">Result ready</p><h2>Review the latest interface.</h2></div>
+          <div className="cp-context-panel__actions"><button type="button" onClick={onOpenImageReview}><GlobeIcon />Review result</button></div>
+        </section>
+      )}
+
       <section className="cp-primary-actions cp-enter cp-enter--3" aria-labelledby="primary-actions-title">
         <div className="cp-section-heading">
-          <div><p className="cp-overline">Touch surface</p><h2 id="primary-actions-title">Choose an input.</h2></div>
+          <div><h2 id="primary-actions-title">Add to this task</h2></div>
           <div className="cp-primary-actions__utilities">
             <button
               type="button"
@@ -328,11 +341,11 @@ export function SessionWorkspace({
       </section>
 
       <section className="cp-session-controls cp-enter cp-enter--4" aria-labelledby="session-controls-title">
-        <div className="cp-section-heading"><div><p className="cp-overline">Next message</p><h2 id="session-controls-title">Agent controls.</h2></div></div>
+        <div className="cp-section-heading"><h2 id="session-controls-title">Task options</h2></div>
         <div className="cp-session-controls__grid">
           <div className="cp-skill-control">
             <button type="button" className="cp-control-header" aria-expanded={skillsOpen} aria-controls="skill-library-dialog" onClick={() => setSkillsOpen((value) => !value)}>
-              <span><SparkIcon /></span><span><strong>Skills</strong><small>{selectedSkillIds.length > 0 ? `${selectedSkillIds.length} armed for the next send` : `${skills.length} available`}</small></span><ChevronIcon />
+              <span><SparkIcon /></span><span><strong>Skills</strong><small>{selectedSkillIds.length > 0 ? `${selectedSkillIds.length} selected for your next message` : `${skills.length} available`}</small></span><ChevronIcon />
             </button>
             {selectedSkillIds.length > 0 && (
               <div className="cp-skill-chips" aria-label="Selected skills for Nerva visual sends">
@@ -341,12 +354,21 @@ export function SessionWorkspace({
             )}
             {skillsOpen && typeof document !== "undefined" && createPortal(
               <div ref={skillsDialogRef} id="skill-library-dialog" className="cp-skill-picker" role="dialog" aria-modal="true" aria-labelledby="skill-library-title" tabIndex={-1}>
-                {skillGroups.length > 0 ? (
-                  <>
-                    <header className="cp-skill-picker__header">
-                      <span><strong id="skill-library-title">Skill library</strong><small>Grouped automatically by provider · {skills.length} available</small></span>
-                      <button type="button" aria-label="Close Skills" onClick={() => setSkillsOpen(false)}><CloseIcon /></button>
-                    </header>
+                <header className="cp-skill-picker__header">
+                  <span><strong id="skill-library-title">Skill library</strong><small>{selectedSkillIds.length} selected · {skills.length} available</small></span>
+                  <button type="button" aria-label="Close Skills" onClick={() => setSkillsOpen(false)}><CloseIcon /></button>
+                </header>
+                <label className="cp-skill-search"><SearchIcon /><input type="search" aria-label="Search skills" placeholder="Find a skill" value={skillQuery} onChange={(event) => setSkillQuery(event.target.value)} /></label>
+                {skillQuery.trim() ? (
+                  <div className="cp-skill-groups">
+                    <p className="cp-skill-results" role="status">{skillMatches.length} {skillMatches.length === 1 ? "skill" : "skills"} found</p>
+                    {skillMatches.map((skill) => <button type="button" className="cp-skill-option" key={skill.id} disabled={!skill.enabled} aria-pressed={selectedSkillIds.includes(skill.id)} onClick={() => onToggleSkill(skill.id)}>
+                      <span><strong>{skill.label}</strong><small>{skill.description ?? "Available to this Codex session"}</small></span>
+                      <span className="cp-checkmark">{selectedSkillIds.includes(skill.id) ? <CheckIcon /> : null}</span>
+                    </button>)}
+                    {skillMatches.length === 0 && <button type="button" className="cp-secondary-button" onClick={() => setSkillQuery("")}>Clear search</button>}
+                  </div>
+                ) : skillGroups.length > 0 ? (
                     <div className="cp-skill-groups">
                       {standaloneSkills.map((skill) => (
                         <button
@@ -406,89 +428,42 @@ export function SessionWorkspace({
                         );
                       })}
                     </div>
-                  </>
-                ) : <p>No session skills are currently exposed by Codex.</p>}
-                <p className="cp-skill-note">Skills stay armed for the next text instruction. Drawings are always sent image-only; use Dictation afterward to add a message in Codex.</p>
+                ) : <p className="cp-skill-note">No skills are available for this task yet.</p>}
+                <p className="cp-skill-note">Selected skills apply when you send your next text instruction.</p>
+                <button type="button" className="cp-skill-done" onClick={() => setSkillsOpen(false)}>Done{selectedSkillIds.length > 0 ? ` · ${selectedSkillIds.length} selected` : ""}</button>
               </div>,
               document.body,
             )}
           </div>
 
           <div className="cp-model-control">
-            <div className="cp-control-header cp-control-header--static">
-              <span><SlidersIcon /></span><span><strong>Model + Reasoning</strong><small>{selectedModel?.displayName ?? currentModel ?? "Codex model"} · {selectedPreset?.reasoning ?? currentReasoningMode ?? "loading"}</small></span>
-            </div>
-            <div className="cp-reasoning-slider">
-              <input
-                type="range"
-                min={0}
-                max={Math.max(0, modelPresets.length - 1)}
-                value={presetIndex}
-                disabled={nativeControlsDisabled || !modelReasoningEnabled || modelPresets.length < 2}
-                aria-label="Model and reasoning preset"
-                onChange={(event) => {
-                  previewPreset(Number(event.target.value));
-                }}
-                onPointerUp={commitPreset}
-                onBlur={commitPreset}
-                onKeyUp={(event) => {
-                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) commitPreset();
-                }}
-              />
-              <div>
-                <span>{modelPresets[0]?.reasoning ?? reasoningModes[0] ?? "Low"}</span>
-                <strong>{selectedPreset ? `${selectedModel?.displayName ?? selectedPreset.model} · ${selectedPreset.reasoning}` : currentReasoningMode ?? "Unavailable"}</strong>
-                <span>{modelPresets.at(-1)?.reasoning ?? reasoningModes.at(-1) ?? "High"}</span>
-              </div>
-            </div>
-            <p>{modelPresets.length > 0
-              ? "Only the presets selected in Settings appear here."
+            <label className="cp-control-header cp-control-header--static" htmlFor="session-model-preset">
+              <span><SlidersIcon /></span><span><strong>Model &amp; reasoning</strong><small>{presetPending ? "Applying your choice…" : "Choose how Codex works on this task"}</small></span>
+            </label>
+            <select
+              id="session-model-preset"
+              className="cp-model-preset-select"
+              value={presetIndex}
+              disabled={nativeControlsDisabled || !modelReasoningEnabled || presetPending || modelPresets.length === 0}
+              aria-label="Model and reasoning preset"
+              aria-busy={presetPending}
+              onChange={(event) => commitPresetIndex(Number(event.target.value))}
+            >
+              {observedPresetIndex < 0 && <option value={-1} disabled>{currentModelLabel}{currentReasoningMode ? ` · ${currentReasoningMode}` : " · Unavailable"}</option>}
+              {modelPresets.map((preset, index) => <option key={preset.id} value={index}>{models.find((model) => model.model === preset.model)?.displayName ?? preset.model} · {preset.reasoning}</option>)}
+            </select>
+            <p>{!modelReasoningEnabled
+              ? "Model changes are unavailable for this task right now."
               : modelReasoningPresets.length > 0
-                ? "Your selected presets are not currently available from Codex."
-                : "Waiting for the live Codex model catalog."}</p>
+                ? modelPresets.length > 0 ? "Your shortcuts from Settings." : "Your saved shortcuts are unavailable in Codex."
+                : "Models and reasoning levels available in Codex."}</p>
           </div>
 
           <button type="button" className={`cp-fast-control${fastAction ? "" : " is-disabled"}`} disabled={nativeControlsDisabled || fastAction === null} onClick={() => fastAction && onRunAction(fastAction)}>
-            <span><BoltIcon /></span><span><strong>Fast</strong><small>{fastAction ? "Toggle the native Codex mode" : "Unavailable for this session"}</small></span>
+            <span><BoltIcon /></span><span><strong>Fast</strong><small>{fastAction ? "Switch Fast mode on the Mac" : "Unavailable for this session"}</small></span>
           </button>
         </div>
       </section>
-
-      {(pendingApprovals.length > 0 || session.status === "awaiting-approval") && (
-        <section className="cp-context-panel cp-context-panel--approval cp-enter" aria-labelledby="approval-title">
-          <div><p className="cp-overline">Action required</p><h2 id="approval-title">Codex needs your approval.</h2></div>
-          {pendingApprovals.length === 0 ? (
-            <p>The status is visible, but the exact request identity is unavailable. Approval remains locked.</p>
-          ) : pendingApprovals.map((approval) => (
-            <article key={`${typeof approval.requestId}:${String(approval.requestId)}`}>
-              <div><strong>{approvalKind(approval.kind)}</strong><p>{approval.summary ?? "Codex requested a decision for this exact item."}</p></div>
-              <div className="cp-context-panel__actions">
-                <button type="button" onClick={() => setApprovalDetail(approval)}>View command</button>
-                <button type="button" className="is-approve" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "accept")}><CheckIcon />Approve</button>
-                <button type="button" className="is-reject" disabled={!approvalEnabled || !approval.actionable || busyAction !== null} onClick={() => onApprovalDecision(approval, "decline")}><XIcon />Reject</button>
-                <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
-              </div>
-            </article>
-          ))}
-        </section>
-      )}
-
-      {session.status === "error" && (
-        <section className="cp-context-panel cp-context-panel--error cp-enter">
-          <div><p className="cp-overline">Agent error</p><h2>The session needs attention on the Mac.</h2></div>
-          <div className="cp-context-panel__actions">
-            <button type="button" disabled={macUnavailable} onClick={onOpenOnMac}><MacIcon />Open on Mac</button>
-            <button type="button" disabled={nativeControlsDisabled || dictationAction === null} onClick={onToggleDictation}><MicIcon />{dictationActive ? "Stop Dictation" : "Add instruction"}</button>
-          </div>
-        </section>
-      )}
-
-      {session.status === "unread" && (
-        <section className="cp-context-panel cp-context-panel--completed cp-enter">
-          <div><p className="cp-overline">Result ready</p><h2>Review the latest interface.</h2></div>
-          <div className="cp-context-panel__actions"><button type="button" onClick={onOpenImageReview}><GlobeIcon />Review result</button></div>
-        </section>
-      )}
 
       {approvalDetail && (
         <div className="cp-modal-layer" role="presentation">
