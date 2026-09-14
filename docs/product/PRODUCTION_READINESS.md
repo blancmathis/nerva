@@ -5,22 +5,24 @@ context_room:
   status: current
   canonical_for: production-readiness evidence and remaining acceptance gates
   last_verified: 2026-09-14
-  sources: [.github/workflows/ci.yml, apps/bridge/src/web-build-snapshot.ts, apps/bridge/test/server.test.ts, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
+  sources: [.github/workflows/ci.yml, apps/bridge/src/web-build-snapshot.ts, apps/bridge/test/server.test.ts, apps/web/src/lib/home-layout-storage.ts, apps/web/src/lib/home-layout-storage.test.ts, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
 ---
 
 # Nerva production-readiness audit
 
-Pre-deployment source and installation audit: 14 September 2026. This is a source-quality and installation audit, not a production release certificate. It includes one bounded current-version schema-cache repair. Deployment, Desktop reconnection and physical acceptance require their own subsequent evidence.
+Source and installation audit, with deployment follow-up: 14 September 2026. This is a source-quality and installation audit, not a production release certificate. It includes a bounded current-version schema-cache repair and a coordinated web/bridge deployment. Desktop reconnection and physical acceptance still require their own evidence.
 
 ## Decision
 
 **Do not mark the current installation as fully production-ready.** The software candidate must pass every CI group, and the native/runtime and physical-device gates below remain separate requirements. A healthy loopback bridge or a green fixture test cannot establish a working paired iPad or authorize exact-task native actions.
 
-The existing Mac installation was inspected without replacing its running bridge, restarting Codex Desktop, changing Tailscale routes, editing ownership attestations or sending commands to real user tasks. Its health result is therefore not evidence that this branch has been deployed.
+The initial installation findings below precede deployment. The follow-up deployed `41a2314` after both complete CI runs passed; its source tree is identical to merge commit `2e0a88b`. Desktop ownership and physical interaction remain unverified.
 
 ## Corrections in this candidate
 
-The installed bridge's health endpoint returned HTTP 200 while both `/` and `/app-meta.json` returned HTTP 404. The process-scoped PWA snapshot was stored in operating-system temporary space, and its required files were absent during inspection. The [web snapshot](../../apps/bridge/src/web-build-snapshot.ts) now lives in Nerva's private runtime directory, under the exclusive bridge lifetime lease, so operating-system temporary-file cleanup cannot remove a running installation's assets. It retains the existing build-identity and content checks and is removed when that bridge closes. The [server regression](../../apps/bridge/test/server.test.ts) verifies private storage, HTML and JavaScript availability after build scratch space is removed, and cleanup on shutdown. Deployment verification must fetch the PWA and its assets as well as the health endpoint.
+The installed bridge's health endpoint returned HTTP 200 while both the root page and the `app-meta.json` endpoint returned HTTP 404. The process-scoped PWA snapshot was stored in operating-system temporary space, and its required files were absent during inspection. The [web snapshot](../../apps/bridge/src/web-build-snapshot.ts) now lives in Nerva's private runtime directory, under the exclusive bridge lifetime lease, so operating-system temporary-file cleanup cannot remove a running installation's assets. It retains the existing build-identity and content checks and is removed when that bridge closes. The [server regression](../../apps/bridge/test/server.test.ts) verifies private storage, HTML and JavaScript availability after build scratch space is removed, and cleanup on shutdown. Deployment verification must fetch the PWA and its assets as well as the health endpoint.
+
+The post-merge iPhone gate exposed an interrupted-write defect: removing a pin, then immediately reloading, could load an older IndexedDB copy and overwrite the newer Mac layout. [Home layout recovery](../../apps/web/src/lib/home-layout-storage.ts) now prefers the copy written synchronously before the asynchronous IndexedDB transaction. If local storage rejects a write, its obsolete copy is removed so IndexedDB remains a usable fallback. [Regression tests](../../apps/web/src/lib/home-layout-storage.test.ts) reproduce an interrupted IndexedDB update and cover storage quota failure, IndexedDB-only recovery and unreadable local data. No browser assertion, timeout or retry policy is weakened.
 
 Push and pull-request CI runs now have distinct concurrency groups. Previously they cancelled each other for the same revision, leaving a failed required aggregate beside the successful run and blocking merge. New pushes still cancel obsolete runs of the same event type; the required aggregate continues to reject any failed, skipped or cancelled validation group.
 
@@ -39,6 +41,10 @@ Camera startup now has a disabled “Starting camera…” state and an immediat
 QA voice notes now have explicit requesting/recording/stopping states and microphone ownership scoped to the visible checkpoint, exact task and tab. Cancel, leaving the checkpoint, a task/tab change and unmount invalidate pending permissions and release the microphone. Page hide stops capture, constructor/start/recorder errors release tracks, and a missing stop event cannot leave Save waiting indefinitely. Save waits for the final audio chunk; a failed active recording is not silently saved as a successful voice note. The existing three-minute limit and local-only audio policy are unchanged. Written reviewed explanations remain the only audio-derived text sent to an agent.
 
 ## Automated evidence and reproducibility
+
+Both full candidate runs passed all 11 jobs at `41a2314`: [push validation](https://github.com/blancmathis/nerva/actions/runs/34825607330) and [pull-request validation](https://github.com/blancmathis/nerva/actions/runs/34825611520). Local validation at that revision passed 1,152 unit tests (two opt-in exclusions), 19 probe tests, 438 browser tests (24 explicit exclusions), six production-bridge tests, screenshots, build, bundle and release/dependency audits. One initial unit attempt exceeded a UI wait under parallel load; the isolated suite and complete unit suite with two workers passed without changing assertions. Context Room reported one route-reference warning, subsequently removed by clarifying that the metadata name is an HTTP endpoint.
+
+The subsequent [merge-commit run](https://github.com/blancmathis/nerva/actions/runs/34826758029) failed the immediate-reload pin scenario on Chromium iPhone. Its trace shows the unpin reaching the Mac before reload, followed by a stale local layout overwriting it. This is recorded as a real persistence defect, not a passing run or a retry-only repair. The deterministic interrupted-write unit regression failed before the storage fix and passed afterward. The follow-up pull request's own checks establish validation of that correction.
 
 The focused pre-fix regression suite reproduced nine failures. All ten tests in that initial suite passed after correction. Additional regression tests cover ordinary row activation, genuinely empty catalogs, and browser storage under newer Node versions. Browser coverage includes explicit menu actions, exact-thread routing, small/rotated phone viewports, readable metadata and light-theme accessibility.
 
@@ -89,13 +95,13 @@ The documented `setup --generate-schemas --json` command generated 426 schema fi
 
 | Gate | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| Existing loopback bridge and PWA | Health responds on a verified loopback listener; the follow-up inspection found missing PWA snapshot files and HTTP 404 for the page and build metadata | Deploy and verify matching web/bridge revisions, HTTP 200 for the page, metadata and referenced assets, and the persistent private runtime snapshot. Health alone is insufficient. |
+| Deployed loopback bridge and PWA | `41a2314` is installed; health and web metadata agree, HTML and both referenced assets return HTTP 200, and the snapshot is under private runtime storage with mode 0700 | Deploy the subsequent pin-persistence correction after its own complete validation. Health alone is insufficient. |
 | Private filesystem and exposure | Inspected state is owner-only; Funnel is disabled for the configured route | Preserve these constraints. Never expose CDP beyond loopback. |
 | Current-version protocol schemas | Repaired; 426 files generated from the installed binary, then validated by doctor | Revalidate after any installed Codex update. |
 | Managed app-server / standalone CLI | Standalone tooling is found; managed read-only compatibility passes | Reconcile the running/new binary versions during the coordinated native validation. A read-only pass does not authorize mutation. |
 | Desktop ownership | No positive current Desktop-owned peer proof | Establish the supported managed connection and validate ownership through the normal tooling. Never hand-edit an attestation. |
 | Native Desktop discovery | CDP and the native six-slot adapter remain unavailable/degraded | Save active work before an explicitly authorized Desktop relaunch; repeat strict diagnostics and exact-task acceptance. |
 | Private HTTPS/WSS | Exact Serve route and same-origin WSS upgrade pass from the Mac; unauthenticated connection closes before data | Verify the paired physical device over its actual private network. |
-| Physical iPad/iPhone acceptance | Not performed in this audit | Verify pairing, installed PWA behavior, sleep/resume, camera permissions, Pencil/palm rejection and supported notification/voice paths on real hardware. |
+| Physical iPad/iPhone acceptance | An iPad Air 11-inch (M2), iPadOS 26.6.1, is paired and available over USB; physical interaction is not yet validated | Verify pairing, installed PWA behavior, sleep/resume, camera permissions, Pencil/palm rejection and supported notification/voice paths on real hardware. |
 
-A full production rollout must satisfy the remaining native gates, deploy a coordinated source revision, and run the product's exact-task acceptance scenarios on the physical devices. No stable release tag, auto-merge or deployment is created by this audit. The historical evidence in [Current state](CURRENT_STATE.md) is not a substitute for current-binary and physical-device acceptance.
+A full production rollout must satisfy the remaining native gates, deploy the validated follow-up revision, and run the product's exact-task acceptance scenarios on the physical devices. The first deployment encountered a transient launchd registration refusal; the old runtime was restored and checked before a bounded registration retry completed the validated installation. Configuration, credentials and the Desktop process were unchanged. No stable release tag has been created. The historical evidence in [Current state](CURRENT_STATE.md) is not a substitute for current-binary and physical-device acceptance.
