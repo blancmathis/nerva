@@ -348,6 +348,7 @@ describe("macOS one-command setup", () => {
     });
     expect(commands.some(({ arguments_ }) => arguments_[0] === "kickstart")).toBe(false);
     const plist = await readFile(first.launchAgentPath, "utf8");
+    expect(plist).toContain("<key>ProcessType</key>\n  <string>Interactive</string>");
     expect(plist).toContain("/usr/local/bin/node");
     expect(plist).toContain(test.cli.replaceAll("&", "&amp;"));
     expect(plist).not.toContain(pairingNonceFromUrl(first.pairing.qrPayload) ?? "missing");
@@ -858,14 +859,42 @@ describe("macOS one-command setup", () => {
     expect(harness.runCommand.mock.calls.some(([, arguments_]) => arguments_.includes("off"))).toBe(false);
   });
 
+  it.each([true, false])("recognizes and upgrades the legacy Background service with Umask=%s", async (includeUmask) => {
+    const test = await fixture();
+    const harness = managedBridgeHarness(test);
+    const installed = await setupMac(harness.common);
+    let legacy = (await readFile(installed.launchAgentPath, "utf8"))
+      .replace("<string>Interactive</string>", "<string>Background</string>");
+    if (!includeUmask) legacy = legacy.replace("  <key>Umask</key>\n  <integer>63</integer>\n", "");
+    await writeFile(installed.launchAgentPath, legacy);
+    harness.runCommand.mockClear();
+
+    await expect(inspectMacUninstall(harness.common)).resolves.toMatchObject({
+      state: "ready", launchAgent: { state: "owned" },
+    });
+    expect(harness.runCommand.mock.calls.some(([executable]) => executable === "/bin/launchctl")).toBe(false);
+
+    const upgraded = await setupMac(harness.common);
+    expect(upgraded.launchAgentChanged).toBe(true);
+    expect(await readFile(installed.launchAgentPath, "utf8"))
+      .toContain("<key>ProcessType</key>\n  <string>Interactive</string>");
+    await expect(inspectMacUninstall(harness.common)).resolves.toMatchObject({
+      state: "ready", launchAgent: { state: "owned" },
+    });
+  });
+
   it("blocks unrecognized, symlinked, and multiply-linked LaunchAgent targets without mutations", async () => {
-    for (const unsafeShape of ["contents", "symlink", "hardlink"] as const) {
+    for (const unsafeShape of ["contents", "current-without-umask", "symlink", "hardlink"] as const) {
       const test = await fixture();
       const harness = managedBridgeHarness(test);
       const installed = await setupMac(harness.common);
       if (unsafeShape === "contents") {
         await writeFile(installed.launchAgentPath, "foreign launch agent\n");
         await chmod(installed.launchAgentPath, 0o600);
+      } else if (unsafeShape === "current-without-umask") {
+        const unsafe = (await readFile(installed.launchAgentPath, "utf8"))
+          .replace("  <key>Umask</key>\n  <integer>63</integer>\n", "");
+        await writeFile(installed.launchAgentPath, unsafe);
       } else if (unsafeShape === "symlink") {
         const trap = join(test.root, "foreign.plist");
         await writeFile(trap, "foreign launch agent\n");

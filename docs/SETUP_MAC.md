@@ -28,6 +28,8 @@ OpenAI's installer is the supported install/update path for the standalone packa
 
 The bootstrap script performs `npm ci` when needed, builds the workspace, reruns the read-only preflight, and refreshes schema caches for both exact Codex binaries. A schema-generation failure cannot prevent the independent bridge/pairing installation, but the affected capability remains unavailable. The script then installs `~/Library/LaunchAgents/com.codex-pad.bridge.plist` with mode `0600`, establishes only the exact private route, verifies local bridge health, and prints the QR. Native daemon configuration is attempted only for a **Ready** preflight. If that later native step fails, setup finishes safely as **Ready with limited Codex controls** instead of discarding the working bridge and pairing path.
 
+The bridge uses launchd's `Interactive` process classification because it directly serves the iPad's user interface over HTTP/WebSocket. `Background` can delay startup and requests under Mac load; this service cannot use XPC transactions to become `Adaptive`. This changes resource scheduling only: the loopback bind, private state and native mutation gates remain enforced. The installer still recognizes the exact older `Background` service definitions, with or without their historical Umask field, for safe upgrades and removal.
+
 In a Ready native topology, setup removes the obsolete Nerva raw-listener LaunchAgent only when its exact old generated shape is recognized. It never removes an unknown service. The command waits for the iPad in the same terminal. Pressing `Ctrl-C` stops only the wait; the launchd bridge remains running.
 
 For a later replacement or cleared iPad credential:
