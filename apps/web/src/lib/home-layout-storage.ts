@@ -29,6 +29,10 @@ function readLocal(): unknown | null {
 }
 
 export async function loadHomeLayout(): Promise<HomeLayout | null> {
+  // This copy is written synchronously before IndexedDB. A reload can abort
+  // the later transaction, so reading the database first can resurrect a pin.
+  const local = readLocal();
+  if (local !== null) return migrateHomeLayout(local);
   try {
     const db = await database();
     let stored: unknown;
@@ -39,10 +43,8 @@ export async function loadHomeLayout(): Promise<HomeLayout | null> {
     }
     if (stored !== undefined && stored !== null) return migrateHomeLayout(stored);
   } catch {
-    // An inaccessible IndexedDB falls back to the compact presentation cache.
+    // Neither current store is readable; try the legacy presentation layout.
   }
-  const local = readLocal();
-  if (local !== null) return migrateHomeLayout(local);
 
   // One-time compatibility import from the former standalone Spatial page.
   const legacy = await browserSpatialLayoutStorage.load();
@@ -59,7 +61,9 @@ export async function saveHomeLayout(layout: HomeLayout): Promise<void> {
   try {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(sanitized));
   } catch {
-    // IndexedDB can still preserve the layout.
+    // Do not let an older local copy hide a successful IndexedDB write after
+    // a quota error. Removing a key does not require additional storage space.
+    try { localStorage.removeItem(LOCAL_KEY); } catch { /* Storage is inaccessible. */ }
   }
   try {
     const db = await database();
