@@ -103,3 +103,82 @@ test("Pairing keeps camera permission cancelable without starting another reques
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(bridge.commands).toHaveLength(0);
 });
+
+
+test("QA checkpoint cancellation releases pending and active microphones without sending a task command", async ({ page }) => {
+  const bridge = new MockBridge({ authorized: false });
+  await bridge.install(page);
+  await page.addInitScript(() => {
+    const pending: ((stream: MediaStream) => void)[] = [];
+    const probe = {
+      requests: 0, stopped: 0, recordings: 0,
+      grant: () => {
+        const resolve = pending.shift();
+        if (!resolve) throw new Error("No microphone permission request is pending");
+        resolve({ getTracks: () => [{ stop: () => { probe.stopped += 1; } }] } as unknown as MediaStream);
+      },
+    };
+    Object.defineProperty(window, "__nervaVoiceProbe", { value: probe });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: () => {
+        probe.requests += 1;
+        return new Promise<MediaStream>((resolve) => pending.push(resolve));
+      } },
+    });
+    class FixtureRecorder extends EventTarget {
+      state = "inactive";
+      mimeType = "audio/webm";
+      start() { this.state = "recording"; probe.recordings += 1; }
+      stop() {
+        if (this.state === "inactive") return;
+        this.state = "inactive";
+        queueMicrotask(() => {
+          const event = new Event("dataavailable");
+          Object.defineProperty(event, "data", { value: new Blob(["fixture voice note"]) });
+          this.dispatchEvent(event);
+          this.dispatchEvent(new Event("stop"));
+        });
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, value: FixtureRecorder });
+  });
+  const probe = () => page.evaluate(() => {
+    const value = (window as unknown as { __nervaVoiceProbe: { requests: number; stopped: number; recordings: number } }).__nervaVoiceProbe;
+    return { requests: value.requests, stopped: value.stopped, recordings: value.recordings };
+  });
+  const grant = () => page.evaluate(() => {
+    (window as unknown as { __nervaVoiceProbe: { grant: () => void } }).__nervaVoiceProbe.grant();
+  });
+  await page.goto("/pair?nonce=fixture-pairing-code");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: /^Site/ }).click();
+  await page.getByRole("main", { name: "Sites" }).getByRole("button", { name: "Open Component lab" }).click();
+  await page.getByRole("button", { name: "Record flow", exact: true }).click();
+  await page.getByRole("button", { name: "Mark issue", exact: true }).click();
+  const issue = page.getByRole("dialog", { name: "Mark what went wrong" });
+  const commandCount = bridge.commands.length;
+  await issue.getByRole("button", { name: "Explain with voice", exact: true }).click();
+  await expect(issue.getByRole("button", { name: "Cancel microphone request", exact: true })).toBeVisible();
+  await expect(issue.getByRole("button", { name: "Save & review", exact: true })).toBeDisabled();
+  await issue.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(issue).toBeHidden();
+  await grant();
+  await expect.poll(probe).toEqual({ requests: 1, stopped: 1, recordings: 0 });
+
+  await page.getByRole("button", { name: "Mark issue", exact: true }).click();
+  await issue.getByRole("button", { name: "Explain with voice", exact: true }).click();
+  await issue.getByRole("button", { name: "Cancel microphone request", exact: true }).click();
+  await grant();
+  await expect.poll(probe).toEqual({ requests: 2, stopped: 2, recordings: 0 });
+  await expect(issue).toBeVisible();
+  await issue.getByRole("button", { name: "Explain with voice", exact: true }).click();
+  await expect.poll(async () => (await probe()).requests).toBe(3);
+  await grant();
+  await expect(issue.getByRole("button", { name: "Stop voice note", exact: true })).toBeVisible();
+  await issue.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(issue).toBeHidden();
+  await expect.poll(probe).toEqual({ requests: 3, stopped: 3, recordings: 1 });
+  expect(bridge.commands).toHaveLength(commandCount);
+});
