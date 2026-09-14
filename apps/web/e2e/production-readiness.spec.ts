@@ -6,8 +6,12 @@ async function openActivity(page: Page): Promise<MockBridge> {
   const bridge = new MockBridge({ authorized: false });
   await bridge.install(page);
   await page.goto("/pair?nonce=fixture-pairing-code");
+  const connect = page.getByRole("button", { name: "Connect", exact: true });
+  // Use the existing action-readiness budget for the lazy pairing screen,
+  // then check its label; do not impose a new five-second cold-start limit.
+  await connect.waitFor({ state: "visible" });
   await expect(page.getByRole("heading", { name: "Connect to your Mac", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await connect.click();
   await expect(page.getByRole("heading", { name: "Release checklist", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Open Nerva Home" }).click();
   await page.getByRole("button", { name: /Open Conversations/ }).click();
