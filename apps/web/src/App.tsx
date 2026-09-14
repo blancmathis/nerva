@@ -1340,6 +1340,8 @@ function App() {
     setView("session");
     const snapshot = liveMutationSnapshot(mutationGate);
     if (!snapshot) return;
+    // Viewing the task already selected on the Mac needs no native navigation.
+    if (snapshot.activeThreadKey === session.threadId && hasExactSelectedTarget(snapshot, selected)) return;
     ipadInitiatedMacThreadRef.current = session.threadId;
     if (supportsBridgeCommand(mutationGate, "openSession")) {
       const command: OpenSessionCommand = {
