@@ -63,6 +63,32 @@ If CDP is absent, follow the explicit relaunch procedure in [Mac setup](SETUP_MA
 
 If module discovery fails after a Codex update, capture a redacted doctor report and compare the installed version with [Compatibility](COMPATIBILITY.md). Do not hardcode a new asset hash or weaken structural checks as a quick fix.
 
+## Desktop 26.908: native reads and shared transport are separate
+
+A reachable CDP endpoint does not establish a successful native snapshot. The
+adapter bounds optional chunk/setting reads, skips absent setting definitions,
+and deduplicates re-exported readers. A stalled optional module must not consume
+the entire native request. Passive snapshots do not announce a virtual Micro
+device; activation belongs to an explicit native command. Doctor includes the
+adapter's actual reason codes, including evaluation timeouts and missing metadata.
+
+Current Micro layouts can carry `action: { type: "command", commandId }` as well
+as custom text/skill actions. Nerva validates this discriminant at snapshot and
+dispatch time. A matching keycap alone must not authorize a different action.
+The observed `composer.togglePlanMode`, `navigateForward`, and `navigateBack`
+commands are accepted only under their exact live assignment identities.
+
+The local September 14 inspection of Desktop **26.908.40834 / 8881** found an
+independent shared-daemon incompatibility: Desktop supplies a local plugin
+configuration override while its automatic shared-daemon selection requires an
+empty override list. The daemon still answers compatible structural reads, but
+Desktop uses its own stdio process. Repeating a restart with the same settings
+does not establish shared ownership. The explicit WebSocket/proxy alternatives
+must not silently discard Desktop configuration; their existence is not proof
+of equivalent behavior. Do not edit the signed app, fabricate ownership evidence,
+or disable exact-target guards. Native renderer capabilities can recover while
+Review/task creation and other managed app-server writes remain unavailable.
+
 ## Session cards appear but controls are disabled
 
 The UI may be showing the last valid snapshot while the WebSocket is reconnecting, the snapshot is cached/offline, or the selected session is not the one exact native slot currently selected on the Mac. Re-establish an authenticated live socket snapshot and verify the exact thread identity. A fresh `degraded` snapshot can still advertise safe exact-target commands; the web mutation gate must not translate that state into a false `Reconnect to the Mac` message. For native Micro actions, the session must still occupy the expected native slot and its current keycap/action identity must match. A displayed title is never enough to authorize a mutation.

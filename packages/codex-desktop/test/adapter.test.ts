@@ -407,13 +407,13 @@ describe("CodexDesktopAdapter", () => {
     });
   });
 
-  it("allows an allowlisted command moved to another live joystick direction", async () => {
+  it.each(["mode.plan", "composer.togglePlanMode", "navigateBack", "navigateForward"])("dispatches the exact allowlisted live joystick command %s", async (commandId) => {
     const raw = await fixture();
     raw.joystickLayout = {
       up: { direction: "up", type: "command", commandId: "nav.back" },
       right: { direction: "right", type: "command", commandId: "nav.forward" },
       down: { direction: "down", type: "command", commandId: "skill.one" },
-      left: { direction: "left", type: "command", commandId: "mode.plan" },
+      left: { direction: "left", type: "command", commandId },
     };
     const runtime = new FakeRuntime(raw);
     const adapter = new CodexDesktopAdapter({ runtimeFactory: async () => runtime });
@@ -421,14 +421,14 @@ describe("CodexDesktopAdapter", () => {
     await adapter.execute({
       action: "invoke-joystick",
       direction: "left",
-      expectedAssignment: { type: "command", commandId: "mode.plan" },
+      expectedAssignment: { type: "command", commandId },
       expectedThreadId: "019f7ec2-68eb-7183-bb3a-0e67312a8ba1",
     });
 
     expect(runtime.dispatches[0]).toMatchObject({
       kind: "joystick",
       direction: "left",
-      expectedAssignment: { type: "command", commandId: "mode.plan" },
+      expectedAssignment: { type: "command", commandId },
     });
   });
 

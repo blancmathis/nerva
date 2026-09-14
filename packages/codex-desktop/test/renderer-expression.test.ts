@@ -528,7 +528,7 @@ describe("fixed renderer expressions", () => {
     expect(FIXED_NATIVE_SNAPSHOT_EXPRESSION).not.toContain("actionLabel");
   });
 
-  it("activates the fixed Micro device state before reporting native handlers", async () => {
+  it.each(["normal", "stalled-module", "stalled-setting"])("reads inactive native handlers without activation: %s", async (scenario) => {
     const fixtureGlobals = globalThis as typeof globalThis & {
       __codexPadImportFixture?: (url: string) => Promise<unknown>;
     };
@@ -546,7 +546,19 @@ describe("fixed renderer expressions", () => {
       namespace.nativeBus.handlers.set("codex-micro-joystick-event", new Set([true]));
     });
     namespace.nativeBus.handlers.clear();
-    fixtureGlobals.__codexPadImportFixture = async () => namespace;
+    const stalledSetting = async (_definition: unknown) => {
+      void "get-setting";
+      return new Promise(() => {});
+    };
+    fixtureGlobals.__codexPadImportFixture = async (url) => url.endsWith("stalled.js")
+      ? new Promise(() => {})
+      : scenario === "stalled-setting"
+        ? {
+            stalledSetting,
+            ...namespace,
+            definitions: { ...namespace.definitions, agentSource: { key: "codex-micro-agent-source" } },
+          }
+        : namespace;
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: {
@@ -559,7 +571,10 @@ describe("fixed renderer expressions", () => {
     });
     Object.defineProperty(globalThis, "performance", {
       configurable: true,
-      value: { getEntriesByType: () => [{ name: "https://codex.invalid/assets/native.js" }] },
+      value: { getEntriesByType: () => [
+        ...(scenario === "stalled-module" ? [{ name: "https://codex.invalid/assets/stalled.js" }] : []),
+        { name: "https://codex.invalid/assets/native.js" },
+      ] },
     });
     Object.defineProperty(globalThis, "getComputedStyle", {
       configurable: true,
@@ -574,15 +589,8 @@ describe("fixed renderer expressions", () => {
       const snapshot = await ((0, eval)(expression) as Promise<{
         handlers: { hid: boolean; joystick: boolean; composerAttachment: boolean };
       }>);
-      expect(messages).toEqual([{
-        type: "codex-micro-device-state-changed",
-        state: {
-          status: "connected",
-          error: null,
-          battery: { percentage: 100, isCharging: true },
-        },
-      }]);
-      expect(snapshot.handlers).toEqual({ hid: true, joystick: true, composerAttachment: false });
+      expect(messages).toEqual([]);
+      expect(snapshot.handlers).toEqual({ hid: false, joystick: false, composerAttachment: false });
     } finally {
       if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
       else Reflect.deleteProperty(globalThis, "document");
@@ -1352,9 +1360,13 @@ describe("fixed renderer expressions", () => {
     }
   });
 
-  it("fails closed when the exact native assignment changes during module discovery", async () => {
+  it.each([
+    { commandId: "mode.rebound-behind-same-keycap" },
+    { commandId: "mode.fast", action: { type: "composer-text", text: "unexpected text" } },
+    { commandId: "mode.fast", action: { type: "skill", skillName: "unexpected-skill" } },
+    { commandId: "mode.fast", action: { type: "command", commandId: "mode.rebound" } },
+  ])("fails closed when the live native assignment changes to %o", async (assignment) => {
     const dispatches: unknown[] = [];
-    let nativeCommandId: string = ACTION_IDENTITY.expectedNativeCommandId;
     const fixtureGlobals = globalThis as typeof globalThis & {
       __codexPadImportFixture?: (url: string) => Promise<unknown>;
     };
@@ -1363,12 +1375,11 @@ describe("fixed renderer expressions", () => {
 
     fixtureGlobals.__codexPadImportFixture = async () => {
       await Promise.resolve();
-      nativeCommandId = "mode.rebound-behind-same-keycap";
       return rendererNamespace(
         (message) => dispatches.push(message),
         () => ({
           version: 1,
-          slots: { ACT06: { keycapId: ACTION_IDENTITY.expectedKeycapId, commandId: nativeCommandId } },
+          slots: { ACT06: { keycapId: ACTION_IDENTITY.expectedKeycapId, ...assignment } },
           analogStick: {},
         }),
       );

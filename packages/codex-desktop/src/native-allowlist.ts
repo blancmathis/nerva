@@ -28,6 +28,10 @@ export const ALLOWLISTED_NATIVE_JOYSTICK_ACTIONS = [
   { type: "command", commandId: "nav.forward", label: "Forward" },
   { type: "command", commandId: "skill.one", label: "Skill one" },
   { type: "command", commandId: "nav.back", label: "Back" },
+  // Current Desktop command IDs, observed alongside the same live assignments.
+  { type: "command", commandId: "composer.togglePlanMode", label: "Plan" },
+  { type: "command", commandId: "navigateForward", label: "Forward" },
+  { type: "command", commandId: "navigateBack", label: "Back" },
 ] as const satisfies readonly NativeJoystickIdentity[];
 
 function exactIdentity(
