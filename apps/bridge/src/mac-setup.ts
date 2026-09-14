@@ -232,7 +232,10 @@ function launchAgentXml(input: {
   readonly workingDirectory: string;
   readonly stdoutPath: string;
   readonly stderrPath: string;
-}, options: { readonly includeUmask?: boolean } = {}): string {
+}, options: {
+  readonly includeUmask?: boolean;
+  readonly processType?: "Background" | "Interactive";
+} = {}): string {
   const value = (text: string): string => `<string>${xmlEscape(text)}</string>`;
   const umask = options.includeUmask === false
     ? ""
@@ -261,7 +264,7 @@ function launchAgentXml(input: {
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>ProcessType</key>
-  <string>Background</string>
+  ${value(options.processType ?? "Interactive")}
 ${umask}  <key>StandardOutPath</key>
   ${value(input.stdoutPath)}
   <key>StandardErrorPath</key>
@@ -297,7 +300,7 @@ function parseOwnedLaunchAgent(
   if (
     label !== LAUNCH_AGENT_LABEL
     || start !== "start"
-    || processType !== "Background"
+    || (processType !== "Background" && processType !== "Interactive")
     || !nodeExecutable
     || !cliPath
     || !workingDirectory
@@ -316,11 +319,12 @@ function parseOwnedLaunchAgent(
     return undefined;
   }
   const parsed = { nodeExecutable, cliPath, workingDirectory, stdoutPath, stderrPath };
-  // Accept the immediately preceding Nerva-generated plist as owned so users
-  // can safely uninstall without first reinstalling. New installs use Umask
-  // 0077 so launchd-created logs are private.
-  return contents === launchAgentXml(parsed)
-    || contents === launchAgentXml(parsed, { includeUmask: false })
+  // Keep recognizing the exact legacy Background templates for safe upgrades
+  // and uninstall. Interactive serves user-driven HTTP/WebSocket requests;
+  // Background can starve the touch UI under Mac load. No XPC transaction is
+  // available to make this HTTP service Adaptive. Logs retain private Umask.
+  return contents === launchAgentXml(parsed, { processType })
+    || (processType === "Background" && contents === launchAgentXml(parsed, { processType, includeUmask: false }))
     ? parsed
     : undefined;
 }

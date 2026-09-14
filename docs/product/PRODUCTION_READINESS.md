@@ -5,7 +5,7 @@ context_room:
   status: current
   canonical_for: production-readiness evidence and remaining acceptance gates
   last_verified: 2026-09-14
-  sources: [.github/workflows/ci.yml, apps/bridge/src/web-build-snapshot.ts, apps/bridge/test/server.test.ts, apps/web/src/lib/home-layout-storage.ts, apps/web/src/lib/home-layout-storage.test.ts, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
+  sources: [.github/workflows/ci.yml, apps/bridge/src/web-build-snapshot.ts, apps/bridge/src/mac-setup.ts, apps/bridge/test/mac-setup.test.ts, apps/bridge/test/server.test.ts, apps/web/src/lib/home-layout-storage.ts, apps/web/src/lib/home-layout-storage.test.ts, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
 ---
 
 # Nerva production-readiness audit
@@ -16,9 +16,11 @@ Source and installation audit, with deployment follow-up: 14 September 2026. Thi
 
 **Do not mark the current installation as fully production-ready.** The software candidate must pass every CI group, and the native/runtime and physical-device gates below remain separate requirements. A healthy loopback bridge or a green fixture test cannot establish a working paired iPad or authorize exact-task native actions.
 
-The initial installation findings below precede deployment. The follow-up deployed `41a2314` after both complete CI runs passed; its source tree is identical to merge commit `2e0a88b`. Desktop ownership and physical interaction remain unverified.
+The initial installation findings below precede deployment. The first follow-up deployed `41a2314`; the pin-persistence correction subsequently deployed `0b8ec23`, whose source tree is identical to merge commit `4fb257a`. Both candidate CI runs and the final merge-commit run passed for the pin correction. Desktop ownership and full physical acceptance remain unverified.
 
 ## Corrections in this candidate
+
+The Mac follow-up also exposed service scheduling starvation. With launchd's `Background` classification, the running bridge failed to open its port within five minutes under heavy Mac load. The same read-only diagnostic completed in 12 seconds when run normally; the same bridge started and served its assets in 15 seconds after classification as `Interactive`. A temporary background-priority adjustment alone had not resolved the problem. The [Mac installer](../../apps/bridge/src/mac-setup.ts) now generates `Interactive` service definitions and still recognizes the exact historical `Background` definitions for safe upgrade and removal. These timings describe this Mac under its observed load; automated configuration tests do not simulate macOS scheduling.
 
 The installed bridge's health endpoint returned HTTP 200 while both the root page and the `app-meta.json` endpoint returned HTTP 404. The process-scoped PWA snapshot was stored in operating-system temporary space, and its required files were absent during inspection. The [web snapshot](../../apps/bridge/src/web-build-snapshot.ts) now lives in Nerva's private runtime directory, under the exclusive bridge lifetime lease, so operating-system temporary-file cleanup cannot remove a running installation's assets. It retains the existing build-identity and content checks and is removed when that bridge closes. The [server regression](../../apps/bridge/test/server.test.ts) verifies private storage, HTML and JavaScript availability after build scratch space is removed, and cleanup on shutdown. Deployment verification must fetch the PWA and its assets as well as the health endpoint.
 
@@ -45,6 +47,8 @@ QA voice notes now have explicit requesting/recording/stopping states and microp
 Both full candidate runs passed all 11 jobs at `41a2314`: [push validation](https://github.com/blancmathis/nerva/actions/runs/34825607330) and [pull-request validation](https://github.com/blancmathis/nerva/actions/runs/34825611520). Local validation at that revision passed 1,152 unit tests (two opt-in exclusions), 19 probe tests, 438 browser tests (24 explicit exclusions), six production-bridge tests, screenshots, build, bundle and release/dependency audits. One initial unit attempt exceeded a UI wait under parallel load; the isolated suite and complete unit suite with two workers passed without changing assertions. Context Room reported one route-reference warning, subsequently removed by clarifying that the metadata name is an HTTP endpoint.
 
 The subsequent [merge-commit run](https://github.com/blancmathis/nerva/actions/runs/34826758029) failed the immediate-reload pin scenario on Chromium iPhone. Its trace shows the unpin reaching the Mac before reload, followed by a stale local layout overwriting it. This is recorded as a real persistence defect, not a passing run or a retry-only repair. The deterministic interrupted-write unit regression failed before the storage fix and passed afterward. The follow-up pull request's own checks establish validation of that correction.
+
+The pin fix `0b8ec23` passed all 11 jobs in both [push](https://github.com/blancmathis/nerva/actions/runs/34828574197) and [PR](https://github.com/blancmathis/nerva/actions/runs/34828582494) runs. Its [merge-commit run](https://github.com/blancmathis/nerva/actions/runs/34829665740) also passed all 11 jobs. Local checks passed 1,156 unit tests (two opt-in exclusions), 18 immediate-reload browser checks across six profiles, six production-bridge tests, build and release checks. The service-scheduling follow-up requires its own checks; the installer tests reproduce the old classification and preserve recognition of both legacy service variants.
 
 The focused pre-fix regression suite reproduced nine failures. All ten tests in that initial suite passed after correction. Additional regression tests cover ordinary row activation, genuinely empty catalogs, and browser storage under newer Node versions. Browser coverage includes explicit menu actions, exact-thread routing, small/rotated phone viewports, readable metadata and light-theme accessibility.
 
@@ -95,7 +99,7 @@ The documented `setup --generate-schemas --json` command generated 426 schema fi
 
 | Gate | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| Deployed loopback bridge and PWA | `41a2314` is installed; health and web metadata agree, HTML and both referenced assets return HTTP 200, and the snapshot is under private runtime storage with mode 0700 | Deploy the subsequent pin-persistence correction after its own complete validation. Health alone is insufficient. |
+| Deployed loopback bridge and PWA | `0b8ec23` is installed; health and web metadata agree, HTML and both referenced assets return HTTP 200, and the snapshot is under private runtime storage with mode 0700. Its actual LaunchAgent uses `Interactive`. | Validate and deliver the matching installer update so future setup retains the responsive service classification. Health alone is insufficient. |
 | Private filesystem and exposure | Inspected state is owner-only; Funnel is disabled for the configured route | Preserve these constraints. Never expose CDP beyond loopback. |
 | Current-version protocol schemas | Repaired; 426 files generated from the installed binary, then validated by doctor | Revalidate after any installed Codex update. |
 | Managed app-server / standalone CLI | Standalone tooling is found; managed read-only compatibility passes | Reconcile the running/new binary versions during the coordinated native validation. A read-only pass does not authorize mutation. |
