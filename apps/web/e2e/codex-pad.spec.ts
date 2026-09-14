@@ -609,7 +609,7 @@ test("opens one exact pinned session on both surfaces", async ({ page }) => {
   await page.getByRole("button", { name: /Open Research queue/ }).click();
 
   await expect(page.getByRole("heading", { name: "Research queue", level: 1 })).toBeVisible();
-  await expect(page.locator(".cp-session-workspace .cp-back-button")).toHaveCount(0);
+  await expect(page.locator(".cp-session-workspace").getByRole("button", { name: "All sessions", exact: true })).toBeVisible();
   await expect.poll(() => bridge.commands.at(-1)?.type).toBe("openSession");
   expect(bridge.commands.at(-1)).toMatchObject({
     expectedBridgeInstanceId: INITIAL_BRIDGE_INSTANCE_ID,

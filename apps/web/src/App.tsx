@@ -1846,7 +1846,7 @@ function App() {
         </Suspense>
       </div>
 
-      <div className="cp-notice-stack" aria-label="Status updates">
+      <div className="cp-notice-stack">
         {pwa.updateReady && (
           <PwaUpdateBanner
             safeToReload={!drawingOpen && !captureInboxBusy && view !== "review" && view !== "site"}
