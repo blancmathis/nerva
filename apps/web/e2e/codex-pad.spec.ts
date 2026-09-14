@@ -2385,10 +2385,35 @@ test("approves only the exact pending request tuple", async ({ page }) => {
   });
 });
 
-test("shows real Settings controls and paired device management", async ({ page }) => {
+test("shows real Settings controls and paired device management", async ({ page }, testInfo) => {
+  if (testInfo.project.name.includes("portrait")) await page.setViewportSize({ width: 820, height: 1148 });
   await openAuthenticatedApp(page);
   await page.getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => undefined)));
+  });
+  const appearance = page.getByText("Choose how much detail appears on Home.", { exact: true });
+  const appearanceLayout = await appearance.evaluate((description) => {
+    const row = description.closest(".cp-setting-row")!;
+    const bounds = description.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+    return {
+      width: bounds.width, height: bounds.height, rowWidth: rowBounds.width,
+      lineHeight: Number.parseFloat(getComputedStyle(description).lineHeight),
+      minControlHeight: Math.min(...[...row.querySelectorAll("button")].map((button) => button.getBoundingClientRect().height)),
+      controlsFit: [...row.querySelectorAll("button")].every((button) => {
+        const control = button.getBoundingClientRect();
+        return control.left >= rowBounds.left - 1 && control.right <= rowBounds.right + 1;
+      }),
+    };
+  });
+  expect(appearanceLayout.width).toBeGreaterThanOrEqual(Math.min(240, appearanceLayout.rowWidth - 1));
+  expect(appearanceLayout.height).toBeLessThanOrEqual(appearanceLayout.lineHeight * 2 + 1);
+  expect(appearanceLayout.controlsFit, JSON.stringify(appearanceLayout)).toBe(true);
+  expect(appearanceLayout.minControlHeight).toBeGreaterThanOrEqual(44);
   await expect(page.getByText("This iPad", { exact: true })).toBeVisible();
   await expect(page.getByText("Background alerts", { exact: true })).toBeVisible();
   await expect(page.getByText("Tap a notification to open the task in Nerva. Decisions and approvals happen inside the app.")).toBeVisible();

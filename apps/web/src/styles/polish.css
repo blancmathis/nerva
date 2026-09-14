@@ -674,6 +674,9 @@
 .cp-settings-card > header > p:last-child { font-size: 14px; line-height: 1.5; }
 .cp-setting-row strong, .cp-settings-action strong, .cp-device-row strong { font-size: 15px; }
 .cp-setting-row small, .cp-settings-action small, .cp-device-row small, .cp-settings-caveat { font-size: 13px; line-height: 1.5; }
+.cp-setting-row--choices { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.cp-setting-row--choices > .cp-segmented { width: 100%; grid-auto-columns: minmax(0, 1fr); justify-self: stretch; }
+.cp-setting-row--choices .cp-segmented button { min-height: 44px; font-size: 13px; }
 .cp-settings-integration summary { min-height: 44px; cursor: pointer; font-size: 16px; }
 .cp-settings-integration summary span { display: block; margin-top: 6px; color: var(--cp-ink-secondary); font-size: 13px; }
 .cp-settings-integration[open] summary { margin-bottom: 16px; }

@@ -122,7 +122,7 @@ export function SettingsPage({
       <div className="cp-settings__grid cp-enter cp-enter--2">
         <section className="cp-settings-card">
           <header><h2>Appearance</h2></header>
-          <div className="cp-setting-row">
+          <div className="cp-setting-row cp-setting-row--choices">
             <div><strong>Session cards</strong><small>Choose how much detail appears on Home.</small></div>
             <div className="cp-segmented cp-segmented--small">
               <button type="button" aria-pressed={preferences.cardDensity === "rich"} onClick={() => update({ cardDensity: "rich" })}>Comfortable</button>
