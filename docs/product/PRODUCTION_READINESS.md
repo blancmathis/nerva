@@ -1,6 +1,16 @@
+---
+context_room:
+  kind: canonical
+  scope: release-readiness
+  status: current
+  canonical_for: production-readiness evidence and remaining acceptance gates
+  last_verified: 2026-09-14
+  sources: [.github/workflows/ci.yml, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
+---
+
 # Nerva production-readiness audit
 
-Observed: 13 September 2026. This is a source-quality and read-only installation audit, not a production release certificate.
+Installation observed: 13 September 2026. CI and documentation rechecked: 14 September 2026. This is a source-quality and read-only installation audit, not a production release certificate.
 
 ## Decision
 
@@ -21,6 +31,8 @@ The Activity geometry regression now waits for finite animations to settle inste
 ## Automated evidence and reproducibility
 
 The focused pre-fix regression suite reproduced nine failures. All ten tests in that initial suite passed after correction. Additional regression tests cover ordinary row activation, genuinely empty catalogs, and browser storage under newer Node versions. Browser coverage includes explicit menu actions, exact-thread routing, small/rotated phone viewports, readable metadata and light-theme accessibility.
+
+The resumed audit inspected [CI run 34782243398](https://github.com/blancmathis/nerva/actions/runs/34782243398) for candidate `116ad22` (tested merge `ecc6122`). All six mobile profiles, production bridge and public screenshots, Node 26 compatibility, and the macOS setup-check contract passed. The Node 22 quality job passed 1,124 unit tests (two opt-in live integration tests excluded), 19 probe-safety tests, type checking, build, bundle budget and the release audit. Its only failing step was Context Room: an audit note had been placed inside YAML front matter. The note is now outside the metadata block; the strict check remains enabled. The local strict Context Room check, documentation check and full dependency audit passed after correction, with zero reported dependency vulnerabilities. These results are not a passing result for the entire old CI run and do not establish native or physical-device acceptance.
 
 The exact candidate's GitHub Actions run is the authoritative full-suite result. Local long-running attempts encountered timeouts under substantial machine load and must not be reported as complete passing runs. The audit recorded load averages above 40 on 14 logical CPUs and more than 7 GiB of swap usage; this is context for reproducing failures, not an exemption from the CI checks.
 

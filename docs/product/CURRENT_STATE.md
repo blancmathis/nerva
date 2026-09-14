@@ -1,6 +1,4 @@
 ---
-
-> Audit supplement, 13 September 2026: see [Production readiness](PRODUCTION_READINESS.md) for current installation blockers, UI/UX corrections and the candidate validation gates. Historical observations below are not a current production certificate.
 context_room:
   kind: canonical
   scope: product
@@ -11,6 +9,8 @@ context_room:
 ---
 
 # Nerva — current repository state
+
+> Audit supplement, 13 September 2026: see [Production readiness](PRODUCTION_READINESS.md) for current installation blockers, UI/UX corrections and the candidate validation gates. Historical observations below are not a current production certificate.
 
 > Observed on 7 September 2026. The accepted product target remains in [`FEATURES_target.md`](./FEATURES_target.md). This page separates implemented code, automated evidence, live-runtime evidence, and physical Mac/iPad evidence.
 
