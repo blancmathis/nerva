@@ -1769,6 +1769,7 @@ async function startBridgeWithLifetimeLease(
   const webSnapshot = await createImmutableWebBuildSnapshot(
     options.webRoot ?? defaultWebRoot,
     runtimeIdentity,
+    paths.runtime,
   );
   if (webSnapshot !== null) {
     startupCleanups.push(() => webSnapshot.release());

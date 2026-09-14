@@ -5,12 +5,12 @@ context_room:
   status: current
   canonical_for: production-readiness evidence and remaining acceptance gates
   last_verified: 2026-09-14
-  sources: [.github/workflows/ci.yml, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
+  sources: [.github/workflows/ci.yml, apps/bridge/src/web-build-snapshot.ts, apps/bridge/test/server.test.ts, apps/web/e2e/production-readiness.spec.ts, docs/product/CURRENT_STATE.md, docs/MANUAL_TEST_CHECKLIST.md]
 ---
 
 # Nerva production-readiness audit
 
-Source and installation rechecked: 14 September 2026. This is a source-quality and installation audit, not a production release certificate. It includes one bounded current-version schema-cache repair; it does not include a Desktop restart or candidate deployment.
+Pre-deployment source and installation audit: 14 September 2026. This is a source-quality and installation audit, not a production release certificate. It includes one bounded current-version schema-cache repair. Deployment, Desktop reconnection and physical acceptance require their own subsequent evidence.
 
 ## Decision
 
@@ -19,6 +19,10 @@ Source and installation rechecked: 14 September 2026. This is a source-quality a
 The existing Mac installation was inspected without replacing its running bridge, restarting Codex Desktop, changing Tailscale routes, editing ownership attestations or sending commands to real user tasks. Its health result is therefore not evidence that this branch has been deployed.
 
 ## Corrections in this candidate
+
+The installed bridge's health endpoint returned HTTP 200 while both `/` and `/app-meta.json` returned HTTP 404. The process-scoped PWA snapshot was stored in operating-system temporary space, and its required files were absent during inspection. The [web snapshot](../../apps/bridge/src/web-build-snapshot.ts) now lives in Nerva's private runtime directory, under the exclusive bridge lifetime lease, so operating-system temporary-file cleanup cannot remove a running installation's assets. It retains the existing build-identity and content checks and is removed when that bridge closes. The [server regression](../../apps/bridge/test/server.test.ts) verifies private storage, HTML and JavaScript availability after build scratch space is removed, and cleanup on shutdown. Deployment verification must fetch the PWA and its assets as well as the health endpoint.
+
+Push and pull-request CI runs now have distinct concurrency groups. Previously they cancelled each other for the same revision, leaving a failed required aggregate beside the successful run and blocking merge. New pushes still cancel obsolete runs of the same event type; the required aggregate continues to reject any failed, skipped or cancelled validation group.
 
 Activity now exposes a visible single-tap actions button as well as long press. Both the trigger and menu actions have at least 44 CSS-pixel touch targets. Conversation titles and project/status metadata are more legible; the scrolling conversation list has an opaque content surface. Menus support arrow keys, Home, End, Escape and leaving with Tab. Closing or pinning returns focus to the correct trigger, and opening an actions menu does not dispatch a task command. Normal conversation taps remain available while an explicit menu is open.
 
@@ -75,7 +79,7 @@ npm run setup:check -- --json
 npm run doctor -- --strict-native --json
 ```
 
-## Actual-installation findings — rechecked 14 September
+## Pre-deployment installation findings — rechecked 14 September
 
 Codex Desktop is `26.908.40834`, build `8881`, with bundled CLI `0.154.0-alpha.6.2`. The running managed app-server reports `0.153.4`; its read-only compatibility probe passes despite the version difference. This is not proof of Desktop mutation authority.
 
@@ -85,7 +89,7 @@ The documented `setup --generate-schemas --json` command generated 426 schema fi
 
 | Gate | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| Existing loopback bridge | Health responds on a verified loopback listener | Deploy and verify the candidate's actual coordinated web/bridge revision. Existing health is not candidate deployment evidence. |
+| Existing loopback bridge and PWA | Health responds on a verified loopback listener; the follow-up inspection found missing PWA snapshot files and HTTP 404 for the page and build metadata | Deploy and verify matching web/bridge revisions, HTTP 200 for the page, metadata and referenced assets, and the persistent private runtime snapshot. Health alone is insufficient. |
 | Private filesystem and exposure | Inspected state is owner-only; Funnel is disabled for the configured route | Preserve these constraints. Never expose CDP beyond loopback. |
 | Current-version protocol schemas | Repaired; 426 files generated from the installed binary, then validated by doctor | Revalidate after any installed Codex update. |
 | Managed app-server / standalone CLI | Standalone tooling is found; managed read-only compatibility passes | Reconcile the running/new binary versions during the coordinated native validation. A read-only pass does not authorize mutation. |

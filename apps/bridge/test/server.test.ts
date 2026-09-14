@@ -1,5 +1,5 @@
 import { connect as connectTcp, createServer } from "node:net";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -584,6 +584,29 @@ describe("bridge routes", () => {
     expect(spaRoute.headers["content-type"]).toMatch(/text\/html/u);
     expect(spaRoute.body).toContain("id=\"root\"");
     expect(spaRoute.body).not.toContain("id=\"replacement\"");
+  });
+
+  it("keeps installed web assets in private runtime storage until the bridge closes", async () => {
+    const webRoot = await mkdtemp(join(tmpdir(), "codex-pad-web-lifetime-test-"));
+    temporaryRoots.push(webRoot);
+    await writeFile(join(webRoot, "index.html"), "<!doctype html><title>Nerva</title>", "utf8");
+    await writeFile(join(webRoot, "app.js"), "globalThis.nervaLoaded = true;", "utf8");
+    const { handle, paths } = await setup(null, undefined, webRoot);
+
+    // Build scratch space may disappear while the installed bridge stays up.
+    await rm(webRoot, { recursive: true });
+    const snapshots = (await readdir(paths.runtime)).filter((name) => name.startsWith("web-build-"));
+    expect(snapshots).toHaveLength(1);
+    const snapshot = join(paths.runtime, snapshots[0]!);
+    expect((await lstat(snapshot)).mode & 0o777).toBe(0o700);
+    for (const [url, expected] of [["/", "<title>Nerva</title>"], ["/app.js", "globalThis.nervaLoaded = true;"]] as const) {
+      const response = await handle.app.inject({ method: "GET", url, headers: { host: "pad.example.test" } });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain(expected);
+    }
+
+    await handle.close();
+    await expect(lstat(snapshot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("refuses a production web build whose identity differs from the bridge", async () => {

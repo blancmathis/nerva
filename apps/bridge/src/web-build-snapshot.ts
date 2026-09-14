@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { cp, lstat, mkdtemp, opendir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeIdentity } from "@codex-pad/protocol";
@@ -78,11 +77,14 @@ async function assertSnapshotIdentity(root: string, runtimeIdentity: RuntimeIden
  * lets a later `npm run build` replace the PWA underneath a still-running
  * bridge, after which the exact-build mutation gate correctly rejects the new
  * client. A private snapshot keeps every response on one attested build until
- * the bridge is explicitly restarted.
+ * the bridge is explicitly restarted. The caller supplies the private runtime
+ * directory held by the bridge lifetime lease: OS temporary-file cleanup must
+ * not remove assets from a running installation.
  */
 export async function createImmutableWebBuildSnapshot(
   sourceRoot: string,
   runtimeIdentity: RuntimeIdentity,
+  runtimeDirectory: string,
 ): Promise<ImmutableWebBuildSnapshot | null> {
   let sourceMetadata;
   try {
@@ -96,7 +98,7 @@ export async function createImmutableWebBuildSnapshot(
   }
 
   for (let attempt = 1; attempt <= MAX_SNAPSHOT_ATTEMPTS; attempt += 1) {
-    const parent = await mkdtemp(join(tmpdir(), "nerva-web-build-"));
+    const parent = await mkdtemp(join(runtimeDirectory, "web-build-"));
     const snapshotRoot = join(parent, "build");
     let released = false;
     const release = async (): Promise<void> => {
