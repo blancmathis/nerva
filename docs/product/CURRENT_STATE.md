@@ -10,6 +10,8 @@ context_room:
 
 # Nerva — current repository state
 
+> Audit supplement, 14 September 2026: see [Production readiness](PRODUCTION_READINESS.md) for current installation blockers, UI/UX corrections and the candidate validation gates. Historical observations below are not a current production certificate.
+
 > Observed on 7 September 2026. The accepted product target remains in [`FEATURES_target.md`](./FEATURES_target.md). This page separates implemented code, automated evidence, live-runtime evidence, and physical Mac/iPad evidence.
 
 The public product name is **Nerva**. Visible UI, PWA metadata, and pairing copy use that name. Existing technical identifiers (`codex-pad`, `CodexPad`, IndexedDB names, LaunchAgent labels, directories, and commands) remain unchanged to preserve paired devices and stored state.

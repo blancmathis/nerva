@@ -765,7 +765,7 @@ test("places cross-project Activity inside Conversations on Home and opens an ex
 
   const activity = await openActivity(page);
   await expect(conversationsTrigger).toHaveAttribute("aria-expanded", "true");
-  await page.waitForTimeout(350);
+  await settleLayoutAnimations(page);
   const activityBounds = await activity.boundingBox();
   const viewport = page.viewportSize();
   expect(activityBounds).not.toBeNull();

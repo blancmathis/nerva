@@ -19,6 +19,7 @@ import {
 } from "../lib/site-qa-recorder-store";
 import type { SiteQaDeliveryIdentity, SiteQaManifestStep, SiteQaSendPayload, SiteQaSendResult } from "../lib/site-qa-types";
 import type { SiteFavorite } from "../lib/storage";
+import { useLocalVoiceNote } from "../lib/use-local-voice-note";
 import { useModalFocus } from "../lib/use-modal-focus";
 import { createUuidV4 } from "../lib/uuid";
 import { ChevronIcon, GlobeIcon, PencilIcon } from "./Icons";
@@ -93,10 +94,6 @@ export function BrowserSiteStudio({
   const browseGestureRef = useRef<BrowseGesture | null>(null);
   const activeStrokeRef = useRef<{ readonly pointerId: number; stroke: Stroke } | null>(null);
   const issueDialogRef = useRef<HTMLElement | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const voiceStopPromiseRef = useRef<Promise<Blob | null> | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);
-  const voiceTimerRef = useRef<number | null>(null);
   const [frame, setFrame] = useState<BrowserTabFrame | null>(null);
   const [strokes, setStrokes] = useState<readonly Stroke[]>([]);
   const [annotationKind, setAnnotationKind] = useState<"none" | "simple" | "issue">("none");
@@ -115,10 +112,12 @@ export function BrowserSiteStudio({
   const [issueExpected, setIssueExpected] = useState("");
   const [issueActual, setIssueActual] = useState("");
   const [issueExplanation, setIssueExplanation] = useState("");
-  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
-  const [recordingVoice, setRecordingVoice] = useState(false);
   const [clock, setClock] = useState(Date.now());
 
+  const voice = useLocalVoiceNote({ active: annotationKind === "issue", scope: JSON.stringify([threadId, tab.id]) });
+  const voiceBlob = voice.blob;
+  const recordingVoice = voice.phase === "recording";
+  const voicePending = voice.phase === "requesting" || voice.phase === "stopping";
   const annotating = annotationKind !== "none";
   const recording = draft?.status === "recording" && !reviewing;
   const favorite = favorites.some((candidate) => candidate.url === (frame?.url ?? tab.url));
@@ -160,10 +159,6 @@ export function BrowserSiteStudio({
     const timer = window.setInterval(() => setClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [recording]);
-  useEffect(() => () => {
-    if (voiceTimerRef.current !== null) window.clearTimeout(voiceTimerRef.current);
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-  }, []);
 
   async function commitDraft(next: SiteQaRecordingDraft) {
     setDraft(next); setResumableDraft(null); await saveSiteQaDraft(next);
@@ -251,9 +246,9 @@ export function BrowserSiteStudio({
   }
   function enterAnnotation(kind: "simple" | "issue") {
     annotatingRef.current = true; setAnnotationKind(kind); setStrokes([]); setNotice(null);
-    if (kind === "issue") { setIssueExpected(""); setIssueActual(""); setIssueExplanation(""); setVoiceBlob(null); }
+    if (kind === "issue") { setIssueExpected(""); setIssueActual(""); setIssueExplanation(""); voice.cancel(); }
   }
-  function leaveAnnotation() { annotatingRef.current = false; setAnnotationKind("none"); setStrokes([]); setNotice(null); }
+  function leaveAnnotation() { voice.cancel(); annotatingRef.current = false; setAnnotationKind("none"); setStrokes([]); setNotice(null); }
   useModalFocus(issueDialogRef, leaveAnnotation, { active: annotationKind === "issue", initialFocus: "textarea" });
   function pointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!frame) return;
@@ -336,39 +331,18 @@ export function BrowserSiteStudio({
     await deleteSiteQaDraft(current.id); setDraft(null); setResumableDraft(null); setReviewing(false); setNotice("Local recording deleted.");
   }
   async function toggleVoice() {
-    if (recordingVoice) { await stopVoiceRecording(); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream); voiceChunksRef.current = [];
-      recorder.addEventListener("dataavailable", (event) => { if (event.data.size > 0) voiceChunksRef.current.push(event.data); });
-      let resolveVoice: (blob: Blob | null) => void = () => undefined;
-      voiceStopPromiseRef.current = new Promise<Blob | null>((resolve) => { resolveVoice = resolve; });
-      recorder.addEventListener("stop", () => {
-        if (voiceTimerRef.current !== null) window.clearTimeout(voiceTimerRef.current);
-        voiceTimerRef.current = null;
-        const captured = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/mp4" });
-        setVoiceBlob(captured);
-        setRecordingVoice(false);
-        recorderRef.current = null;
-        for (const track of stream.getTracks()) track.stop();
-        resolveVoice(captured);
-      }, { once: true });
-      recorderRef.current = recorder; recorder.start(); setRecordingVoice(true);
-      voiceTimerRef.current = window.setTimeout(() => recorder.stop(), 3 * 60 * 1_000);
-    } catch { setError("Microphone access was not granted. Type the explanation instead."); }
-  }
-  async function stopVoiceRecording(): Promise<Blob | null> {
-    const recorder = recorderRef.current;
-    const completion = voiceStopPromiseRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-    if (completion) return completion;
-    return voiceBlob;
+    if (voice.phase === "recording" || voice.phase === "requesting") await voice.stop();
+    else await voice.start();
   }
   async function saveIssue(finish: boolean) {
     if (!draft || !frame || strokes.length === 0) { setError("Circle, underline, or redact the issue before saving it."); return; }
     setBusy(true); setError(null);
     try {
-      const capturedVoice = recordingVoice ? await stopVoiceRecording() : voiceBlob;
+      const wasRecording = voice.phase === "recording" || voice.phase === "stopping";
+      const capturedVoice = await voice.stop();
+      if (wasRecording && !capturedVoice) {
+        throw new Error("The voice note could not be saved. Retry it or type the explanation before saving this checkpoint.");
+      }
       const evidence: SiteQaEvidenceFrame = { id: createUuidV4(), role: "issue", frame };
       const voiceBytes = capturedVoice ? await capturedVoice.arrayBuffer() : null;
       const issue: SiteQaDraftIssue = {
@@ -499,7 +473,7 @@ export function BrowserSiteStudio({
 
       {typing && !annotating && <form className="cp-browser-site__typing" onSubmit={(event) => { event.preventDefault(); if (typedText !== "") void control({ type: "insertText", text: typedText }); setTypedText(""); setTyping(false); }}><input autoFocus maxLength={1_000} value={typedText} placeholder="Type into the focused field" onChange={(event) => setTypedText(event.target.value)} /><button type="button" onClick={() => void control({ type: "key", key: "Backspace" })}>⌫</button><button type="submit" disabled={typedText === ""}>Type</button><button type="button" onClick={() => { void control({ type: "key", key: "Enter" }); setTyping(false); }}>Enter</button></form>}
 
-      {annotationKind === "issue" && <section ref={issueDialogRef} className="cp-site-issue-sheet" role="dialog" aria-modal="true" aria-labelledby="mark-issue-title" tabIndex={-1}><div className="cp-site-issue-sheet__handle" /><header><div><p className="cp-overline">Checkpoint</p><h2 id="mark-issue-title">Mark what went wrong</h2></div><button type="button" onClick={leaveAnnotation}>Cancel</button></header><div className="cp-site-issue-sheet__fields"><label><span>What happened?</span><textarea maxLength={3_000} value={issueExplanation} placeholder="Explain the visible problem" onChange={(event) => setIssueExplanation(event.target.value)} /></label><label><span>Expected</span><input maxLength={1_500} value={issueExpected} placeholder="What should have happened?" onChange={(event) => setIssueExpected(event.target.value)} /></label><label><span>Actual</span><input maxLength={1_500} value={issueActual} placeholder="What happened instead?" onChange={(event) => setIssueActual(event.target.value)} /></label></div><div className="cp-site-issue-sheet__voice"><button type="button" aria-pressed={recordingVoice} onClick={() => void toggleVoice()}>{recordingVoice ? "Stop voice note" : voiceBlob ? "Replace voice note" : "Explain with voice"}</button><small>{voiceBlob ? "Voice is saved locally with this checkpoint. Add a written summary for the agent." : "Microphone starts only after you tap."}</small></div><footer><button type="button" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(false)}>Save & continue</button><button type="button" className="is-primary" disabled={busy || strokes.length === 0} onClick={() => void saveIssue(true)}>Save & review</button></footer></section>}
+      {annotationKind === "issue" && <section ref={issueDialogRef} className="cp-site-issue-sheet" role="dialog" aria-modal="true" aria-labelledby="mark-issue-title" tabIndex={-1}><div className="cp-site-issue-sheet__handle" /><header><div><p className="cp-overline">Checkpoint</p><h2 id="mark-issue-title">Mark what went wrong</h2></div><button type="button" onClick={leaveAnnotation}>Cancel</button></header><div className="cp-site-issue-sheet__fields"><label><span>What happened?</span><textarea maxLength={3_000} value={issueExplanation} placeholder="Explain the visible problem" onChange={(event) => setIssueExplanation(event.target.value)} /></label><label><span>Expected</span><input maxLength={1_500} value={issueExpected} placeholder="What should have happened?" onChange={(event) => setIssueExpected(event.target.value)} /></label><label><span>Actual</span><input maxLength={1_500} value={issueActual} placeholder="What happened instead?" onChange={(event) => setIssueActual(event.target.value)} /></label></div><div className="cp-site-issue-sheet__voice"><button type="button" aria-pressed={recordingVoice} disabled={voice.phase === "stopping"} onClick={() => void toggleVoice()}>{voice.phase === "requesting" ? "Cancel microphone request" : voice.phase === "stopping" ? "Saving voice note…" : recordingVoice ? "Stop voice note" : voiceBlob ? "Replace voice note" : "Explain with voice"}</button><small role={voice.error ? "alert" : "status"}>{voice.error ?? (voice.phase === "requesting" ? "Waiting for microphone permission. You can cancel without leaving this checkpoint." : voiceBlob ? "Voice stays on this iPad. Save this checkpoint to keep it, and add a written summary for the agent." : "Microphone starts only after you tap.")}</small></div><footer><button type="button" disabled={busy || voicePending || strokes.length === 0} onClick={() => void saveIssue(false)}>Save & continue</button><button type="button" className="is-primary" disabled={busy || voicePending || strokes.length === 0} onClick={() => void saveIssue(true)}>Save & review</button></footer></section>}
       {(notice || (error && frame)) && <p className={`cp-browser-site__message${error ? " is-error" : ""}`} role="status">{error ?? notice}</p>}
     </section>
   );
