@@ -28,6 +28,9 @@ const VERIFIED_JOYSTICK_BINDINGS = new Set([
   "command\u0000nav.forward",
   "command\u0000skill.one",
   "command\u0000nav.back",
+  "command\u0000composer.togglePlanMode",
+  "command\u0000navigateForward",
+  "command\u0000navigateBack",
 ]);
 
 const CODEX_DICTATION_KEYCAP_ID = "MIC";

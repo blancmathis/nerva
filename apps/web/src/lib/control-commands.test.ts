@@ -42,6 +42,13 @@ function snapshot(sequence: number, commandId = "mode.plan"): BridgeSnapshot {
 }
 
 describe("buildJoystickCommand", () => {
+  it.each(["composer.togglePlanMode", "navigateForward", "navigateBack"])("accepts the exact current Desktop identity %s", (commandId) => {
+    const command = buildJoystickCommand(snapshot(10, commandId), THREAD, "up", "00000000-0000-4000-8000-000000000001");
+    expect(command?.expectedAssignment).toEqual({ type: "command", commandId });
+    expect(command?.expectedThreadId).toBe(THREAD);
+    expect(buildJoystickCommand(snapshot(11, "toggleSidebar"), THREAD, "up", "00000000-0000-4000-8000-000000000002")).toBeNull();
+  });
+
   it("fails closed until the live joystick assignment matches a verified safe identity", () => {
     const first = buildJoystickCommand(snapshot(10, "mode.plan.v1"), THREAD, "up", "00000000-0000-4000-8000-000000000001");
     const reassigned = buildJoystickCommand(snapshot(11, "mode.plan"), THREAD, "up", "00000000-0000-4000-8000-000000000002");

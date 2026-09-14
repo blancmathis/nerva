@@ -254,8 +254,13 @@ export interface ProductStateSaveResult {
 export function chooseLiveSnapshot(
   current: BridgeSnapshot | null,
   next: BridgeSnapshot,
-  _hasReceivedLiveSnapshot: boolean,
+  hasReceivedLiveSnapshot: boolean,
 ): BridgeSnapshot {
+  // The display cache deliberately omits native action authority. A live
+  // snapshot at the same sequence must replace it once after a PWA reload.
+  if (!hasReceivedLiveSnapshot && current?.bridgeInstanceId === next.bridgeInstanceId && current.seq === next.seq) {
+    return next;
+  }
   return isFreshSnapshot(current, next) ? next : current ?? next;
 }
 
@@ -619,7 +624,8 @@ export function useBridge({ allSessionsEnabled = false }: UseBridgeOptions = {})
       onSnapshot(next) {
         if (!active) return;
         const merged = mergeSecondaryCapabilities(next, secondaryRef.current);
-        setSnapshot((current) => chooseLiveSnapshot(current, merged, liveSnapshotSeenRef.current));
+        const hasReceivedLiveSnapshot = liveSnapshotSeenRef.current;
+        setSnapshot((current) => chooseLiveSnapshot(current, merged, hasReceivedLiveSnapshot));
         liveSnapshotSeenRef.current = true;
         setInitializing(false);
         void saveLastSnapshot(merged);
