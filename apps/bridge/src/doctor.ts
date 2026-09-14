@@ -529,15 +529,17 @@ async function defaultMicroProbe(port: number): Promise<{
       return { ready: false, stale: true, slotCount: 0, detail: "Adapter probe export is unavailable." };
     }
     const state = (await module_.probeCodexDesktop({ cdpPort: port })) as {
-      health?: { status?: string; detail?: string };
+      health?: { status?: string; detail?: string; reasons?: readonly { code?: string; message?: string }[] };
       stale?: boolean;
       snapshot?: { slots?: readonly unknown[] };
     };
+    const detail = state.health?.detail
+      ?? state.health?.reasons?.map((reason) => `${reason.code}: ${reason.message}`).join("; ");
     return {
       ready: state.health?.status === "ready",
       stale: state.stale ?? true,
       slotCount: state.snapshot?.slots?.length ?? 0,
-      ...(state.health?.detail ? { detail: state.health.detail } : {}),
+      ...(detail ? { detail } : {}),
     };
   } catch (error) {
     return { ready: false, stale: true, slotCount: 0, detail: String(error) };

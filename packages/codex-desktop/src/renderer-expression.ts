@@ -70,12 +70,31 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
     ...performance.getEntriesByType('resource').map((entry) => entry.name)
   ])].filter((url) => typeof url === 'string' && url.includes('/assets/') && /\.js(?:\?|$)/.test(url)).slice(0, 300);
 
-  const moduleValues = [];
-  for (const url of assetUrls) {
+  // A loaded chunk or setting reader can stop resolving after a Desktop update.
+  // Keep one stalled optional read from consuming the entire CDP request.
+  const readDeadline = Date.now() + 4000;
+  const boundedRead = async (read) => {
+    const remaining = readDeadline - Date.now();
+    if (remaining <= 0) return null;
+    let timer;
     try {
-      const namespace = await import(url);
-      moduleValues.push(...Object.values(namespace));
-    } catch {}
+      return await Promise.race([
+        Promise.resolve().then(read),
+        new Promise((resolve) => { timer = setTimeout(() => resolve(null), Math.min(250, remaining)); })
+      ]);
+    } catch { return null; }
+    finally { clearTimeout(timer); }
+  };
+  const importModule = async (url) => {
+    const namespace = await import(url);
+    return namespace;
+  };
+  const moduleValues = [];
+  for (let offset = 0; offset < assetUrls.length && Date.now() < readDeadline; offset += 4) {
+    const namespaces = await Promise.all(assetUrls.slice(offset, offset + 4).map((url) => boundedRead(() => importModule(url))));
+    for (const namespace of namespaces) {
+      if (namespace) moduleValues.push(...Object.values(namespace));
+    }
   }
 
   // Also inspect already-loaded webpack module caches without accepting module
@@ -98,11 +117,11 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
   const reactProperty = root && Object.getOwnPropertyNames(root).find((name) => name.startsWith('__reactContainer$') || name.startsWith('__reactFiber$'));
   if (!root || !reactProperty) throw new Error('Codex React root is unavailable.');
 
-  const resolvers = moduleValues.filter((value) => value && typeof value === 'object' && typeof value.resolve === 'function' && typeof value.createSubscriberAtom === 'function');
+  const resolvers = [...new Set(moduleValues)].filter((value) => value && typeof value === 'object' && typeof value.resolve === 'function' && typeof value.createSubscriberAtom === 'function');
   const queue = [root[reactProperty]];
   const visited = new Set();
   let located = null;
-  while (queue.length && visited.size < 40000 && !located) {
+  while (queue.length && visited.size < 40000 && !located && Date.now() < readDeadline) {
     const fiber = queue.pop();
     if (!fiber || visited.has(fiber)) continue;
     visited.add(fiber);
@@ -127,6 +146,7 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
       for (const node of chain.values()) {
         if (!node?.store || typeof node.store.get !== 'function') continue;
         for (const resolver of resolvers) {
+          if (Date.now() >= readDeadline) break;
           try {
             const atom = resolver.resolve(node, chain);
             const slots = node.store.get(atom);
@@ -158,24 +178,26 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
     if (definition === reasoningDefinition && ['minimal', 'low', 'medium', 'high', 'xhigh', 'ultra', 'max'].includes(candidate)) reasoningEffort = candidate;
   };
 
-  const directReaders = moduleValues.filter((value) => typeof value === 'function' && value.length === 1 && Function.prototype.toString.call(value).includes('get-setting'));
+  const directReaders = [...new Set(moduleValues)].filter((value) => typeof value === 'function' && value.length === 1 && Function.prototype.toString.call(value).includes('get-setting'));
   for (const reader of directReaders) {
     for (const definition of [definitions?.layout, definitions?.agentSource, reasoningDefinition]) {
-      try { acceptSetting(definition, await reader(definition)); } catch {}
+      if (!definition) continue;
+      try { acceptSetting(definition, await boundedRead(() => reader(definition))); } catch {}
     }
     if (layoutValue && agentSource && reasoningEffort) break;
   }
 
   if (located.node?.store && (!layoutValue || !agentSource || !reasoningEffort)) {
     const getStoreValue = located.node.store.get.bind(located.node.store);
-    const storeReaders = moduleValues.filter((value) => {
+    const storeReaders = [...new Set(moduleValues)].filter((value) => {
       if (typeof value !== 'function' || value.length !== 2) return false;
       const source = Function.prototype.toString.call(value);
       return source.includes('.key') && source.includes('.default');
     });
     for (const reader of storeReaders) {
       for (const definition of [definitions?.layout, definitions?.agentSource, reasoningDefinition]) {
-        try { acceptSetting(definition, await reader(getStoreValue, definition)); } catch {}
+        if (!definition) continue;
+        try { acceptSetting(definition, await boundedRead(() => reader(getStoreValue, definition))); } catch {}
       }
       if (layoutValue && agentSource && reasoningEffort) break;
     }
@@ -185,7 +207,10 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
     if (!value || typeof value !== 'object') return null;
     const keycapId = safeText(value.keycapId ?? value.keycap?.id ?? value.id);
     if (!keycapId) return null;
-    return { keycapId, commandId: safeText(value.commandId ?? value.command?.id ?? null) };
+    if (value.action != null && (value.action.type !== 'command' || typeof value.action.commandId !== 'string')) return null;
+    const command = value.action?.commandId ?? value.commandId ?? value.command?.id ?? null;
+    if (command !== null && safeText(command) === null) return null;
+    return { keycapId, commandId: command };
   };
   const joystickAssignment = (value) => {
     if (!value || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, 'type') || !Object.prototype.hasOwnProperty.call(value, 'commandId') || value.type !== 'command') return null;
@@ -200,17 +225,6 @@ export const FIXED_NATIVE_SNAPSHOT_EXPRESSION = String.raw`(async () => {
     : null;
 
   const bus = moduleValues.find((value) => value && typeof value === 'object' && value.handlers instanceof Map && (typeof value.dispatchHostMessage === 'function' || typeof value.dispatchMessage === 'function'));
-  const nativeHandlersReady = () => Boolean(
-    bus
-    && (bus.handlers.get('codex-micro-hid-event')?.size ?? 0) > 0
-    && (bus.handlers.get('codex-micro-joystick-event')?.size ?? 0) > 0
-  );
-  if (bus && !nativeHandlersReady()) {
-    const dispatch = bus.dispatchHostMessage ?? bus.dispatchMessage;
-    dispatch.call(bus, ${JSON.stringify(DEVICE_READY_MESSAGE)});
-    const deadline = Date.now() + 1200;
-    while (!nativeHandlersReady() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
-  }
   const hidHandler = Boolean(bus && (bus.handlers.get('codex-micro-hid-event')?.size ?? 0) > 0);
   const joystickHandler = Boolean(bus && (bus.handlers.get('codex-micro-joystick-event')?.size ?? 0) > 0);
   const reasoningAdjustable = Boolean(reasoningEffort && hidHandler);
@@ -595,7 +609,8 @@ export function buildFixedDispatchExpression(event: NativeDispatch): string {
     const readActionAssignment = (value) => {
       if (!value || typeof value !== 'object') return null;
       const keycapId = value.keycapId ?? value.keycap?.id ?? value.id;
-      const commandValue = value.commandId ?? value.command?.id ?? null;
+      if (value.action != null && (value.action.type !== 'command' || typeof value.action.commandId !== 'string')) return null;
+      const commandValue = value.action?.commandId ?? value.commandId ?? value.command?.id ?? null;
       if (typeof keycapId !== 'string' || keycapId.length < 1 || keycapId.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9_.:+/-]*$/.test(keycapId)) return null;
       if (commandValue !== null && (typeof commandValue !== 'string' || commandValue.length < 1 || commandValue.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9_.:+/-]*$/.test(commandValue))) return null;
       return { keycapId, nativeCommandId: commandValue };
